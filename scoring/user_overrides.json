@@ -1,0 +1,320 @@
+{
+  "NVDA": {
+    "ev_ebitda": {
+      "value": 25.4,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "fcf_growth_yoy": {
+      "value": 0.585,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "analyst_revision_30d": {
+      "value": 0.838,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "operating_margin": {
+      "value": 0.6528,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "ai_revenue_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_profit_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_growth_contribution_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "advanced_packaging_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.0054,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.0554,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "guidance_vs_consensus": {
+      "value": -0.001,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "market_expectation_score": {
+      "value": 0.95,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "valuation_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "concentration_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "liquidity_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "revenue_predictability_score": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "forward_pe": {
+      "value": 23.42,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "peg_ratio": {
+      "value": 0.63,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.8137,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "fcf_margin": {
+      "value": 0.183,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "roic": {
+      "value": 1.5524,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "debt_to_equity": {
+      "value": 0.3274,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": ""
+    },
+    "net_revenue_retention": {
+      "value": 1.0,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "arr_growth_yoy": {
+      "value": 1.0,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "software_ai_platform_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "cybersecurity_ai_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    }
+  },
+  "AVGO": {
+    "market_cap": {
+      "value": 1770000000000.0,
+      "status": "verified",
+      "verified_at": "2026-06-15",
+      "source": "修正mock_data错误：1.77e11→1.77e12（cross_validate偏差90.6%）"
+    }
+  },
+  "PLTR": {
+    "peg_ratio": {
+      "value": 1.87,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "ev_ebitda": {
+      "value": 162.63,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "revenue_growth_yoy": {
+      "value": 0.5618,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "eps_growth_yoy": {
+      "value": 1.25,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "fcf_growth_yoy": {
+      "value": 1.328,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.85,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "analyst_revision_30d": {
+      "value": 0.065,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "operating_margin": {
+      "value": 0.6,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "roic": {
+      "value": 0.326,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "debt_to_equity": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "net_revenue_retention": {
+      "value": 1.18,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "ai_revenue_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_profit_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_growth_contribution_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "software_ai_platform_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "advanced_packaging_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "cybersecurity_ai_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.134,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.0645,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "guidance_vs_consensus": {
+      "value": 0.1,
+      "status": "verified",
+      "verified_at": "2026-06-19",
+      "source": ""
+    },
+    "market_expectation_score": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "valuation_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "concentration_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "liquidity_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "revenue_predictability_score": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    }
+  }
+}

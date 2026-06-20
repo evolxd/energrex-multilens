@@ -1,0 +1,71 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Python cache and local tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Runtime databases and app state
+*.db
+*.db-shm
+*.db-wal
+data/*.db
+data/chrome_profile/
+
+# Logs and temporary runtime output
+*.log
+*.out
+*.err
+streamlit_*.txt
+fastapi.*
+logs/
+
+# Generated validation and debug artifacts
+validation_report.html
+validation_summary.json
+validation.log
+results.csv
+results_validated.csv
+*_check.txt
+*_detail.txt
+*_out.txt
+preview*.txt
+raw_dtype.txt
+dtype_check.txt
+col_check.txt
+inspect_out.txt
+nvda_refresh.txt
+
+# Screenshots and downloaded broker files
+screenshots/
+ss_*.png
+_verify*.png
+data/screenshots/
+data/firstrade/*.csv
+
+# Bundles and local archives
+*.zip
+
+# Runtime cache files (auto-generated, not source)
+data/risk_cache.json
+data/beta_cache.json
+data/data_validation_report.json
+data/Portfolio_Config.json
+scoring/edgar_cache.json
+
+# Temporary debug / screenshot scripts
+scroll_screenshot.py
+
+# Claude Code project directory
+.claude/
+
+# Backup files and generated text outputs
+*.bak
+mismatch_cats.txt
