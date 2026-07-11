@@ -278,6 +278,69 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
     border-color: #4FC3F7 !important;
     color: #4FC3F7 !important;
 }
+
+/* ══════════════════════════════════════════════════════════
+   打印 / PDF 报告样式
+   Ctrl+P → 另存为 PDF 时：隐藏侧栏与所有交互控件，主体全宽，
+   卡片/图表不跨页断开，仅保留一份干净的机构级报告。
+   ══════════════════════════════════════════════════════════ */
+.print-only { display: none; }
+
+@media print {
+    @page { size: A4 portrait; margin: 14mm 11mm; }
+
+    html, body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background: #0B111A !important;
+    }
+
+    /* 隐藏所有非报告 UI（侧栏 / 顶栏 / 工具条 / 折叠钮 / 页脚） */
+    section[data-testid="stSidebar"],
+    header[data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stDecoration"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapseButton"],
+    footer, #MainMenu { display: none !important; }
+
+    /* 隐藏所有交互控件（下拉 / 单选 / 按钮 / 滑块 / 输入） */
+    [data-testid="stButton"], [data-testid="stDownloadButton"],
+    [data-testid="stRadio"], [data-testid="stSelectbox"],
+    [data-testid="stSlider"], [data-testid="stTextInput"],
+    [data-testid="stTextArea"], [data-testid="stExpander"] > details > summary {
+        display: none !important;
+    }
+
+    /* 屏幕专属 / 打印专属 切换 */
+    .screen-only { display: none !important; }
+    .print-only  { display: block !important; }
+
+    /* 主体全宽、去内边距 —— 修复内容被侧栏挤到超出可打印区导致的右侧截断 */
+    [data-testid="stAppViewContainer"] { left: 0 !important; }
+    [data-testid="stMain"] .block-container,
+    .block-container {
+        max-width: 100% !important;
+        padding: 0.4rem 0 !important;
+    }
+
+    /* 卡片 / 图表 / 指标 / 列行 不跨页断开 —— 修复截断 */
+    [data-testid="stElementContainer"],
+    [data-testid="stHorizontalBlock"],
+    [data-testid="stPlotlyChart"],
+    [data-testid="stMetric"],
+    [data-testid="stExpander"] {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    /* 展开框在打印时强制展开内容 */
+    [data-testid="stExpander"] > details { display: block !important; }
+    [data-testid="stExpander"] > details[open] ~ *,
+    [data-testid="stExpander"] details > div { display: block !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -695,7 +758,8 @@ if page == "🏆 排行榜":
 # 页面 2：单股详情
 # ══════════════════════════════════════════════════════════
 elif page == "🔍 单股详情":
-    st.markdown("## 单股详情")
+    st.markdown("<div class='screen-only'><h2 style='margin:0'>单股详情</h2></div>",
+                unsafe_allow_html=True)
 
     ticker = st.selectbox(
         "选择股票",
@@ -719,6 +783,37 @@ elif page == "🔍 单股详情":
     _tk_ov_detail = st.session_state.user_overrides.get(ticker, {})
     if any(isinstance(v, dict) and v.get("status") == "verified" for v in _tk_ov_detail.values()):
         _hr_needed = False
+
+    # ── 打印专属抬头（仅 PDF/打印时可见，屏幕不显示）──────────
+    _company = row.get("company", ticker)
+    _report_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    st.markdown(
+        f"<div class='print-only' style='margin-bottom:18px'>"
+        # 品牌带
+        f"<div style='display:flex;justify-content:space-between;align-items:center;"
+        f"border-bottom:2px solid {fs_color};padding-bottom:8px;margin-bottom:14px'>"
+        f"<div style='font-size:15px;font-weight:800;letter-spacing:1px;color:#E2E8F0'>"
+        f"⚡ ENERGREX <span style='color:#8B9BB4;font-weight:500'>· AI 估值评分报告</span></div>"
+        f"<div style='font-size:11px;color:#8B9BB4;letter-spacing:0.5px'>"
+        f"报告日期 {_report_date} · 数据源 results_validated.csv</div>"
+        f"</div>"
+        # 标的头部：代码/公司 + 评分
+        f"<div style='display:flex;justify-content:space-between;align-items:flex-end'>"
+        f"<div>"
+        f"<div style='font-size:34px;font-weight:900;color:#E2E8F0;line-height:1'>{ticker}</div>"
+        f"<div style='font-size:13px;color:#8B9BB4;margin-top:4px'>{_company}"
+        f" · {row.get('category','')} · {cat.value}</div>"
+        f"</div>"
+        f"<div style='text-align:right'>"
+        f"<span style='background:{r_color}22;color:{r_color};font-size:13px;"
+        f"font-weight:700;padding:3px 12px;border-radius:4px;border:1px solid {r_color}44'>"
+        f"{row['rating']}</span>"
+        f"<div style='font-size:40px;font-weight:900;color:{fs_color};line-height:1.05;margin-top:6px'>"
+        f"{fs:.0f}<span style='font-size:15px;color:#8B9BB4;font-weight:600'> / 100</span></div>"
+        f"</div>"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True)
 
     # ── 头部 ───────────────────────────────────────────
     h1, h2, h3 = st.columns([3, 2, 2])
@@ -1302,6 +1397,17 @@ elif page == "🔍 单股详情":
                 f"{_L['paragraph']}</div>"
                 f"</div>",
                 unsafe_allow_html=True)
+
+    # ── 打印专属页脚（仅 PDF/打印时可见）──────────────────────
+    st.markdown(
+        f"<div class='print-only' style='margin-top:18px;padding-top:10px;"
+        f"border-top:1px solid #1E2D3D;font-size:9px;color:#8B9BB4;line-height:1.6'>"
+        f"本报告由 ENERGREX AI 估值评分系统于 {_report_date} 自动生成，"
+        f"评分与「智库视角」均为规则化模型输出，不构成投资建议；"
+        f"Damodaran / 智库视角为框架提示，非对应投资人的真实观点。请自行核查数据来源与口径。"
+        f" · {ticker} · {_company}"
+        f"</div>",
+        unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
