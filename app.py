@@ -443,6 +443,26 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
     }
+    /* ⚠️ Chrome's print pagination does not reliably honor break-inside:avoid
+       on flex children (the 2-column st.columns() layout stHorizontalBlock
+       uses). Instead of moving a card that doesn't fit to a fresh page, it
+       silently clips the card's overflow at the page edge — this produced
+       the "lens card text cut off + footer glued into the cut" bug seen
+       with PLTR's last row (Peter Thiel / Charlie Munger cards). Fix: force
+       the lens-card grid to a single column in print, so each card is a
+       plain block-level box where break-inside:avoid is reliable. This is
+       screen-only 2-column, print-only 1-column by design — do not "fix"
+       this back to two columns without re-testing an 8-card ticker across
+       a page boundary (Playwright print-media emulation + page.pdf(), not
+       just emulate_media() which does not reveal pagination clipping). */
+    div[data-testid="stHorizontalBlock"]:has(.investor-lens-card) {
+        display: block !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.investor-lens-card) [data-testid="stColumn"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: none !important;
+    }
     .report-print-footer {
         break-before: auto !important;
         page-break-before: auto !important;
