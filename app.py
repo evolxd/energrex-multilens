@@ -18,6 +18,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, safe_val
+from kelly_position import suggested_position_pct, band_detail, kelly_meta
 
 _ROOT          = pathlib.Path(__file__).parent
 _CSV_VALIDATED = _ROOT / "results_validated.csv"
@@ -94,6 +95,7 @@ def load_from_csv() -> pd.DataFrame:
         else:         return "🚫 Avoid"
 
     df["rating"] = df["final_score"].apply(_score_to_rating)
+    df["kelly_position_pct"] = df["final_score"].apply(suggested_position_pct)
 
     df = df.sort_values("final_score", ascending=False).reset_index(drop=True)
     df.index = df.index + 1   # 1-based ranking
@@ -612,6 +614,12 @@ if page == "🏆 排行榜":
         col_left, col_bars, col_score = st.columns([3, 5, 2])
 
         with col_left:
+            _kp = row.get("kelly_position_pct")
+            _kp_html = (
+                f"<span style='color:#8B9BB4;font-size:9px;margin-left:6px'>"
+                f"建议仓位(半凯利) {_kp*100:.1f}%</span>"
+                if _kp is not None else ""
+            )
             st.markdown(
                 f"<div style='padding:6px 0;line-height:1.3'>"
                 f"<span style='font-size:11px;color:#2D3F55;font-weight:700'>#{rank}</span>"
@@ -621,6 +629,7 @@ if page == "🏆 排行榜":
                 f"<span style='background:{r_color}22;color:{r_color};"
                 f"font-size:9px;padding:1px 6px;border-radius:3px;"
                 f"border:1px solid {r_color}44;margin-left:6px'>{row['rating']}</span>"
+                f"{_kp_html}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -793,6 +802,24 @@ elif page == "🔍 单股详情":
             unsafe_allow_html=True)
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    # ── 半凯利建议仓位 ───────────────────────────────────
+    _kp     = suggested_position_pct(fs)
+    _kmeta  = kelly_meta()
+    _kdet   = band_detail(fs)
+    if _kp is not None and _kdet:
+        with st.expander(f"💰 建议仓位（半凯利）：{_kp*100:.1f}%", expanded=False):
+            kc1, kc2, kc3, kc4 = st.columns(4)
+            kc1.metric("所属分档", _kdet.get("rating_label", "—"))
+            kc2.metric("历史胜率(近似)", f"{_kdet.get('win_rate', 0)*100:.1f}%")
+            kc3.metric("赔率(avg_win/avg_loss)", f"{_kdet.get('payoff_ratio', '—')}")
+            kc4.metric("样本数", _kdet.get("sample_size", "—"))
+            st.caption(
+                f"回测生成于 {_kmeta.get('generated_at','—')} · {_kmeta.get('method','')}"
+            )
+            st.warning(_kmeta.get("caveat", ""), icon="⚠️")
+    elif _kp is None:
+        st.caption("💰 半凯利建议仓位：该分档样本不足或尚无回测数据，暂不显示")
 
     # ── 雷达 + 子分条形 ─────────────────────────────────
     rc1, rc2 = st.columns([1, 1])

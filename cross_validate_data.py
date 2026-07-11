@@ -101,6 +101,68 @@ def find_template_duplicates(overrides: dict, fields: list, min_count: int = 2) 
                 dup.setdefault(field, []).append({"value": v, "tickers": tickers})
     return dup
 
+# ── 估值失真预警：字段核实时点的股价 vs 现价 ──────────────────────────
+# 这几个字段的比率里，价格是分子/分母的一部分——股价大幅变动后，
+# 用锁定时的财报数据算出来的比率(PE/EV/PEG)可能已经过时，需要重新核实
+PRICE_SENSITIVE_FIELDS = {"forward_pe", "peg_ratio", "ev_ebitda", "ev_sales"}
+
+STALE_THR_WARN  = 0.15   # 15%  → 提醒
+STALE_THR_ERROR = 0.30   # 30%  → 强提醒，比率类字段大概率已过时
+
+def price_at_date(ticker_obj, date_str: str):
+    """取 date_str 起 7 天内第一个交易日的收盘价。"""
+    try:
+        start = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        end   = start + datetime.timedelta(days=7)
+        hist  = ticker_obj.history(start=start.strftime("%Y-%m-%d"),
+                                    end=end.strftime("%Y-%m-%d"))
+        if hist.empty:
+            return None
+        return float(hist["Close"].iloc[0])
+    except Exception:
+        return None
+
+def check_price_staleness(ticker_obj, ticker_overrides: dict, current_price) -> dict:
+    """按 verified_at 日期分组，只看价格敏感字段(PE/EV/PEG等)，
+    检查基本面锁定当时的股价 vs 现价变动幅度，判断这些比率是否可能已经过时。
+    返回 {verified_at日期: {price_then, price_now, pct_change, status, fields}}
+    """
+    if current_price is None:
+        return {}
+    by_date: dict = {}
+    for field, entry in ticker_overrides.items():
+        if field not in PRICE_SENSITIVE_FIELDS:
+            continue
+        if not isinstance(entry, dict) or entry.get("status") != "verified":
+            continue
+        d = entry.get("verified_at")
+        if not d:
+            continue
+        by_date.setdefault(d, []).append(field)
+
+    result = {}
+    for d, fields in by_date.items():
+        p_then = price_at_date(ticker_obj, d)
+        if not p_then:
+            continue
+        pct = (current_price - p_then) / p_then
+        if abs(pct) >= STALE_THR_ERROR:
+            status = (f"🔴 股价较核实时({d})变动{pct*100:+.1f}%，"
+                      f"{'/'.join(fields)} 大概率已过时，需重新核实")
+        elif abs(pct) >= STALE_THR_WARN:
+            status = (f"🟡 股价较核实时({d})变动{pct*100:+.1f}%，"
+                      f"建议重新核实 {'/'.join(fields)}")
+        else:
+            status = f"✅ 股价较核实时({d})变动{pct*100:+.1f}%，在容忍范围内"
+        result[d] = {
+            "price_then": round(p_then, 2),
+            "price_now":  round(current_price, 2),
+            "pct_change": round(pct, 4),
+            "status":     status,
+            "fields":     fields,
+        }
+    return result
+
 # 主观估算字段
 SUBJECTIVE_FIELDS = [
     "ai_revenue_exposure_pct",
@@ -191,7 +253,8 @@ def run_validation():
         "tickers": TICKERS_CORE,
         "thresholds": {"ok": THR_OK, "warn": THR_WARN},
         "summary": {"auto_ok": 0, "auto_warn": 0, "auto_error": 0, "auto_na": 0,
-                    "manual_total": 0, "manual_flagged": 0, "subjective_total": 0},
+                    "manual_total": 0, "manual_flagged": 0, "subjective_total": 0,
+                    "price_stale_warn": 0, "price_stale_error": 0},
         "template_duplicates": template_dups,
         "results": {},
     }
@@ -225,6 +288,17 @@ def run_validation():
         rev  = info.get("totalRevenue")
         if fcf and rev and rev > 0:
             yf_fcf_margin = fcf / rev
+
+        # ─── 估值失真预警（核实时股价 vs 现价）───────────────────
+        staleness = check_price_staleness(t, overrides.get(ticker, {}), info.get("currentPrice"))
+        if staleness:
+            print(f"\n  [估值失真检查]")
+            for d, s in staleness.items():
+                print(f"  {s['status']}")
+                if "🔴" in s["status"]:
+                    report["summary"]["price_stale_error"] += 1
+                elif "🟡" in s["status"]:
+                    report["summary"]["price_stale_warn"] += 1
 
         # ─── 自动可验证字段 ─────────────────────────────────────
         auto_results = []
@@ -335,12 +409,13 @@ def run_validation():
             print(f"  🔵 {field:32s} {fmt(our_val)}")
 
         report["results"][ticker] = {
-            "company":        data.get("company_name", ticker),
-            "data_vintage":   data.get("_data_vintage", "未注明"),
-            "yf_fetch_time":  now_str,
-            "auto_validate":  auto_results,
-            "manual_review":  manual_results,
-            "subjective":     subj_results,
+            "company":         data.get("company_name", ticker),
+            "data_vintage":    data.get("_data_vintage", "未注明"),
+            "yf_fetch_time":   now_str,
+            "auto_validate":   auto_results,
+            "manual_review":   manual_results,
+            "subjective":      subj_results,
+            "price_staleness": staleness,
         }
 
     # ─── 汇总打印 ─────────────────────────────────────────────────
@@ -356,6 +431,7 @@ def run_validation():
     print(f"    ⚪ 无法对比:   {s['auto_na']}")
     print(f"  📋 待人工核对（含数值合理性检查）: {s['manual_total']}  其中 🔴 自动标红: {s['manual_flagged']}")
     print(f"  🔵 主观估算:     {s['subjective_total']}")
+    print(f"  ⚠️ 估值失真预警: 🔴 {s['price_stale_error']}  🟡 {s['price_stale_warn']}（股价较核实时大幅变动，PE/EV/PEG等比率需重查）")
     if template_dups:
         n_dup_fields = len(template_dups)
         n_dup_tickers = len({tk for groups in template_dups.values() for g in groups for tk in g["tickers"]})

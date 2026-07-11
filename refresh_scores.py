@@ -42,6 +42,8 @@ _CSV_OUT = _ROOT / "results_validated.csv"
 
 sys.path.insert(0, str(_SCORE))
 
+from kelly_snapshot_logger import log_snapshot
+
 from yfinance_fetcher import (
     fetch_portfolio_live_parallel, merge_live_into_mock,
     KNOWN_BAD_FIELDS, fetch_prices_only)
@@ -588,6 +590,12 @@ def refresh_all(
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     log(f"\n✅ 完成：{ok_cnt} 只成功，{err_cnt} 只失败 → {csv_path.name}")
 
+    try:
+        n_snap = log_snapshot(df)
+        log(f"📸 已记录 {n_snap} 条 score+价格快照 → data/score_snapshots.csv")
+    except Exception as e:
+        log(f"⚠️ 快照记录失败（不影响主刷新结果）: {e}")
+
     return df
 
 
@@ -711,6 +719,13 @@ def refresh_prices_only(
     df["last_refreshed"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     log(f"\n⚡ 极速刷新完成：{ok_cnt} 只 → {csv_path.name}")
+
+    try:
+        n_snap = log_snapshot(df)
+        log(f"📸 已记录 {n_snap} 条 score+价格快照 → data/score_snapshots.csv")
+    except Exception as e:
+        log(f"⚠️ 快照记录失败（不影响主刷新结果）: {e}")
+
     return df
 
 
