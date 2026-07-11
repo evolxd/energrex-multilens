@@ -19,6 +19,7 @@ from plotly.subplots import make_subplots
 
 from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, safe_val
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
+from investor_lenses import all_investor_lenses
 
 _ROOT          = pathlib.Path(__file__).parent
 _CSV_VALIDATED = _ROOT / "results_validated.csv"
@@ -1256,6 +1257,51 @@ elif page == "🔍 单股详情":
         + (f"<br><br>{_ri_sg_text}" if _ri_sg_text else "") +
         "</div></div>",
         unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── 多维智库视角（8 位投资人框架，页面直接算出的白话判断）────────
+    st.markdown("#### 🧠 多维智库视角")
+    st.caption(
+        "把 8 位投资人的思维框架套在这只股票的数据上，直接算出方向性白话判断——"
+        "⚠️ 规则化的框架提示，不是这些投资人的真实观点，供人工复核。"
+    )
+
+    _lenses = all_investor_lenses(ticker, data, cat, {
+        "valuation":      float(row["valuation_score"]),
+        "growth":         float(row["growth_score"]),
+        "quality":        float(row["quality_score"]),
+        "ai_exposure":    float(row.get("ai_exposure_score") or 0),
+        "expectation_gap":float(row.get("expectation_gap_score") or 0),
+        "momentum":       float(row.get("momentum_score") or 0),
+        "risk_penalty":   float(row["risk_penalty"]),
+        "final":          float(row["final_score"]),
+    })
+
+    # 两列卡片布局
+    _lc = st.columns(2)
+    for _i, _L in enumerate(_lenses):
+        with _lc[_i % 2]:
+            _c = _L["verdict_color"]
+            st.markdown(
+                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"border-left:3px solid {_c};border-radius:6px;"
+                f"padding:14px 16px;margin-bottom:12px;min-height:220px'>"
+                f"<div style='display:flex;justify-content:space-between;"
+                f"align-items:baseline;margin-bottom:2px'>"
+                f"<span style='font-size:15px;font-weight:700;color:#E2E8F0'>"
+                f"{_L['icon']} {_L['name']}</span>"
+                f"<span style='font-size:9px;color:#8B9BB4;text-transform:uppercase;"
+                f"letter-spacing:0.5px'>{_L['dimension']}</span></div>"
+                f"<div style='font-size:10px;color:#8B9BB4;margin-bottom:8px'>"
+                f"{_L['framework']}</div>"
+                f"<div style='display:inline-block;background:{_c}22;color:{_c};"
+                f"font-size:12px;font-weight:600;padding:3px 10px;border-radius:4px;"
+                f"border:1px solid {_c}44;margin-bottom:8px'>{_L['verdict']}</div>"
+                f"<div style='color:#C7D2E0;font-size:12px;line-height:1.65'>"
+                f"{_L['paragraph']}</div>"
+                f"</div>",
+                unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
