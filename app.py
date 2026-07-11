@@ -326,6 +326,22 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
         padding: 0.4rem 0 !important;
     }
 
+    /* Plotly 图表是固定像素宽(~681px)、无 viewBox，双列打印时会被压到 ~340px 的列里溢出。
+       打印时把「含图表的那一行」纵向堆叠，让每张图独占整页宽度；再叠加安全缩放，彻底消除右侧被切。 */
+    [data-testid="stHorizontalBlock"]:has([data-testid="stPlotlyChart"]) {
+        display: block !important;
+    }
+    [data-testid="stHorizontalBlock"]:has([data-testid="stPlotlyChart"]) [data-testid="stColumn"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+    [data-testid="stPlotlyChart"] {
+        zoom: 0.9;
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+
     /* 卡片 / 图表 / 指标 / 列行 不跨页断开 —— 修复截断 */
     [data-testid="stElementContainer"],
     [data-testid="stHorizontalBlock"],
