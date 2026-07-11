@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: energrex-ai-valuation
+    env: python
+    plan: free
+    branch: master
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run home.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.9
