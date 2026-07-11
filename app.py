@@ -455,10 +455,16 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
        this back to two columns without re-testing an 8-card ticker across
        a page boundary (Playwright print-media emulation + page.pdf(), not
        just emulate_media() which does not reveal pagination clipping). */
-    div[data-testid="stHorizontalBlock"]:has(.investor-lens-card) {
+    /* 同一个坑的第二个受害者：投资分析摘要的 5 个 st.info/success/warning/error
+       也是 2 列 flex 布局，跟 investor-lens-card 一样会被 Chrome 打印分页截断。
+       两处都用同一套"打印时强制单列"处理，锚点见 investment-summary-anchor
+       的 Python 调用处（col_a 内第一行 st.markdown）。 */
+    div[data-testid="stHorizontalBlock"]:has(.investor-lens-card),
+    div[data-testid="stHorizontalBlock"]:has(.investment-summary-anchor) {
         display: block !important;
     }
-    div[data-testid="stHorizontalBlock"]:has(.investor-lens-card) [data-testid="stColumn"] {
+    div[data-testid="stHorizontalBlock"]:has(.investor-lens-card) [data-testid="stColumn"],
+    div[data-testid="stHorizontalBlock"]:has(.investment-summary-anchor) [data-testid="stColumn"] {
         width: 100% !important;
         max-width: 100% !important;
         flex: none !important;
@@ -481,6 +487,7 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
        （如 .investor-lens-card，已在下面单独处理）。 */
     [data-testid="stPlotlyChart"],
     [data-testid="stMetric"],
+    [data-testid="stAlert"],
     [data-testid="stExpander"] {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
@@ -1740,6 +1747,7 @@ elif page == "🔍 单股详情":
 
     col_a, col_b = st.columns(2)
     with col_a:
+        st.markdown("<div class='investment-summary-anchor'></div>", unsafe_allow_html=True)
         st.info(f"📐 {val_text}")
         if row["growth_score"] >= 75:
             st.success(f"📈 {grow_text}")
