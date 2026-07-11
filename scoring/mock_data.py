@@ -1105,12 +1105,69 @@ _EXTENDED_STOCKS_A: dict[str, dict] = {
         "ai_growth_contribution_pct": 0.65, "datacenter_exposure_pct": 0.42,
         "advanced_packaging_exposure_pct": 0.58, "ai_order_backlog_exposure": 0.55,
         "cybersecurity_ai_exposure_pct": None, "software_ai_platform_exposure_pct": None,
-        "actual_revenue_vs_consensus": 0.01, "actual_eps_vs_consensus": 0.02,
-        "guidance_vs_consensus": 0.02, "earnings_reaction_score": 0.02,
+        # 预期差字段：FQ3 FY26（2026-04-29 发布）EPS beat +2.60%、营收 beat +0.91%（Zacks）；
+        # FQ4 指引 revenue $3.58B / EPS $9.87 "slightly above" 一致预期，guidance beat 为估算值
+        "actual_revenue_vs_consensus": 0.0091, "actual_eps_vs_consensus": 0.026,
+        "guidance_vs_consensus": 0.015, "earnings_reaction_score": 0.02,
         "market_expectation_score": 0.55,
         "beta": 1.30, "volatility_30d": 0.28, "max_drawdown_1y": 0.25,
         "valuation_risk": 0.38, "concentration_risk": 0.40, "liquidity_risk": 0.04,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-07-11 web research refresh (FQ3 FY2026 earnings 2026-04-29)",
+    },
+    "GEV": {
+        "company_name": "GE Vernova", "current_price": 700.0, "market_cap": 1.9e11,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": None, "ps_ratio": None,
+        "forward_pe": None, "fcf_yield": None,
+        "revenue_growth_yoy": 0.16, "eps_growth_yoy": None, "fcf_growth_yoy": None,
+        "next_year_revenue_growth_est": None, "analyst_revision_30d": None, "arr_growth_yoy": None,
+        "gross_margin": None, "fcf_margin": None, "operating_margin": None,
+        "roic": None, "debt_to_equity": None, "revenue_predictability_score": None,
+        "net_revenue_retention": None,
+        # AI暴露：GEV 不是 AI 芯片/软件公司，而是 AI 数据中心用电需求的电网/电力设备受益者，
+        # 因此 ai_revenue_exposure_pct 刻意设低，datacenter_exposure_pct/ai_order_backlog_exposure
+        # 反映 Electrification & Power 板块因 AI 数据中心扩容而订单激增（Q1'26 organic orders +71%,
+        # backlog $163B record）；advanced_packaging 不适用（非半导体公司）。数值为研究估算，非公司披露口径。
+        "ai_revenue_exposure_pct": 0.15, "ai_profit_exposure_pct": 0.15,
+        "ai_growth_contribution_pct": 0.25, "datacenter_exposure_pct": 0.30,
+        "advanced_packaging_exposure_pct": 0.0, "ai_order_backlog_exposure": 0.25,
+        "cybersecurity_ai_exposure_pct": None, "software_ai_platform_exposure_pct": None,
+        # 预期差字段：Q1 FY2026（2026-04-22 发布）营收 $9.34B vs 一致预期 $9.26B（+0.86%）；
+        # 调整后EPS $1.98 vs 一致预期区间 $1.84-$1.95 中值 $1.895（+4.49%）；
+        # 全年指引上调至 $44.5-45.5B revenue / $6.5-7.5B FCF（guidance beat 为估算值）；
+        # 注意：尽管财报大幅超预期，股价在 BNP Paribas 负面评论后回落 6%，故 reaction 设为轻微负值
+        "actual_revenue_vs_consensus": 0.0086, "actual_eps_vs_consensus": 0.0449,
+        "guidance_vs_consensus": 0.03, "earnings_reaction_score": -0.02,
+        "market_expectation_score": 0.55,
+        "beta": None, "volatility_30d": None, "max_drawdown_1y": None,
+        "valuation_risk": 0.5, "concentration_risk": 0.5, "liquidity_risk": 0.5,
+        "_data_vintage": "2026-07-11 web research (Q1 FY2026 earnings 2026-04-22)",
+    },
+    "ASML": {
+        "company_name": "ASML Holding", "current_price": 900.0, "market_cap": 3.6e11,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": None, "ps_ratio": None,
+        "forward_pe": None, "fcf_yield": None,
+        "revenue_growth_yoy": None, "eps_growth_yoy": None, "fcf_growth_yoy": None,
+        "next_year_revenue_growth_est": None, "analyst_revision_30d": None, "arr_growth_yoy": None,
+        "gross_margin": None, "fcf_margin": None, "operating_margin": None,
+        "roic": None, "debt_to_equity": None, "revenue_predictability_score": None,
+        "net_revenue_retention": None,
+        # AI暴露：EUV光刻机占2025年系统收入48%（€11.6B），公司明确将2026年EUV产能上调36%
+        # 归因于AI数据中心需求；ai_revenue_exposure_pct 相对48%略保守（EUV亦服务非AI先进逻辑/移动芯片）；
+        # datacenter_exposure_pct 聚焦先进逻辑+HBM DRAM子集；advanced_packaging 非ASML核心业务，给低值；
+        # ai_order_backlog_exposure 反映订单主要来自台积电/三星/英特尔的AI产能扩建。数值为研究估算。
+        "ai_revenue_exposure_pct": 0.45, "ai_profit_exposure_pct": 0.45,
+        "ai_growth_contribution_pct": 0.55, "datacenter_exposure_pct": 0.35,
+        "advanced_packaging_exposure_pct": 0.10, "ai_order_backlog_exposure": 0.55,
+        "cybersecurity_ai_exposure_pct": None, "software_ai_platform_exposure_pct": None,
+        # 预期差字段：Q1 FY2026（2026-04-16 发布）EPS $8.44 beat by $0.65（一致预期≈$7.79，+8.34%）；
+        # 营收 $10.35B beat by $107.64M（一致预期≈$10.242B，+1.05%）；全年指引上调至 €36-40B
+        # （guidance beat 为估算值）；注意：Q2 FY2026 财报预定 2026-07-15 发布，本次尚未纳入
+        "actual_revenue_vs_consensus": 0.0105, "actual_eps_vs_consensus": 0.0834,
+        "guidance_vs_consensus": 0.03, "earnings_reaction_score": 0.03,
+        "market_expectation_score": 0.55,
+        "beta": None, "volatility_30d": None, "max_drawdown_1y": None,
+        "valuation_risk": 0.5, "concentration_risk": 0.5, "liquidity_risk": 0.5,
+        "_data_vintage": "2026-07-11 web research (Q1 FY2026 results 2026-04-16; Q2 due 2026-07-15, not yet reported)",
     },
     "ISRG": {
         "company_name": "Intuitive Surgical", "current_price": 500.0, "market_cap": 1.77e11,

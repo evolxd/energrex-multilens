@@ -34,11 +34,13 @@ QUANT_META: dict[str, dict] = {
     "AMAT": {"sector_tag": "Hardware", "capex_rev": 0.040},
     "LRCX": {"sector_tag": "Hardware", "capex_rev": 0.030},
     "KLAC": {"sector_tag": "Hardware", "capex_rev": 0.025},
+    "ASML": {"sector_tag": "Hardware", "capex_rev": 0.030},
     "ONTO": {"sector_tag": "Hardware", "capex_rev": 0.040},
     "COHR": {"sector_tag": "Hardware", "capex_rev": 0.055},
     "FN":   {"sector_tag": "Hardware", "capex_rev": 0.035},
     "DELL": {"sector_tag": "Hardware", "capex_rev": 0.018},
     "VRT":  {"sector_tag": "Hardware", "capex_rev": 0.025},
+    "GEV":  {"sector_tag": "Hardware", "capex_rev": 0.025},
     "TSLA": {"sector_tag": "Hardware", "capex_rev": 0.075},
     # ── AI 软件 / SaaS ────────────────────────────────────────────────
     "PLTR": {"sector_tag": "SaaS"},

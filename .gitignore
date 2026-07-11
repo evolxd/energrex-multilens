@@ -32,7 +32,6 @@ validation_report.html
 validation_summary.json
 validation.log
 results.csv
-results_validated.csv
 *_check.txt
 *_detail.txt
 *_out.txt
