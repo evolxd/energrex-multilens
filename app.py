@@ -18,6 +18,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, safe_val
+from quant_engine import score_ticker
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
 from investor_lenses import all_investor_lenses
 
@@ -108,6 +109,15 @@ def build_csv_data(df_json: str) -> dict[str, dict]:
     """Extract per-ticker raw data dict for audit/detail pages."""
     df = pd.read_json(io.StringIO(df_json), orient="split")
     RAW_MAP = [
+        ("current_price", "current_price",               False),
+        ("shares_out",   "shares_outstanding",          False),
+        ("fwd_eps",      "forward_eps",                 False),
+        ("ev_snap",      "enterprise_value_snap",       False),
+        ("price_at_ev",  "price_at_ev_snapshot",        False),
+        ("net_debt",     "net_debt",                    False),
+        ("rev_ttm",      "revenue_ttm",                 False),
+        ("fcf_ttm",      "fcf_ttm",                     False),
+        ("ebitda_ttm",   "ebitda_ttm",                  False),
         ("peg",         "peg_ratio",                   False),
         ("ev_sales",    "ev_sales",                    False),
         ("forward_pe",  "forward_pe",                  False),
@@ -181,10 +191,30 @@ st.markdown("""
 <style>
 /* 主色调：深色金融终端风格 */
 :root {
-    --accent: #00D4AA;
-    --accent2: #FFB347;
-    --danger: #FF4B6E;
-    --text-muted: #8B9BB4;
+    --bg: #0b1f35;
+    --bg-soft: #102b49;
+    --cyan: #3ee8bd;
+    --blue: #56d9ff;
+    --text: #eef7ff;
+    --muted: #8ea8c3;
+    --dim: #b5c7dc;
+    --red: #ff6077;
+    --yellow: #ffd166;
+    --border: rgba(142,190,235,0.22);
+    --border-hi: rgba(86,217,255,0.48);
+    --accent: var(--cyan);
+    --accent2: var(--yellow);
+    --danger: var(--red);
+    --text-muted: var(--muted);
+}
+
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(62,232,189,0.08), transparent 32%),
+        linear-gradient(135deg, #12385f 0%, #0e2a48 45%, var(--bg) 100%) !important;
+    color: var(--text) !important;
 }
 
 /* 隐藏默认页脚 */
@@ -193,16 +223,16 @@ footer {visibility: hidden;}
 
 /* 指标卡片 */
 .metric-card {
-    background: #0F1923;
-    border: 1px solid #1E2D3D;
-    border-radius: 8px;
+    background: rgba(16,43,73,0.82);
+    border: 1px solid var(--border);
+    border-radius: 12px;
     padding: 16px 18px;
     margin-bottom: 12px;
 }
 
 /* 评分条 */
 .score-bar-wrap {
-    background: #1E2D3D;
+    background: rgba(142,190,235,0.12);
     border-radius: 4px;
     height: 8px;
     width: 100%;
@@ -221,7 +251,7 @@ footer {visibility: hidden;}
 
 /* 数据标签 */
 .data-label {
-    color: #8B9BB4;
+    color: var(--muted);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -237,7 +267,7 @@ footer {visibility: hidden;}
 
 /* 分隔线 */
 .divider {
-    border-top: 1px solid #1E2D3D;
+    border-top: 1px solid var(--border);
     margin: 16px 0;
 }
 
@@ -247,7 +277,7 @@ div[data-testid="stMetricValue"] {
 }
 div[data-testid="stMetricLabel"] {
     font-size: 0.75rem !important;
-    color: #8B9BB4 !important;
+    color: var(--muted) !important;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -264,9 +294,9 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button {
     font-weight: 700 !important;
     line-height: 1.25 !important;
     border-radius: 10px !important;
-    border: 2px solid #1E2D3D !important;
-    background: #0F1923 !important;
-    color: #E2E8F0 !important;
+    border: 1px solid var(--border) !important;
+    background: rgba(16,43,73,0.82) !important;
+    color: var(--text) !important;
     text-align: center !important;
     transition: all 0.15s !important;
 }
@@ -275,19 +305,45 @@ div[data-testid="stButton"][data-key="flt_buy"] > button:hover,
 div[data-testid="stButton"][data-key="flt_watch"] > button:hover,
 div[data-testid="stButton"][data-key="flt_exp"] > button:hover,
 div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
-    border-color: #4FC3F7 !important;
-    color: #4FC3F7 !important;
+    border-color: var(--border-hi) !important;
+    color: var(--blue) !important;
 }
 
-/* ══════════════════════════════════════════════════════════
-   打印 / PDF 报告样式
-   Ctrl+P → 另存为 PDF 时：隐藏侧栏与所有交互控件，主体全宽，
-   卡片/图表不跨页断开，仅保留一份干净的机构级报告。
-   ══════════════════════════════════════════════════════════ */
+.framework-lens-intro {
+    background: rgba(16,43,73,0.84);
+    border: 1px solid var(--border-hi);
+    border-left: 3px solid var(--cyan);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin: 10px 0 18px 0;
+    color: var(--dim);
+    font-size: 14px;
+    line-height: 1.6;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.26);
+}
+.framework-lens-intro strong {
+    color: var(--text);
+    font-weight: 700;
+}
+.framework-lens-intro .notice {
+    color: var(--yellow);
+    font-weight: 700;
+}
+
+/* Print/PDF report layout contract.
+   Keep this block aligned with PRINT_REPORT_STANDARD.md.
+   Stable standard:
+   - A4 portrait, margin 12mm 10mm.
+   - Body max width 176mm, centered.
+   - Hide Streamlit controls in print.
+   - Keep radar + sub-score charts inside printable area.
+   - Do not reduce margins just to fit more content on page 1.
+   - If the PDF feels crowded, reduce chart/card size before shrinking margins.
+*/
 .print-only { display: none; }
 
 @media print {
-    @page { size: A4 portrait; margin: 14mm 11mm; }
+    @page { size: A4 portrait; margin: 12mm 10mm; }
 
     html, body {
         -webkit-print-color-adjust: exact !important;
@@ -322,29 +378,73 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
     [data-testid="stAppViewContainer"] { left: 0 !important; }
     [data-testid="stMain"] .block-container,
     .block-container {
-        max-width: 100% !important;
-        padding: 0.4rem 0 !important;
+        max-width: 176mm !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        padding: 0 !important;
     }
 
-    /* Plotly 图表是固定像素宽(~681px)、无 viewBox，双列打印时会被压到 ~340px 的列里溢出。
-       打印时把「含图表的那一行」纵向堆叠，让每张图独占整页宽度；再叠加安全缩放，彻底消除右侧被切。 */
+    h1, h2, h3, h4, h5, h6 { margin-block: 0.25rem 0.35rem !important; }
+    [data-testid="stMarkdownContainer"] p { margin-bottom: 0.25rem !important; }
+    hr { margin: 0.45rem 0 !important; }
+
+    /* 打印时保留雷达图 + 子分条形图双列，压缩图表与间距，避免被强制分页到第二页。 */
     [data-testid="stHorizontalBlock"]:has([data-testid="stPlotlyChart"]) {
-        display: block !important;
+        display: flex !important;
+        gap: 8mm !important;
+        align-items: flex-start !important;
     }
     [data-testid="stHorizontalBlock"]:has([data-testid="stPlotlyChart"]) [data-testid="stColumn"] {
-        width: 100% !important;
-        min-width: 100% !important;
-        flex: 1 1 100% !important;
+        width: calc(50% - 4mm) !important;
+        min-width: 0 !important;
+        flex: 1 1 0 !important;
     }
     [data-testid="stPlotlyChart"] {
-        zoom: 0.9;
+        zoom: 0.72;
         max-width: 100% !important;
         overflow: hidden !important;
     }
+    [data-testid="stPlotlyChart"] svg {
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"],
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] > div,
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .js-plotly-plot,
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .plot-container,
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .svg-container {
+        zoom: 1 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] svg,
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] canvas {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .modebar {
+        display: none !important;
+    }
+    .investor-lens-card {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    .report-print-footer {
+        break-before: auto !important;
+        page-break-before: auto !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        clear: both !important;
+        margin-top: 10mm !important;
+        padding-top: 3mm !important;
+    }
 
-    /* 卡片 / 图表 / 指标 / 列行 不跨页断开 —— 修复截断 */
-    [data-testid="stElementContainer"],
-    [data-testid="stHorizontalBlock"],
+    /* 图表 / 指标 / 展开框 不跨页断开 —— 这几个天然是"一张卡片"大小，强制不断页没有副作用。
+       ⚠️ 不要把 stElementContainer / stHorizontalBlock 这种"容器级"选择器也加 break-inside:avoid——
+       它们经常包住一整组卡片（比 A4 一页还高），对比一页还高的内容强制"不许断页"是未定义行为，
+       不同浏览器/打印引擎表现不一致，实测会导致该断页的地方反而把外边距/分隔线压没，
+       看起来像"内容贴在一起"。容器级的断页控制交给容器内部真正的"卡片级"class
+       （如 .investor-lens-card，已在下面单独处理）。 */
     [data-testid="stPlotlyChart"],
     [data-testid="stMetric"],
     [data-testid="stExpander"] {
@@ -404,6 +504,96 @@ def fmt_x(v):
     if v is None: return "N/A"
     return f"{v:.1f}x"
 
+def _override_entry(raw) -> dict:
+    if isinstance(raw, dict) and "value" in raw:
+        return raw
+    if raw is not None:
+        return {"value": raw, "status": "pending", "verified_at": None, "source": ""}
+    return {}
+
+def _merged_numeric_value(base_data: dict, overrides: dict, field: str):
+    entry = _override_entry(overrides.get(field))
+    value = entry.get("value") if entry else base_data.get(field)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def _sa_rating_label(value: float | None) -> str:
+    if value is None or value <= 0:
+        return "未录入"
+    if value < 1.5:
+        return "Strong Sell"
+    if value < 2.5:
+        return "Sell"
+    if value < 3.5:
+        return "Hold"
+    if value < 4.5:
+        return "Buy"
+    return "Strong Buy"
+
+def _external_consensus_report(ticker: str, base_data: dict, row: pd.Series, overrides: dict) -> dict:
+    fields = [
+        ("SA Quant", "sa_quant_score"),
+        ("SA Authors", "sa_author_score"),
+        ("SA Wall Street", "sa_wall_street_score"),
+    ]
+    items = []
+    for label, field in fields:
+        value = _merged_numeric_value(base_data, overrides, field)
+        if value is None or value <= 0:
+            items.append({"label": label, "value": None, "rating": "未录入"})
+            continue
+        value = max(1.0, min(5.0, value))
+        items.append({"label": label, "value": value, "rating": _sa_rating_label(value)})
+
+    available = [x["value"] for x in items if x["value"] is not None]
+    if not available:
+        return {
+            "available": False,
+            "items": items,
+            "status": "NO_EXTERNAL_REFERENCE",
+            "summary": "外部参照未录入",
+            "detail": "Seeking Alpha 当前仅作为外部参照物；未录入时不影响 ENERGREX 核心评分。",
+            "action": "无需处理；可在数据编辑页手动录入外部评级后再做参照。",
+            "color": "#8ea8c3",
+        }
+
+    avg = sum(available) / len(available)
+    external_score = (avg - 1.0) / 4.0 * 100.0
+    delta = external_score - float(row["final_score"])
+    if abs(delta) < 12:
+        status = "ALIGNED"
+        summary = "外部观点与本体系基本一致"
+        action = "无需调分；保留外部参照记录。"
+        color = "#3ee8bd"
+    elif delta <= -12:
+        status = "EXTERNAL_MORE_CAUTIOUS"
+        summary = "外部观点明显更谨慎"
+        action = "触发分歧审计：复核估值风险、增长假设、利润率、估值倍数、事件风险与数据时效。"
+        color = "#ffd166"
+    else:
+        status = "EXTERNAL_MORE_BULLISH"
+        summary = "外部观点明显更乐观"
+        action = "触发反向审计：复核是否漏计分析师上调、盈利修复、份额改善、AI暴露或经营杠杆。"
+        color = "#56d9ff"
+
+    return {
+        "available": True,
+        "items": items,
+        "status": status,
+        "avg": avg,
+        "external_score": external_score,
+        "delta": delta,
+        "summary": summary,
+        "action": action,
+        "detail": (
+            f"外部参照均值 {avg:.2f}/5，折算为 {external_score:.0f}/100；"
+            f"相对 ENERGREX Final Score 差异 {delta:+.0f} 分。"
+        ),
+        "color": color,
+    }
+
 def make_radar(row: pd.Series, title: str = "") -> go.Figure:
     cats  = ["估值", "成长", "质量", "AI暴露", "预期差"]
     vals  = [
@@ -434,8 +624,8 @@ def make_radar(row: pd.Series, title: str = "") -> go.Figure:
         paper_bgcolor="#0A1628",
         plot_bgcolor="#0A1628",
         showlegend=False,
-        margin=dict(l=40, r=40, t=30, b=30),
-        height=280,
+        margin=dict(l=28, r=28, t=10, b=10),
+        height=210,
     )
     return fig
 
@@ -453,20 +643,287 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
         orientation="h",
         marker=dict(color=colors, line=dict(width=0)),
         text=[f"{v:.0f}" for v in values],
-        textposition="outside",
-        textfont=dict(color="#E2E8F0", size=12),
+        textposition="inside",
+        insidetextanchor="end",
+        textfont=dict(color="#0B111A", size=11),
         hovertemplate="%{y}: %{x:.1f}<extra></extra>",
     ))
     fig.add_vline(x=50, line=dict(color="#2D3F55", width=1, dash="dot"))
     fig.update_layout(
-        xaxis=dict(range=[0, 115], showgrid=False,
+        xaxis=dict(range=[0, 105], showgrid=False,
                    zeroline=False, tickfont=dict(color="#8B9BB4")),
-        yaxis=dict(showgrid=False, tickfont=dict(color="#E2E8F0", size=13)),
+        yaxis=dict(showgrid=False, tickfont=dict(color="#E2E8F0", size=11)),
         paper_bgcolor="#0A1628",
         plot_bgcolor="#0A1628",
-        margin=dict(l=10, r=60, t=10, b=10),
-        height=200,
-        bargap=0.35,
+        margin=dict(l=14, r=28, t=6, b=8),
+        height=160,
+        bargap=0.28,
+    )
+    return fig
+
+
+def _quant_rating(score: float, circuit: bool = False) -> str:
+    if circuit:
+        return "Watchlist" if score >= 50 else "Avoid"
+    if score >= 70:
+        return "Buy"
+    if score >= 60:
+        return "Hold"
+    if score >= 45:
+        return "Watchlist"
+    return "Avoid"
+
+
+def _simulate_price_score(ticker: str, base_data: dict, price: float) -> dict | None:
+    if not price or price <= 0:
+        return None
+
+    sim = dict(base_data)
+    sim["current_price"] = float(price)
+
+    shares = sim.get("shares_outstanding")
+    fwd_eps = sim.get("forward_eps")
+    eps_g = sim.get("eps_growth_yoy")
+    revenue = sim.get("revenue_ttm")
+    ebitda = sim.get("ebitda_ttm")
+    fcf = sim.get("fcf_ttm")
+
+    market_cap = None
+    ev = None
+    if shares and shares > 0:
+        market_cap = price * shares
+        ev = market_cap + (sim.get("net_debt", 0.0) or 0.0)
+    else:
+        ev_snap = sim.get("enterprise_value_snap")
+        price_snap = sim.get("price_at_ev_snapshot")
+        if ev_snap and price_snap and price_snap > 0:
+            ev = ev_snap * (price / price_snap)
+            market_cap = ev - (sim.get("net_debt", 0.0) or 0.0)
+
+    base_price = base_data.get("current_price") or sim.get("price_at_ev_snapshot")
+    price_ratio = price / base_price if base_price and base_price > 0 else None
+
+    if fwd_eps and fwd_eps > 0:
+        fpe = price / fwd_eps
+        sim["forward_pe"] = round(fpe, 2)
+        if eps_g and eps_g > 0:
+            sim["peg_ratio"] = round(fpe / (eps_g * 100), 3)
+    elif price_ratio and sim.get("forward_pe"):
+        sim["forward_pe"] = round(sim["forward_pe"] * price_ratio, 2)
+        if eps_g and eps_g > 0:
+            sim["peg_ratio"] = round(sim["forward_pe"] / (eps_g * 100), 3)
+    elif price_ratio and sim.get("peg_ratio"):
+        sim["peg_ratio"] = round(sim["peg_ratio"] * price_ratio, 3)
+
+    if ev and ev > 0:
+        if ebitda and ebitda > 0:
+            sim["ev_ebitda"] = round(ev / ebitda, 2)
+        if revenue and revenue > 0:
+            sim["ev_sales"] = round(ev / revenue, 2)
+
+    if market_cap and market_cap > 0:
+        if fcf is not None:
+            sim["fcf_yield"] = round(fcf / market_cap, 5)
+        if revenue and revenue > 0 and fcf is not None:
+            sim["fcf_margin"] = round(fcf / revenue, 4)
+    elif price_ratio and price_ratio > 0:
+        if sim.get("ev_sales"):
+            sim["ev_sales"] = round(sim["ev_sales"] * price_ratio, 2)
+        if sim.get("fcf_yield") is not None:
+            sim["fcf_yield"] = round(sim["fcf_yield"] / price_ratio, 5)
+
+    try:
+        result = score_ticker(ticker, sim)
+    except Exception:
+        return None
+
+    valuation_score = result.dim_scores.get("valuation", 0.0)
+    return {
+        "price": float(price),
+        "final_score": float(result.final_score),
+        "rating": result.rating or _quant_rating(float(result.final_score), result.circuit_triggered),
+        "valuation_score": float(valuation_score),
+        "risk_penalty": float(result.risk_penalty),
+        "forward_pe": sim.get("forward_pe"),
+        "peg_ratio": sim.get("peg_ratio"),
+        "ev_sales": sim.get("ev_sales"),
+        "fcf_yield": sim.get("fcf_yield"),
+    }
+
+
+def _price_sensitivity_report(ticker: str, base_data: dict, current_score: float) -> dict:
+    current_price = base_data.get("current_price")
+    if not current_price or current_price <= 0:
+        return {"available": False, "reason": "missing current_price"}
+
+    shocks = [-0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20]
+    rows = []
+    for shock in shocks:
+        sim = _simulate_price_score(ticker, base_data, current_price * (1 + shock))
+        if sim:
+            sim["shock"] = shock
+            rows.append(sim)
+
+    if not rows:
+        return {"available": False, "reason": "simulation failed"}
+
+    thresholds = [
+        ("观察区上限", 60),
+        ("合适区上限", 75),
+        ("低价区上限", 80),
+    ]
+    boundary = {}
+    # Wide enough for expensive names such as PLTR where even a 50% drawdown
+    # may not reach the watch/suitable/low-price valuation bands.
+    grid = [current_price * pct / 100 for pct in range(5, 401)]
+    scored = []
+    for price in grid:
+        sim = _simulate_price_score(ticker, base_data, price)
+        if sim:
+            scored.append(sim)
+
+    for label, threshold in thresholds:
+        eligible = [x for x in scored if x["valuation_score"] >= threshold]
+        boundary[label] = max((x["price"] for x in eligible), default=None)
+
+    current_sim = next((x for x in rows if abs(x["shock"]) < 1e-9), rows[len(rows) // 2])
+    down_10 = next((x for x in rows if abs(x["shock"] + 0.10) < 1e-9), None)
+    up_10 = next((x for x in rows if abs(x["shock"] - 0.10) < 1e-9), None)
+    if down_10 and up_10:
+        sensitivity_10pct = (down_10["valuation_score"] - up_10["valuation_score"]) / 20.0
+    else:
+        sensitivity_10pct = None
+
+    return {
+        "available": True,
+        "current_price": float(current_price),
+        "current_score": float(current_score),
+        "current_sim": current_sim,
+        "rows": rows,
+        "boundary": boundary,
+        "scored_grid": scored,
+        "sensitivity_10pct": sensitivity_10pct,
+    }
+
+
+def make_price_zone_chart(report: dict) -> go.Figure:
+    current_price = report["current_price"]
+    boundary = report["boundary"]
+    scored_grid = report.get("scored_grid", [])
+    prices = [x["price"] for x in scored_grid] or [current_price * 0.5, current_price * 1.5]
+
+    p60 = boundary.get("观察区上限")
+    p75 = boundary.get("合适区上限")
+    p80 = boundary.get("低价区上限")
+    anchors = [v for v in [current_price, p60, p75, p80] if v and v > 0]
+    if anchors:
+        x_min = max(min(prices), min(anchors) * 0.55)
+        rightmost_line = max(anchors)
+        if rightmost_line > x_min:
+            target_ratio = 0.85
+            x_max = min(max(prices), x_min + (rightmost_line - x_min) / target_ratio)
+        else:
+            x_max = min(max(prices), max(anchors) * 1.18)
+        if x_max <= x_min:
+            x_min = min(prices)
+            x_max = max(prices)
+    else:
+        x_min = min(prices)
+        x_max = max(prices)
+
+    bands = []
+    cursor = x_min
+    if p80 and p80 > cursor:
+        bands.append((cursor, p80, "低价区", "#3ee8bd", 0.20, "估值分 ≥ 80"))
+        cursor = p80
+    if p75 and p75 > cursor:
+        bands.append((cursor, p75, "合适区", "#56d9ff", 0.18, "估值分 75-80"))
+        cursor = p75
+    if p60 and p60 > cursor:
+        bands.append((cursor, p60, "观察区", "#ffd166", 0.15, "估值分 60-75"))
+        cursor = p60
+    if x_max > cursor:
+        bands.append((cursor, x_max, "高价区", "#ff6077", 0.18, "估值分 < 60"))
+
+    fig = go.Figure()
+    for start, end, label, color, opacity, note in bands:
+        fig.add_shape(
+            type="rect",
+            x0=start,
+            x1=end,
+            y0=0,
+            y1=1,
+            fillcolor=color,
+            opacity=opacity,
+            line=dict(width=0),
+            layer="below",
+        )
+        if end > start:
+            fig.add_annotation(
+                x=(start + end) / 2,
+                y=0.50,
+                text=f"<b>{label}</b>",
+                showarrow=False,
+                font=dict(color="#eef7ff", size=13, family="Inter, Noto Sans SC, system-ui"),
+                bgcolor="rgba(16,43,73,0.50)",
+                bordercolor="rgba(142,190,235,0.18)",
+                borderwidth=1,
+                borderpad=4,
+                align="center",
+            )
+
+    fig.add_trace(go.Scatter(
+        x=[x["price"] for x in scored_grid],
+        y=[x["valuation_score"] / 100 for x in scored_grid],
+        mode="lines",
+        line=dict(color="#eef7ff", width=2),
+        hovertemplate="价格 $%{x:.2f}<br>估值分 %{customdata[0]:.1f}<br>Final Score %{customdata[1]:.1f}<extra></extra>",
+        customdata=[[x["valuation_score"], x["final_score"]] for x in scored_grid],
+        name="Valuation curve",
+    ))
+    fig.add_vline(
+        x=current_price,
+        line=dict(color="#ffffff", width=2, dash="solid"),
+        annotation_text="当前价",
+        annotation_position="top",
+        annotation_font_color="#eef7ff",
+    )
+
+    marker_points = [
+        (p80, "#3ee8bd"),
+        (p75, "#56d9ff"),
+        (p60, "#ffd166"),
+    ]
+    for price, color in marker_points:
+        if price:
+            fig.add_vline(
+                x=price,
+                line=dict(color=color, width=1, dash="dot"),
+            )
+
+    fig.update_layout(
+        paper_bgcolor="rgba(16,43,73,0.82)",
+        plot_bgcolor="rgba(11,31,53,0.72)",
+        height=240,
+        margin=dict(l=24, r=24, t=16, b=32),
+        showlegend=False,
+        xaxis=dict(
+            title=dict(text="价格区间", font=dict(color="#b5c7dc")),
+            range=[x_min, x_max],
+            tickprefix="$",
+            gridcolor="rgba(142,190,235,0.10)",
+            tickfont=dict(color="#b5c7dc", size=11, family="Inter, Noto Sans SC, system-ui"),
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title=dict(text="估值温度 / Valuation Score", font=dict(color="#b5c7dc")),
+            range=[0, 1],
+            tickvals=[0.45, 0.60, 0.75, 0.80],
+            ticktext=["45", "60", "75", "80"],
+            gridcolor="rgba(142,190,235,0.10)",
+            tickfont=dict(color="#b5c7dc", size=11, family="Inter, Noto Sans SC, system-ui"),
+            zeroline=False,
+        ),
     )
     return fig
 
@@ -933,6 +1390,147 @@ elif page == "🔍 单股详情":
     elif _kp is None:
         st.caption("💰 半凯利建议仓位：该分档样本不足或尚无回测数据，暂不显示")
 
+    # ── 价格温度带 ─────────────────────────────────
+    _ps = _price_sensitivity_report(ticker, data, fs)
+    st.markdown("#### 价格温度带")
+    if not _ps.get("available"):
+        st.info(f"价格温度带暂不可用：{_ps.get('reason', '缺少价格或基本面分母')}")
+    else:
+        _cur_px = _ps["current_price"]
+        _boundary = _ps["boundary"]
+        _fit_px = _boundary.get("合适区上限")
+        _watch_px = _boundary.get("观察区上限")
+        _deep_px = _boundary.get("低价区上限")
+        _cur_val_score = _ps.get("current_sim", {}).get("valuation_score")
+
+        def _fmt_px(v):
+            return f"${v:,.2f}" if v else "未达到"
+
+        def _disc(v):
+            return f"{(v / _cur_px - 1) * 100:+.1f}%" if v else "—"
+
+        st.markdown(
+            "<div style='background:rgba(16,43,73,0.84);"
+            "border:1px solid rgba(142,190,235,0.22);border-left:3px solid #3ee8bd;"
+            "border-radius:12px;padding:10px 14px;margin:2px 0 12px 0;"
+            "color:#b5c7dc;font-size:12px;line-height:1.6'>"
+            "<span style='color:#eef7ff;font-weight:800'>价格温度带：</span>"
+            "用同一套估值评分引擎，在不同假设价格下重算估值倍数和 Valuation Score。"
+            "<span style='color:#3ee8bd;font-weight:700'>低价区</span>代表估值分≥80，"
+            "<span style='color:#56d9ff;font-weight:700'>合适区</span>代表75-80，"
+            "<span style='color:#ffd166;font-weight:700'>观察区</span>代表60-75，"
+            "<span style='color:#ff6077;font-weight:700'>高价区</span>代表<60。"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        b1, b2, b3, b4, b5 = st.columns(5)
+        _cards = [
+            (b1, "当前价", _fmt_px(_cur_px), f"Final Score {fs:.1f}", fs_color),
+            (b2, "低价区上限", _fmt_px(_deep_px), f"估值分 ≥80 · {_disc(_deep_px)}", "#3ee8bd"),
+            (b3, "合适区上限", _fmt_px(_fit_px), f"估值分 ≥75 · {_disc(_fit_px)}", "#56d9ff"),
+            (b4, "观察区上限", _fmt_px(_watch_px), f"估值分 ≥60 · {_disc(_watch_px)}", "#ffd166"),
+            (b5, "当前估值分", f"{_cur_val_score:.1f}" if _cur_val_score is not None else "未计算", "价格温带主判断口径", "#eef7ff"),
+        ]
+        for _col, _label, _value, _sub, _color in _cards:
+            with _col:
+                st.markdown(
+                    f"<div style='background:rgba(16,43,73,0.82);"
+                    f"border:1px solid rgba(142,190,235,0.22);"
+                    f"border-radius:12px;padding:12px 12px;min-height:94px'>"
+                    f"<div style='color:#b5c7dc;font-size:10px;"
+                    f"text-transform:uppercase;letter-spacing:.4px;font-weight:700'>{_label}</div>"
+                    f"<div style='color:{_color};font-size:19px;font-weight:900;"
+                    f"margin-top:4px'>{_value}</div>"
+                    f"<div style='color:#8ea8c3;font-size:10px;margin-top:3px;line-height:1.35'>{_sub}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown(
+            "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 8px 0'>"
+            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
+            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#3ee8bd;font-size:12px;font-weight:800'>"
+            "低价区 80-100</span>"
+            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
+            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#56d9ff;font-size:12px;font-weight:800'>"
+            "合适区 75-80</span>"
+            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
+            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#ffd166;font-size:12px;font-weight:800'>"
+            "观察区 60-75</span>"
+            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
+            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#ff6077;font-size:12px;font-weight:800'>"
+            "高价区 <60</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<div class='price-zone-print-anchor'></div>", unsafe_allow_html=True)
+        st.plotly_chart(
+            make_price_zone_chart(_ps),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
+        )
+        st.markdown(
+            "<div style='background:rgba(16,43,73,0.84);"
+            "border:1px solid rgba(142,190,235,0.22);border-left:3px solid #56d9ff;"
+            "border-radius:12px;padding:12px 16px;margin:8px 0 12px 0;"
+            "color:#b5c7dc;font-size:12px;line-height:1.65'>"
+            "<span style='color:#eef7ff;font-weight:700'>温度带来源：</span>"
+            "价格区间不是主观猜测，而是在当前基本面假设不变的前提下，逐档改变股价，"
+            "重新计算 Forward PE、PEG、EV/Sales、EV/EBITDA、FCF Yield，并调用同一套评分引擎得到 Valuation Score。"
+            "<br><span style='color:#ffd166;font-weight:700'>模型局限：</span>"
+            "它衡量的是“价格变化对估值评分的机械影响”，不是对未来股价的预测；"
+            "若未来增长、利润率、利率、股本、财报口径或市场风险偏好变化，区间会随之失效或需要重算。"
+            "当前边界未声明为已回测验证胜率。"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        _sens = _ps.get("sensitivity_10pct")
+        _sens_label = "不足" if _sens is not None and _sens < 0.20 else "中等" if _sens is not None and _sens < 0.55 else "较高"
+        _sens_text = (
+            f"价格每变动 10%，估值分约变动 {_sens:.1f} 分，价格敏感度：{_sens_label}。"
+            if _sens is not None else
+            "价格敏感度无法稳定估计。"
+        )
+
+        _rows_html = ""
+        for _r in _ps["rows"]:
+            _shock = _r["shock"]
+            if _shock not in (-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10):
+                continue
+            _score_col = score_color(_r["final_score"])
+            _rows_html += (
+                f"<tr>"
+                f"<td>{_shock:+.0%}</td>"
+                f"<td>${_r['price']:,.2f}</td>"
+                f"<td style='color:{_score_col};font-weight:700'>{_r['final_score']:.1f}</td>"
+                f"<td>{_r['rating']}</td>"
+                f"<td>{_r['valuation_score']:.1f}</td>"
+                f"<td>{_r['forward_pe']:.1f}x</td>"
+                f"<td>{_r['ev_sales']:.1f}x</td>"
+                f"</tr>"
+            )
+        st.markdown(
+            f"<div style='background:rgba(16,43,73,0.82);border:1px solid rgba(142,190,235,0.22);"
+            f"border-radius:12px;margin-top:10px;overflow:hidden'>"
+            f"<div style='padding:9px 12px;color:#b5c7dc;font-size:11px;"
+            f"border-bottom:1px solid rgba(142,190,235,0.22)'>{_sens_text} "
+            f"边界价基于当前基本面不变、仅价格驱动估值比率重算；不是自动交易指令。</div>"
+            f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#eef7ff'>"
+            f"<thead><tr style='color:#b5c7dc;background:rgba(11,31,53,0.72)'>"
+            f"<th style='text-align:left;padding:7px 10px'>价格变化</th>"
+            f"<th style='text-align:left;padding:7px 10px'>假设价格</th>"
+            f"<th style='text-align:left;padding:7px 10px'>Final</th>"
+            f"<th style='text-align:left;padding:7px 10px'>评级</th>"
+            f"<th style='text-align:left;padding:7px 10px'>估值分</th>"
+            f"<th style='text-align:left;padding:7px 10px'>Fwd PE</th>"
+            f"<th style='text-align:left;padding:7px 10px'>EV/Sales</th>"
+            f"</tr></thead><tbody>{_rows_html}</tbody></table></div>",
+            unsafe_allow_html=True,
+        )
+
     # ── 雷达 + 子分条形 ─────────────────────────────────
     rc1, rc2 = st.columns([1, 1])
     with rc1:
@@ -1371,11 +1969,22 @@ elif page == "🔍 单股详情":
 
     st.divider()
 
-    # ── 多维智库视角（8 位投资人框架，页面直接算出的白话判断）────────
-    st.markdown("#### 🧠 多维智库视角")
-    st.caption(
-        "把 8 位投资人的思维框架套在这只股票的数据上，直接算出方向性白话判断——"
-        "⚠️ 规则化的框架提示，不是这些投资人的真实观点，供人工复核。"
+    # ── 框架镜头分析（公开思想框架映射，页面直接算出的白话判断）────────
+    st.markdown(
+        "<div style='display:flex;align-items:center;gap:10px;margin:4px 0 8px 0'>"
+        "<span style='font-size:22px;line-height:1'>🧠</span>"
+        "<span style='font-size:24px;font-weight:800;color:#eef7ff'>框架镜头分析</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='framework-lens-intro'>"
+        "<strong>模型化框架映射：</strong>"
+        "把公开经营/投资思想框架映射到这只股票的数据上，输出方向性模型判断。"
+        "<span class='notice'> 非相关人物本人观点、授权、背书或投资建议。</span>"
+        "用于人工复核，而不是替代投资结论。"
+        "</div>",
+        unsafe_allow_html=True,
     )
 
     _lenses = all_investor_lenses(ticker, data, cat, {
@@ -1395,32 +2004,39 @@ elif page == "🔍 单股详情":
         with _lc[_i % 2]:
             _c = _L["verdict_color"]
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
-                f"border-left:3px solid {_c};border-radius:6px;"
-                f"padding:14px 16px;margin-bottom:12px;min-height:220px'>"
+                f"<div class='investor-lens-card' style='background:rgba(16,43,73,0.82);"
+                f"border:1px solid rgba(142,190,235,0.22);"
+                f"border-left:3px solid {_c};border-radius:12px;"
+                f"padding:18px 20px;margin-bottom:16px;min-height:220px;"
+                f"box-shadow:0 4px 24px rgba(0,0,0,0.26)'>"
                 f"<div style='display:flex;justify-content:space-between;"
                 f"align-items:baseline;margin-bottom:2px'>"
-                f"<span style='font-size:15px;font-weight:700;color:#E2E8F0'>"
+                f"<span style='font-size:16px;font-weight:800;color:#eef7ff'>"
                 f"{_L['icon']} {_L['name']}</span>"
-                f"<span style='font-size:9px;color:#8B9BB4;text-transform:uppercase;"
+                f"<span style='font-size:10px;color:#8ea8c3;text-transform:uppercase;"
                 f"letter-spacing:0.5px'>{_L['dimension']}</span></div>"
-                f"<div style='font-size:10px;color:#8B9BB4;margin-bottom:8px'>"
+                f"<div style='font-size:12px;color:#b5c7dc;margin-bottom:10px'>"
                 f"{_L['framework']}</div>"
                 f"<div style='display:inline-block;background:{_c}22;color:{_c};"
                 f"font-size:12px;font-weight:600;padding:3px 10px;border-radius:4px;"
                 f"border:1px solid {_c}44;margin-bottom:8px'>{_L['verdict']}</div>"
-                f"<div style='color:#C7D2E0;font-size:12px;line-height:1.65'>"
+                f"<div style='color:#d9e8f7;font-size:13px;line-height:1.65'>"
                 f"{_L['paragraph']}</div>"
                 f"</div>",
                 unsafe_allow_html=True)
 
     # ── 打印专属页脚（仅 PDF/打印时可见）──────────────────────
+    # 用固定高度的占位块强制留白，而不是纯靠 margin——打印引擎在"容器被迫跨页/
+    # 内容顶到页尾"时经常把普通 margin 压缩甚至吃掉，height 撑开的空 div 不受这个影响。
     st.markdown(
-        f"<div class='print-only' style='margin-top:18px;padding-top:10px;"
+        "<div class='print-only' style='height:14mm'></div>",
+        unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='print-only report-print-footer' style='margin-top:18px;padding-top:10px;"
         f"border-top:1px solid #1E2D3D;font-size:9px;color:#8B9BB4;line-height:1.6'>"
         f"本报告由 ENERGREX AI 估值评分系统于 {_report_date} 自动生成，"
-        f"评分与「智库视角」均为规则化模型输出，不构成投资建议；"
-        f"Damodaran / 智库视角为框架提示，非对应投资人的真实观点。请自行核查数据来源与口径。"
+        f"评分与「框架镜头分析」均为规则化模型输出，不构成投资建议；"
+        f"相关人物姓名仅用于说明公开思想框架来源，非本人观点、授权或背书。请自行核查数据来源与口径。"
         f" · {ticker} · {_company}"
         f"</div>",
         unsafe_allow_html=True)
@@ -1981,6 +2597,7 @@ elif page == "📝 数据编辑":
         "verified_user":   ("✅", "#00D4AA", "已核对"),
         "pending":         ("🟡", "#FFB347", "待审核"),
         "estimated":       ("✍️", "#8B9BB4", "估算值"),
+        "optional":        ("🔎", "#56d9ff", "可选参照"),
         "not_applicable":  ("⬜", "#4A5568", "不适用"),
     }
 
@@ -2029,6 +2646,8 @@ elif page == "📝 数据编辑":
         meta = _ov_meta(existing, field)
         if meta.get("status") == "verified":
             return "verified_user"
+        if default_status == "optional":
+            return "optional"
         if default_status == "estimated":
             return "estimated"
         if default_status == "auto":
@@ -2042,6 +2661,7 @@ elif page == "📝 数据编辑":
             "sec": (f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
                     f"&CIK={ticker}&type=10-Q&dateb=&owner=include&count=5"),
             "key-stats": f"https://finance.yahoo.com/quote/{ticker}/key-statistics",
+            "seeking-alpha": f"https://seekingalpha.com/symbol/{ticker}",
         }.get(url_type, "#")
 
     # ── 字段定义（含状态元数据）─────────────────────────
@@ -2089,6 +2709,11 @@ elif page == "📝 数据编辑":
             ("集中度风险",             "concentration_risk",       "%.3f", 0.0,1.0, 0.001,"",                           "estimated", "估算", None),
             ("流动性风险",             "liquidity_risk",           "%.3f", 0.0,1.0, 0.001,"",                           "estimated", "估算", None),
             ("收入可预测性",           "revenue_predictability_score","%.3f",0.0,1.0,0.001,"1=完全ARR",                 "estimated", "估算", None),
+        ],
+        "外部参照（不参与评分）": [
+            ("SA Quant Rating",         "sa_quant_score",           "%.2f", 0.0, 5.0, 0.01, "0=未录入；1=Strong Sell，3=Hold，5=Strong Buy", "optional", "Seeking Alpha", "seeking-alpha"),
+            ("SA Authors Rating",       "sa_author_score",          "%.2f", 0.0, 5.0, 0.01, "0=未录入；只作外部共识参照，不进入Final Score", "optional", "Seeking Alpha", "seeking-alpha"),
+            ("SA Wall Street Rating",   "sa_wall_street_score",     "%.2f", 0.0, 5.0, 0.01, "0=未录入；用于识别外部分歧，不替代内部估值", "optional", "Seeking Alpha", "seeking-alpha"),
         ],
     }
 
@@ -2155,6 +2780,16 @@ elif page == "📝 数据编辑":
         )
 
         with st.expander(_exp_title, expanded=(_g_pend > 0)):
+            if _grp_name == "外部参照（不参与评分）":
+                st.markdown(
+                    "<div style='background:rgba(16,43,73,0.72);"
+                    "border:1px solid rgba(142,190,235,0.18);border-radius:8px;"
+                    "padding:8px 10px;margin-bottom:8px;color:#8ea8c3;font-size:11px;line-height:1.55'>"
+                    "<span style='color:#eef7ff;font-weight:700'>后台校准项：</span>"
+                    "仅用于记录外部共识分歧，触发人工复核；不进入 Final Score，也不在单股报告主体展示。"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
             # 表头
             _hh = st.columns([0.4, 2.8, 1.0, 1.4, 1.4, 1.0])
             for _ht in ["", "字段 / 来源", "当前值", "填入值", "核对链接", "已核对"]:
@@ -2191,7 +2826,8 @@ elif page == "📝 数据编辑":
                 cur_val = active.get(field)
                 meta    = _ov_meta(existing, field)
                 def_v   = float(ov_val) if ov_val is not None else (
-                          float(cur_val) if cur_val is not None else float((vmin + vmax) / 2))
+                          float(cur_val) if cur_val is not None else
+                          (0.0 if field.startswith("sa_") else float((vmin + vmax) / 2)))
 
                 _rc = st.columns([0.4, 2.8, 1.0, 1.4, 1.4, 1.0])
 
@@ -2247,15 +2883,15 @@ elif page == "📝 数据编辑":
                     )
                     new_values[field] = val
 
-                # [4] 核对链接（仅 pending 字段显示）
-                if fstat == "pending" and url_type:
+                # [4] 核对链接（pending/optional 字段显示）
+                if fstat in ("pending", "optional") and url_type:
                     _link = _review_url(url_type, ed_ticker)
                     _rc[4].markdown(
                         f"<div style='padding:8px 0'>"
                         f"<a href='{_link}' target='_blank' "
-                        f"style='color:#FFB347;font-size:11px;font-weight:600;"
-                        f"text-decoration:none;background:#FFB34715;"
-                        f"border:1px solid #FFB34744;border-radius:4px;"
+                        f"style='color:{color};font-size:11px;font-weight:600;"
+                        f"text-decoration:none;background:{color}15;"
+                        f"border:1px solid {color}44;border-radius:4px;"
                         f"padding:3px 10px;white-space:nowrap'>核对 →</a></div>",
                         unsafe_allow_html=True)
                 elif fstat in ("verified_auto", "verified_user"):
@@ -2272,6 +2908,10 @@ elif page == "📝 数据编辑":
                             key=f"chk_{ed_ticker}_{field}",
                             label_visibility="collapsed",
                         )
+                    elif fstat == "optional":
+                        st.markdown(
+                            "<div style='font-size:9px;color:#56d9ff;padding:10px 0'>可选</div>",
+                            unsafe_allow_html=True)
                     elif fstat == "estimated":
                         st.markdown(
                             "<div style='font-size:9px;color:#4A5568;padding:10px 0'>估算</div>",
@@ -2303,17 +2943,29 @@ elif page == "📝 数据编辑":
                 was_verified   = old_meta.get("status") == "verified"
                 status_changed = is_checked != was_verified
 
+                if field.startswith("sa_") and not in_overrides and not is_checked and float(val) <= 0:
+                    continue
+
                 if not val_changed and not status_changed:
                     continue
                 if not in_overrides and not val_changed and not is_checked:
                     continue
 
+                if field.startswith("sa_"):
+                    _entry_status = "external_reference"
+                    _entry_verified_at = _today if float(val) > 0 else old_meta.get("verified_at")
+                    _entry_source = _source_note.strip() or old_meta.get("source", "Seeking Alpha")
+                else:
+                    _entry_status = "verified" if is_checked else old_meta.get("status", "pending")
+                    _entry_verified_at = _today if is_checked else old_meta.get("verified_at")
+                    _entry_source = ((_source_note.strip() or old_meta.get("source", ""))
+                                     if is_checked else old_meta.get("source", ""))
+
                 tk_data[field] = {
                     "value":       val,
-                    "status":      "verified" if is_checked else old_meta.get("status", "pending"),
-                    "verified_at": _today if is_checked else old_meta.get("verified_at"),
-                    "source":      (_source_note.strip() or old_meta.get("source", ""))
-                                   if is_checked else old_meta.get("source", ""),
+                    "status":      _entry_status,
+                    "verified_at": _entry_verified_at,
+                    "source":      _entry_source,
                 }
                 changed += 1
 
