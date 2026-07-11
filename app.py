@@ -408,21 +408,35 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
         max-width: 100% !important;
         overflow: hidden !important;
     }
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"],
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] > div,
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .js-plotly-plot,
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .plot-container,
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .svg-container {
+    /* ⚠️ Streamlit 每个 st.xxx() 调用都单独包一层 stElementContainer，
+       .price-zone-print-anchor（markdown 调用）和图表（plotly_chart 调用）
+       不是直接兄弟节点，是各自 stElementContainer 才互为兄弟——用 :has()
+       先定位到锚点所在的 stElementContainer，再选它的下一个兄弟容器。
+       之前用 ".price-zone-print-anchor + div" 直接选，永远选不中，
+       导致打印时图表宽度用了默认渲染宽度而不是 100%，右侧大片留白。 */
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"],
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] > div,
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .js-plotly-plot,
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .plot-container,
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .svg-container {
         zoom: 1 !important;
         width: 100% !important;
         max-width: 100% !important;
     }
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] svg,
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] canvas {
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] svg,
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] canvas {
         width: 100% !important;
         max-width: 100% !important;
     }
-    .price-zone-print-anchor + div [data-testid="stPlotlyChart"] .modebar {
+    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
+        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .modebar {
         display: none !important;
     }
     .investor-lens-card {
