@@ -17,7 +17,8 @@ OUT_DIR     = ROOT / "data"
 OUT_FILE    = OUT_DIR / "data_validation_report.json"
 OUT_DIR.mkdir(exist_ok=True)
 
-TICKERS_CORE = ["NVDA", "AVGO", "PLTR", "PANW", "CRWD", "FTNT", "NOW", "ONTO", "MRVL", "SNOW"]
+# 全量股票（不再局限于最早的10只 mock 股票，覆盖 mock_data.py 里的所有 ticker）
+TICKERS_CORE = sorted(MOCK_STOCKS.keys())
 
 # 偏差阈值
 THR_OK   = 0.05   # <5%  → 一致
@@ -31,6 +32,7 @@ YF_AUTO_FIELDS = [
     ("beta",                "beta",                   1.0,  "5年月度Beta"),
     ("forward_pe",          "forwardPE",              1.0,  "Forward P/E"),
     ("ev_sales",            "enterpriseToRevenue",    1.0,  "EV/Sales (TTM)"),
+    ("ev_ebitda",           "enterpriseToEbitda",     1.0,  "EV/EBITDA (TTM)"),
     ("gross_margin",        "grossMargins",           1.0,  "毛利率 GAAP TTM"),
     ("revenue_growth_yoy",  "revenueGrowth",          1.0,  "营收增速 YoY TTM"),
     ("eps_growth_yoy",      "earningsGrowth",         1.0,  "EPS增速 YoY TTM (GAAP)"),
@@ -46,7 +48,58 @@ MANUAL_FIELDS = [
     ("arr_growth_yoy",                "ARR增速 — SaaS/安全公司财报直接披露"),
     ("roic",                          "Non-GAAP ROIC — 需自行计算NOPAT/IC"),
     ("next_year_revenue_growth_est",  "NTM增速估算 — 需卖方共识(Bloomberg/FactSet)"),
+    ("peg_ratio",                     "PEG（⚠️ 1yr/5yr口径可差3倍，建议统一用5yr）"),
+    ("fcf_growth_yoy",                "FCF增速YoY — 同期季度/年度对比，需财报核实"),
 ]
+
+# ── 数值合理性边界（与来源是否一致无关，纯粹的"这个数字看起来对不对"检查）──
+# 命中区间外 → 无论 status 是不是 verified，一律标红，防止明显的小数点/单位错误蒙混过关
+MAGNITUDE_BOUNDS = {
+    "peg_ratio":                    (0.1,  8.0),
+    "debt_to_equity":               (0.0,  5.0),
+    "net_revenue_retention":        (0.70, 1.60),
+    "roic":                         (-0.30, 0.60),
+    "operating_margin":             (-1.0, 0.80),
+    "next_year_revenue_growth_est": (-0.30, 1.00),
+    "ev_ebitda":                    (0.0,  200.0),
+}
+
+def bounds_check(field: str, value) -> str | None:
+    """数值是否超出合理范围。返回 None 表示没问题或没有边界定义。"""
+    if value is None or not isinstance(value, (int, float)):
+        return None
+    bounds = MAGNITUDE_BOUNDS.get(field)
+    if not bounds:
+        return None
+    lo, hi = bounds
+    if value < lo or value > hi:
+        return f"🔴 超出合理范围[{lo}, {hi}]，疑似单位/小数点错误，需重新核实"
+    return None
+
+def find_template_duplicates(overrides: dict, fields: list, min_count: int = 2) -> dict:
+    """检测"已核对(verified)"的字段里，同一数值在≥min_count只股票间完全相同
+    → 疑似复制粘贴的模板默认值蒙混过了"已核对"状态，而不是逐只股票真正查证过的数字。
+
+    注意：只扫描 status=="verified" 的 override 条目，不扫描 mock_data.py 的原始mock基线——
+    mock基线本来就是按行业分桶给的近似占位值，大量重复是预期行为；
+    但一旦标成"verified"却和别的股票数值一模一样，就是今天在 GEV/ASML/MU 上发现的那类问题
+    （fcf_growth_yoy=9.5、debt_to_equity=15.0、net_revenue_retention=1.25 在多只股票间重复且都标verified）。
+    """
+    dup = {}
+    for field in fields:
+        counts: dict = {}
+        for ticker, tfields in overrides.items():
+            entry = tfields.get(field)
+            if not isinstance(entry, dict) or entry.get("status") != "verified":
+                continue
+            v = entry.get("value")
+            if v is None:
+                continue
+            counts.setdefault(v, []).append(ticker)
+        for v, tickers in counts.items():
+            if len(tickers) >= min_count:
+                dup.setdefault(field, []).append({"value": v, "tickers": tickers})
+    return dup
 
 # 主观估算字段
 SUBJECTIVE_FIELDS = [
@@ -129,14 +182,25 @@ def run_validation():
     overrides = load_overrides()
     now_str   = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # 只在"已核对(verified)"的 override 条目里找跨股票重复值（不依赖yfinance，秒级完成）
+    dup_fields    = [f for f, _ in MANUAL_FIELDS]
+    template_dups = find_template_duplicates(overrides, dup_fields, min_count=2)
+
     report = {
         "generated_at": now_str,
         "tickers": TICKERS_CORE,
         "thresholds": {"ok": THR_OK, "warn": THR_WARN},
         "summary": {"auto_ok": 0, "auto_warn": 0, "auto_error": 0, "auto_na": 0,
-                    "manual_total": 0, "subjective_total": 0},
+                    "manual_total": 0, "manual_flagged": 0, "subjective_total": 0},
+        "template_duplicates": template_dups,
         "results": {},
     }
+
+    if template_dups:
+        print(f"\n{'='*56}\n  ⚠️ 疑似模板默认值（同一数值在≥3只股票间重复）\n{'='*56}")
+        for field, groups in template_dups.items():
+            for g in groups:
+                print(f"  🔴 {field} = {g['value']}  → {', '.join(g['tickers'])}")
 
     for ticker in TICKERS_CORE:
         print(f"\n{'='*56}")
@@ -226,17 +290,33 @@ def run_validation():
 
         for field, hint in MANUAL_FIELDS:
             our_val = data.get(field)
+
+            # 自动数值合理性检查（不依赖yfinance，独立于"是否已核对"状态）
+            b_warn = bounds_check(field, our_val)
+            is_dup = any(ticker in g["tickers"]
+                         for g in template_dups.get(field, []))
+
+            if b_warn:
+                status = b_warn
+            elif is_dup:
+                status = "🔴 疑似模板默认值（与其他股票数值完全相同，需逐个核实）"
+            else:
+                status = "📋 待人工核对"
+
             entry = {
                 "field":       field,
                 "hint":        hint,
                 "our_val":     fmt(our_val),
                 "last_report": last_report,
                 "edgar_link":  edgar_link(ticker),
-                "status":      "📋 待人工核对",
+                "status":      status,
             }
             manual_results.append(entry)
             report["summary"]["manual_total"] += 1
-            print(f"  📋 {field:32s} 当前值:{fmt(our_val):>12}  最近财报:{last_report}")
+            if b_warn or is_dup:
+                report["summary"]["manual_flagged"] += 1
+            icon = status.split(" ")[0]
+            print(f"  {icon} {field:32s} 当前值:{fmt(our_val):>12}  最近财报:{last_report}  {status if (b_warn or is_dup) else ''}")
 
         # ─── 主观估算字段 ──────────────────────────────────────
         subj_results = []
@@ -274,8 +354,12 @@ def run_validation():
     print(f"    🟡 需确认:     {s['auto_warn']}")
     print(f"    🔴 数据异常:   {s['auto_error']}")
     print(f"    ⚪ 无法对比:   {s['auto_na']}")
-    print(f"  📋 待人工核对:   {s['manual_total']}")
+    print(f"  📋 待人工核对（含数值合理性检查）: {s['manual_total']}  其中 🔴 自动标红: {s['manual_flagged']}")
     print(f"  🔵 主观估算:     {s['subjective_total']}")
+    if template_dups:
+        n_dup_fields = len(template_dups)
+        n_dup_tickers = len({tk for groups in template_dups.values() for g in groups for tk in g["tickers"]})
+        print(f"  ⚠️ 疑似模板默认值: {n_dup_fields} 个字段涉及 {n_dup_tickers} 只股票（见上方明细）")
 
     # ─── 写 JSON ────────────────────────────────────────────────
     OUT_FILE.write_text(

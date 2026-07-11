@@ -119,6 +119,8 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "HON":  CompanyCategory.SEMI_EQUIP,
     "GRMN": CompanyCategory.SEMI_EQUIP,
     "ACLS": CompanyCategory.SEMI_EQUIP,
+    "ASML": CompanyCategory.SEMI_EQUIP,   # 光刻设备，此前缺失映射，误落入默认AI_SOFTWARE
+    "GEV":  CompanyCategory.SEMI_EQUIP,   # 电力/电气化设备，同GE/HON/ROK归入工业设备簇
     # ── 大型科技平台（超大市值，ERG不适用）
     "MSFT":  CompanyCategory.MEGA_TECH,
     "GOOGL": CompanyCategory.MEGA_TECH,

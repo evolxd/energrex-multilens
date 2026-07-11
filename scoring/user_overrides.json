@@ -411,10 +411,10 @@
       "source": ""
     },
     "fcf_growth_yoy": {
-      "value": 9.5,
+      "value": 8.39,
       "status": "verified",
-      "verified_at": "2026-06-22",
-      "source": ""
+      "verified_at": "2026-07-11",
+      "source": "FQ3'26 FCF $18.3B vs FQ3'25 $1.95B(OCF $4.61B-capex $2.66B) — 原9.5为未核实占位值，量级接近但已用真实数字替换"
     },
     "next_year_revenue_growth_est": {
       "value": 0.3,
@@ -495,6 +495,358 @@
       "source": ""
     },
     "liquidity_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    }
+  },
+  "ASML": {
+    "forward_pe": {
+      "value": 43.0,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "peg_ratio": {
+      "value": 2.2,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "ev_ebitda": {
+      "value": 48.0,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "ev_sales": {
+      "value": 20.39,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "revenue_growth_yoy": {
+      "value": 0.132,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "eps_growth_yoy": {
+      "value": 0.192,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "fcf_growth_yoy": {
+      "value": -0.85,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": "Q1'26 FCF -€2.6B vs Q1'25 -€475M（预付款时点效应，非经营性恶化）— 原9.5为未核实占位值"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.25,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "analyst_revision_30d": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "gross_margin": {
+      "value": 0.526,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "operating_margin": {
+      "value": 0.36,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "fcf_margin": {
+      "value": 0.245,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "roic": {
+      "value": 0.28,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "debt_to_equity": {
+      "value": 0.13,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": "GuruFocus 2026-06: 总债务€2.7B/股东权益€20.8B — 原15.0为未核实占位值"
+    },
+    "net_revenue_retention": {
+      "value": null,
+      "status": "not_applicable",
+      "verified_at": "2026-07-11",
+      "source": "ASML是半导体设备公司，非订阅制业务，NRR不适用（同GEV），已修正TICKER_CATEGORY归入SEMI_EQUIP"
+    },
+    "ai_revenue_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_profit_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_growth_contribution_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "software_ai_platform_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "advanced_packaging_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "cybersecurity_ai_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "guidance_vs_consensus": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-10",
+      "source": ""
+    },
+    "market_expectation_score": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "valuation_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "concentration_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "liquidity_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "revenue_predictability_score": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    }
+  },
+  "GEV": {
+    "forward_pe": {
+      "value": 60.0,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "peg_ratio": {
+      "value": 1.88,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": "5yr PEG, financecharts/GuruFocus 2026-06-20 — 1yr口径(0.02)被Q1一次性并购收益扭曲，改用5yr"
+    },
+    "ev_ebitda": {
+      "value": 120.0,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "ev_sales": {
+      "value": 7.15,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "revenue_growth_yoy": {
+      "value": 0.163,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "eps_growth_yoy": {
+      "value": 18.165,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "fcf_growth_yoy": {
+      "value": 3.0,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.15,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "analyst_revision_30d": {
+      "value": 0.1,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "gross_margin": {
+      "value": 0.203,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "operating_margin": {
+      "value": 0.1,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "fcf_margin": {
+      "value": 0.237,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "roic": {
+      "value": 0.05,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "debt_to_equity": {
+      "value": 0.25,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "net_revenue_retention": {
+      "value": null,
+      "status": "not_applicable",
+      "verified_at": "2026-07-11",
+      "source": "GEV是电力/电气化设备公司，非订阅制业务，NRR不适用，已修正TICKER_CATEGORY归入SEMI_EQUIP"
+    },
+    "ai_revenue_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_profit_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_growth_contribution_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "software_ai_platform_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "advanced_packaging_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "cybersecurity_ai_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.0163,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.0674,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "guidance_vs_consensus": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "market_expectation_score": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "valuation_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "concentration_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "liquidity_risk": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "revenue_predictability_score": {
       "value": 0.5,
       "status": "pending",
       "verified_at": null,

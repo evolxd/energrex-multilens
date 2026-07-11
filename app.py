@@ -1394,7 +1394,6 @@ elif page == "⚖️ 对比分析":
 
     # ── 关键指标对比表 ───────────────────────────────────
     st.divider()
-    st.markdown("#### 关键指标对照")
 
     compare_metrics = [
         ("PEG",           "peg_ratio",                      "{:.2f}x", False),
@@ -1457,8 +1456,13 @@ elif page == "⚖️ 对比分析":
     tbl_html += "</table>"
 
     st.markdown(
+        f"<style>@media print{{.metric-compare-block{{"
+        f"break-inside:avoid;page-break-inside:avoid;}}}}</style>"
+        f"<div class='metric-compare-block'>"
+        f"<h4 style='margin:0 0 10px 0'>关键指标对照</h4>"
         f"<div style='background:#0A1628;border:1px solid #1E2D3D;"
-        f"border-radius:8px;overflow:hidden'>{tbl_html}</div>",
+        f"border-radius:8px;overflow:hidden'>{tbl_html}</div>"
+        f"</div>",
         unsafe_allow_html=True)
 
 
