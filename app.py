@@ -1322,6 +1322,19 @@ elif page == "🔍 单股详情":
         """去掉评级文字前面的 emoji，只留英文评级本身。"""
         return re.sub(r"^[^\w]+", "", label).strip()
 
+    def _ed_alert(text: str, level: str = "info"):
+        """替代 st.info/success/warning/error——原生组件自带的配色是深色主题的，
+        换到 editorial 暖白主题下没法用 inline style 覆盖，统一用细线分隔的
+        文字块代替。level 仅影响左侧细线颜色，不再用色块填充。"""
+        if not text:
+            return
+        color = {"info": _ED_ACCENT_LIGHT, "success": _ED_ACCENT,
+                 "warning": _ED_WARN, "error": _ED_DANGER}.get(level, _ED_ACCENT_LIGHT)
+        st.markdown(
+            f"<div style='border-left:2px solid {color};padding:8px 0 8px 12px;"
+            f"margin:8px 0;color:{_ED_INK};font-size:13px;line-height:1.6'>{text}</div>",
+            unsafe_allow_html=True)
+
     st.markdown("<div class='screen-only'><h2 style='margin:0;font-family:Georgia,serif;color:#1E1E1B'>单股详情</h2></div>",
                 unsafe_allow_html=True)
 
@@ -1474,7 +1487,7 @@ elif page == "🔍 单股详情":
             st.caption(
                 f"回测生成于 {_kmeta.get('generated_at','—')} · {_kmeta.get('method','')}"
             )
-            st.warning(_kmeta.get("caveat", ""))
+            _ed_alert(_kmeta.get("caveat", ""), "warning")
     elif _kp is None:
         st.caption("半凯利建议仓位：该分档样本不足或尚无回测数据，暂不显示")
 
@@ -1482,7 +1495,7 @@ elif page == "🔍 单股详情":
     _ps = _price_sensitivity_report(ticker, data, fs)
     st.markdown("#### 价格温度带")
     if not _ps.get("available"):
-        st.info(f"价格温度带暂不可用：{_ps.get('reason', '缺少价格或基本面分母')}")
+        _ed_alert(f"价格温度带暂不可用：{_ps.get('reason', '缺少价格或基本面分母')}", "info")
     else:
         _cur_px = _ps["current_price"]
         _boundary = _ps["boundary"]
