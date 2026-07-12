@@ -1,8 +1,8 @@
 """
 半凯利仓位回测 — kelly_backtest.py
 ================================
-用当前 Final Score 把 86 只股票分进 5 档（与 app.py 的评级门槛一致：
->=65 Strong Buy / 55-65 Buy / 45-55 Watch / 35-45 Expensive / <35 Avoid），
+用当前 Final Score 把股票分进 5 个候选质量档（与 decision_policy.py 一致：
+>=80 综合强劲 / 65-79 综合良好 / 50-64 综合中性 / 35-49 谨慎评估 / <35 风险较高），
 拉取每只股票近 2 年的历史价格，做季度滚动（63 个交易日、步长 21 天）远期收益抽样，
 把同一档所有股票的收益样本池化，统计经验胜率/赔率，反推 Kelly 仓位建议。
 
@@ -31,13 +31,13 @@ ROOT     = pathlib.Path(__file__).parent.parent
 CSV_PATH = ROOT / "results_validated.csv"
 OUT_PATH = pathlib.Path(__file__).parent / "kelly_bands.json"
 
-# 与 app.py `_score_to_rating` 完全一致的分档门槛
+# 与 decision_policy.py 完全一致的分档门槛
 RATING_BANDS = [
-    ("⭐ Strong Buy", 65, 101),
-    ("✅ Buy",         55, 65),
-    ("👀 Watch",       45, 55),
-    ("⚠️ Expensive",   35, 45),
-    ("🚫 Avoid",        0, 35),
+    ("⭐ 综合强劲", 80, 101),
+    ("✅ 综合良好", 65, 80),
+    ("👀 综合中性", 50, 65),
+    ("⚠️ 谨慎评估", 35, 50),
+    ("🚫 风险较高", 0, 35),
 ]
 
 WINDOW      = 63   # ~1 个季度的交易日数
@@ -50,7 +50,7 @@ METHODOLOGY_CAVEAT = (
     "不是\"历史某时点打分后的真实后续收益\"。存在生存者偏差——现在的高分股，"
     "很大程度上是因为过去表现好才被打高分，所以高分档的历史赢率/赔率会比真实预测能力更好看。"
     "另外样本窗口整体处于牛市，各档win_rate都偏高，且低波动大盘股可能恰好落在中低分档，"
-    "导致原始 half_kelly_capped 在分档间不单调（例如Expensive档比Buy档还高）——"
+    "导致原始 half_kelly_capped 在分档间不单调——"
     "下游使用请一律读 half_kelly_monotonic 字段（已做跨档单调性修正），不要直接用 half_kelly_capped。"
     "这是过渡方案，待 kelly_snapshot_logger 积累几个月真实(日期,分数,价格)快照后，"
     "应切换到真正的前瞻式回测。"
@@ -61,7 +61,7 @@ def rating_for_score(score: float) -> str:
     for label, lo, hi in RATING_BANDS:
         if lo <= score < hi:
             return label
-    return "🚫 Avoid"
+    return "🚫 风险较高"
 
 
 def quarterly_forward_returns(close: pd.Series) -> list[float]:
@@ -153,7 +153,7 @@ def run_backtest():
     # 原始回测样本噪音很大（例如低波动大盘股恰好落在低分档，win/loss比好看但不代表
     # "该给更大仓位"）。这里从最低档到最高档做累计最大值，强制"分数越高建议仓位不降低"，
     # 避免出现"Avoid档凯利仓位比Buy档还大"这种会误导实际操作的结果。
-    ordered_labels = [label for label, _, _ in reversed(RATING_BANDS)]  # Avoid -> Strong Buy
+    ordered_labels = [label for label, _, _ in reversed(RATING_BANDS)]  # 回避 -> 优选
     running_max = 0.0
     for label in ordered_labels:
         raw = bands[label].get("half_kelly_capped", 0.0) or 0.0

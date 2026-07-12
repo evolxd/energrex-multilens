@@ -371,6 +371,60 @@
       "status": "pending",
       "verified_at": null,
       "source": ""
+    },
+    "revenue_growth_yoy": {
+      "value": 0.311,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "gross_margin": {
+      "value": 0.72,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "fcf_margin": {
+      "value": 0.33799999999999997,
+      "status": "verified",
+      "verified_at": "2026-07-11",
+      "source": ""
+    },
+    "ai_revenue_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_profit_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "ai_growth_contribution_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "software_ai_platform_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "advanced_packaging_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "cybersecurity_ai_exposure_pct": {
+      "value": 0.5,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
     }
   },
   "MU": {

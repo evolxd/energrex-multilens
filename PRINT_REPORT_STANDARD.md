@@ -30,10 +30,24 @@ repeatable institutional report layout with readable spacing and no clipping.
 - Radar chart target height: about 210px for print.
 - Sub-score bar chart target height: about 160px for print.
 - Plotly print zoom target: about 0.72.
+- The price-zone chart is a native SVG with a fixed `viewBox`; screen and print
+  use the same coordinate system. Do not convert it back to Plotly without a
+  real native Chrome print-preview regression test.
 - Bar-chart value labels should remain inside the bars or have enough right
   margin to avoid clipping.
 - If any chart clips in PDF preview, fix chart width/margins first; do not
   solve it by shrinking the whole browser print scale below 90%.
+
+### Plotly width rule
+
+Plotly SVG layers do not have a `viewBox`. Never force `.js-plotly-plot`,
+`.svg-container`, `svg`, or `canvas` to `width:100%` in print CSS. That only
+changes the visible viewport while Plotly keeps its screen-coordinate system,
+which clips the right side of the chart. CSS may size the outer
+`[data-testid="stPlotlyChart"]` host only; print events must then call
+`Plotly.relayout(gd, {width: hostWidth, autosize:false})` synchronously.
+The price-zone chart avoids this browser limitation by using native SVG with
+`viewBox="0 0 1000 250"` and `preserveAspectRatio="xMidYMid meet"`.
 
 ## Drift Guards
 
@@ -147,4 +161,3 @@ for i in range(len(doc)):
 ```
 Then look at the last 1-2 pages specifically — clipping/overlap bugs
 concentrate wherever content runs out mid-page.
-

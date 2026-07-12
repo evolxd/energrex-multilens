@@ -408,11 +408,11 @@ def audit_stock(ticker: str, data: dict):
          + ai_total*w.ai_exposure + eg_total*w.expectation_gap)
     final = float(np.clip(raw - penalty, 0, 100))
 
-    if final >= 85:   rating = "⭐ Strong Buy"
-    elif final >= 70: rating = "✅ Buy"
-    elif final >= 55: rating = "👀 Watch"
-    elif final >= 40: rating = "⚠️ Expensive"
-    else:             rating = "🚫 Avoid"
+    try:
+        from .decision_policy import score_band
+    except ImportError:
+        from decision_policy import score_band
+    rating = score_band(final)
 
     print()
     print(f"  {'子分':<25} {'分数':>7}   {'权重':>6}   {'加权分':>8}")

@@ -34,6 +34,14 @@ from formula import (
     compute_base_score, compute_dynamic_adjustment, compute_final_score,
 )
 from scoring_engine import calc_wacc, get_category
+try:
+    from .ai_profile import classify_ai_profile, score_ai_role
+except ImportError:
+    from ai_profile import classify_ai_profile, score_ai_role
+try:
+    from .decision_policy import score_band
+except ImportError:
+    from decision_policy import score_band
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -158,6 +166,13 @@ class ScoreResult:
     final_score:         float    # Layer 3: base_score + dynamic_adjustment
     rating:              str
     bad_fields:          list[str]
+    ai_profile_key:      str
+    ai_profile_label:    str
+    ai_profile_exposure: float | None
+    ai_accelerator_bonus: float
+    ai_profile_basis:    str
+    ai_raw_exposure_score: float
+    applied_weights:     dict[str, float]
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -607,9 +622,13 @@ def score_risk_penalty(data: dict, de_ratio: float | None) -> tuple[AuditDimensi
             v = abs(v)   # use magnitude regardless of sign
         cfg = _RISK_BASELINES[bkey]
         if v is not None:
-            # For risk: normalize as "bad = high raw score" → higher raw_risk
-            raw_risk = normalize_score(v, cfg["best"], cfg["worst"], cfg["dir"]) / 100.0
-            f = f"({cfg['worst']}-{v:.4f})/({cfg['worst']}-{cfg['best']})*100"
+            # normalize_score(..., negative) returns a safety/quality score:
+            # best -> 100 and worst -> 0. Risk intensity is its complement.
+            safety_score = normalize_score(
+                v, cfg["best"], cfg["worst"], cfg["dir"]
+            )
+            raw_risk = 1.0 - safety_score / 100.0
+            f = f"({v:.4f}-{cfg['best']})/({cfg['worst']}-{cfg['best']})*100"
             # Store the risk intensity (0–1) as score for aggregation
             dim.entries.append(AuditEntry(label, v, f,
                                           round(raw_risk * 100, 2), w))
@@ -672,6 +691,25 @@ def score_ticker(ticker: str, data: dict) -> ScoreResult:
         score_momentum(data),
     ]
 
+    category = get_category(ticker)
+    ai_profile = classify_ai_profile(data, category.name)
+    ai_raw_exposure_score = 0.0
+    for dim in dims:
+        if dim.key == "ai_exposure":
+            ai_raw_exposure_score = dim.dim_score
+            adjusted_ai_score = score_ai_role(dim.dim_score, ai_profile.key)
+            if adjusted_ai_score != dim.dim_score:
+                dim.entries.append(AuditEntry(
+                    "AI role neutral baseline",
+                    dim.dim_score,
+                    "AI enabled/traditional -> neutral 50; verified contribution uses accelerator bonus",
+                    adjusted_ai_score,
+                    0.0,
+                    note=f"Raw AI signal {dim.dim_score:.1f} retained for audit only",
+                ))
+                dim.dim_score = adjusted_ai_score
+        dim.final_weight = ai_profile.weights.get(dim.key, 0.0)
+        dim.contribution = round(dim.dim_score * dim.final_weight, 2)
     raw_sum = sum(d.dim_score * d.final_weight for d in dims)
 
     de = data.get("debt_to_equity")
@@ -679,21 +717,19 @@ def score_ticker(ticker: str, data: dict) -> ScoreResult:
     penalty = risk_dim.dim_score
 
     dim_scores_dict = {d.key: d.dim_score for d in dims}
-    base   = compute_base_score(dim_scores_dict, penalty, circuit)
+    base = compute_base_score(
+        dim_scores_dict,
+        penalty,
+        circuit,
+        dim_weights=ai_profile.weights,
+        positive_adjustment=ai_profile.bonus,
+    )
     dynAdj = compute_dynamic_adjustment(data)
     final  = compute_final_score(base, dynAdj)
 
-    # Rating
-    if circuit:
-        rating = "Watchlist" if final >= 50 else "Avoid"
-    elif final >= 70:
-        rating = "Buy"
-    elif final >= 60:
-        rating = "Hold"
-    elif final >= 45:
-        rating = "Watchlist"
-    else:
-        rating = "Avoid"
+    # Final Score is a quality band.  Circuit-triggered output cannot be
+    # presented as an actionable conclusion.
+    rating = "🧾 数据待复核" if circuit else score_band(final)
 
     return ScoreResult(
         ticker=ticker,
@@ -711,4 +747,11 @@ def score_ticker(ticker: str, data: dict) -> ScoreResult:
         final_score=final,
         rating=rating,
         bad_fields=bad,
+        ai_profile_key=ai_profile.key,
+        ai_profile_label=ai_profile.label,
+        ai_profile_exposure=ai_profile.exposure,
+        ai_accelerator_bonus=ai_profile.bonus,
+        ai_profile_basis=ai_profile.basis,
+        ai_raw_exposure_score=round(ai_raw_exposure_score, 2),
+        applied_weights=ai_profile.weights,
     )

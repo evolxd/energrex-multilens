@@ -305,6 +305,7 @@ from account.marketdata import get_vix_snapshot as _get_vix_snapshot_md
 from account.importers import detect_csv_type as _detect_csv_type
 from account.importers import import_positions_csv as _account_import_positions_csv
 from account.importers import import_transactions_csv as _account_import_transactions_csv
+from account.hedge_governance import evaluate_protective_put_hedges as _evaluate_protective_put_hedges
 from account.importers import parse_date as _parse_date
 from account.importers import parse_money as _parse_money
 from account.importers import process_csv_file as _account_process_csv_file
@@ -812,11 +813,11 @@ def _load_ai_scores() -> dict:
 def _score_label(score: float | None) -> str:
     if score is None:
         return ""
-    if score >= 65:
+    if score >= 80:
         return f"{score:.0f} ⭐"
-    if score >= 55:
+    if score >= 65:
         return f"{score:.0f} ✅"
-    if score >= 45:
+    if score >= 50:
         return f"{score:.0f} 🟡"
     if score >= 35:
         return f"{score:.0f} ⚠️"
@@ -1424,6 +1425,7 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
             "sym": sym, "qty": q, "type": opt_t,
             "strike": strike, "expiry": exp_s,
             "delta": d, "price": price,
+            "market_value": float(r["market_value"] or 0),
         })
         existing_bd += q * 100 * d * qqq_price * b_qqq
 
@@ -1514,6 +1516,13 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
         "existing_bd":    round(existing_bd, 0),
     }
 
+    hedge_governance = _evaluate_protective_put_hedges(
+        existing_legs,
+        equity=equity,
+        beta_delta_pct=current_bdr * 100,
+        target_beta_delta_pct=target_bd_ratio * 100,
+    )
+
     return {
         "equity":          equity,
         "current_bd_ratio": round(current_bdr * 100, 1),
@@ -1531,6 +1540,7 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
         "plan_a":           plan_a,
         "plan_b":           plan_b,
         "plan_c":           plan_c,
+        "hedge_governance": hedge_governance,
     }
 
 
@@ -5894,6 +5904,7 @@ with _pos_tabs[3]:
         _h_ebd   = _hplan["existing_bd"]
         _h_n_ex  = _hplan["n_existing"]
         _h_leggs = _hplan["existing_legs"]
+        _h_gov   = _hplan.get("hedge_governance", {})
 
         _hsc1, _hsc2, _hsc3, _hsc4 = st.columns(4)
         _hsc1.metric("当前 Beta-Delta", f"{_h_cur:.1f}%",
@@ -5912,6 +5923,41 @@ with _pos_tabs[3]:
             st.caption(f"现有 QQQ 期权持仓：{_h_legs_str}")
             if _h_btoh <= 0:
                 st.success(f"✅ 现有对冲已足够（BD {_h_cur:.1f}% ≤ 目标 {_h_tgt:.0f}%），无需加仓")
+
+        if _h_gov:
+            _gov_status = _h_gov.get("status", "REVIEW")
+            _gov_color = {
+                "VALID_HEDGE": _GREEN,
+                "NO_HEDGE_NEEDED": _GREEN,
+                "MISSING_HEDGE": _AMB,
+                "REVIEW": _AMB,
+                "VIOLATION": _RED,
+            }.get(_gov_status, _MUTED)
+            _gov_triggers = ", ".join(_h_gov.get("trigger_reasons") or ["无"])
+            _gov_rows = []
+            for _row in _h_gov.get("rows", []):
+                _issues = "; ".join(i["code"] for i in _row.get("issues", [])) or "OK"
+                _gov_rows.append(
+                    f"{_row['symbol']} · {_row['structure']} · DTE={_row.get('dte', '—')} · "
+                    f"{_row['status']} · {_issues}"
+                )
+            for _issue in _h_gov.get("portfolio_issues", []):
+                _gov_rows.append(f"{_issue['severity']} · {_issue['code']}")
+            _gov_body = "<br>".join(_gov_rows) if _gov_rows else "暂无持有中的 QQQ/SMH long put。"
+            st.markdown(
+                f"<div style='background:{_SURF};border:1px solid {_gov_color};"
+                f"border-radius:10px;padding:10px 14px;margin:8px 0 12px'>"
+                f"<div style='font-size:13px;font-weight:800;color:{_gov_color}'>"
+                f"保护性 Put 纪律检查 · {_gov_status}</div>"
+                f"<div style='font-size:11px;color:{_MUTED};line-height:1.7;margin-top:4px'>"
+                f"{_h_gov.get('summary','')}<br>"
+                f"触发条件：{_gov_triggers} · 当前保护成本率：{_h_gov.get('campaign_cost_pct', 0):.2f}%"
+                f"<br>{_gov_body}"
+                f"<br><span style='color:{_TEXT};font-weight:700'>规则：</span>"
+                f"保护不是长期资产；无触发条件时应退出，资金小优先用 put spread 控制成本。"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
 
         # ── 需要对冲时才显示方案 ────────────────────────────────
         if _h_btoh > 0:

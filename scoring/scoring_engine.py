@@ -14,6 +14,11 @@ from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum
 
+try:
+    from .decision_policy import score_band
+except ImportError:
+    from decision_policy import score_band
+
 
 # ─────────────────────────────────────────────
 # 公司类型枚举
@@ -854,12 +859,8 @@ def score_stock(ticker: str, data: dict,
 
     final_score = float(np.clip(raw_score - risk_pen, 0, 100))
 
-    # Rating 规则（阈值基于84只股票实际分布校准：范围21-78，中位数47）
-    if   final_score >= 65: rating = "⭐ Strong Buy"
-    elif final_score >= 55: rating = "✅ Buy"
-    elif final_score >= 45: rating = "👀 Watch"
-    elif final_score >= 35: rating = "⚠️ Expensive"
-    else:                   rating = "🚫 Avoid"
+    # Final Score only describes candidate quality; it is not a buy order.
+    rating = score_band(final_score)
 
     # 不确定性
     unc = calc_score_uncertainty(data)

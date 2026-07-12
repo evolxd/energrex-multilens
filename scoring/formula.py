@@ -38,6 +38,9 @@ def compute_base_score(
     dim_scores: dict[str, float],
     risk_penalty: float,
     circuit_triggered: bool,
+    *,
+    dim_weights: dict[str, float] | None = None,
+    positive_adjustment: float = 0.0,
 ) -> float:
     """
     Static base score.
@@ -49,11 +52,13 @@ def compute_base_score(
         risk_penalty:      penalty points (0–20), already computed
         circuit_triggered: whether circuit breaker fired
     """
-    weighted_sum = sum(
-        dim_scores.get(dim, 50.0) * w for dim, w in DIM_WEIGHTS.items()
-    )
+    weights = dim_weights or DIM_WEIGHTS
+    if abs(sum(weights.values()) - 1.0) > 1e-9:
+        raise ValueError("dimension weights must sum to 1.0")
+    weighted_sum = sum(dim_scores.get(dim, 50.0) * w for dim, w in weights.items())
     mult = CIRCUIT_MULTIPLIER if circuit_triggered else 1.0
-    return max(0.0, min(100.0, round((weighted_sum - risk_penalty) * mult, 4)))
+    score = (weighted_sum + max(0.0, positive_adjustment) - risk_penalty) * mult
+    return max(0.0, min(100.0, round(score, 4)))
 
 
 # ── Layer 2 ──────────────────────────────────────────────────────────────

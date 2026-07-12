@@ -14,23 +14,12 @@ import pathlib
 import pandas as pd
 import datetime
 
+try:
+    from .decision_policy import score_band
+except ImportError:
+    from decision_policy import score_band
+
 _SNAPSHOT_PATH = pathlib.Path(__file__).parent.parent / "data" / "score_snapshots.csv"
-
-_RATING_BANDS = [
-    ("⭐ Strong Buy", 65, 101),
-    ("✅ Buy",         55, 65),
-    ("👀 Watch",       45, 55),
-    ("⚠️ Expensive",   35, 45),
-    ("🚫 Avoid",        0, 35),
-]
-
-
-def _rating_for_score(score: float) -> str:
-    for label, lo, hi in _RATING_BANDS:
-        if lo <= score < hi:
-            return label
-    return "🚫 Avoid"
-
 
 def _parse_raw_cell(cell) -> float | None:
     """兼容 results_validated.csv 里 "211 [yf]" 这类带来源标注的单元格（同 app.py 的解析约定）。"""
@@ -64,7 +53,7 @@ def log_snapshot(df: pd.DataFrame,
             "date":   today,
             "ticker": ticker,
             "final_score": float(score),
-            "rating": _rating_for_score(float(score)),
+            "rating": score_band(float(score)),
             "price":  price,
         })
     if not rows:

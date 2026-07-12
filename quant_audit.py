@@ -501,7 +501,7 @@ def print_audit_report(result: ScoreResult, data: dict):
     print(f"\n  FINAL SCORE  :  {result.final_score:>6.2f} / 100   {score_bar}")
     print(f"  RATING       :  {icon}")
     if result.circuit_triggered:
-        print(f"  NOTE         :  Rating capped at Watchlist/Avoid due to circuit breaker")
+        print("  NOTE         :  Decision blocked pending circuit-breaker review")
     print()
     _hr("═")
     print()
@@ -509,11 +509,11 @@ def print_audit_report(result: ScoreResult, data: dict):
 
 def _bar(score: float, width: int = 30) -> str:
     filled = int(score / 100 * width)
-    if score >= 70:
+    if score >= 80:
         ch = "█"
-    elif score >= 55:
+    elif score >= 65:
         ch = "▓"
-    elif score >= 40:
+    elif score >= 50:
         ch = "▒"
     else:
         ch = "░"

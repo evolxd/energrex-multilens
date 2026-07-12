@@ -105,6 +105,13 @@ _RAW_FIELD_MAP: list[tuple[str, str]] = [
 
 # 评分列前缀 → 内部字段名（app.py rename 逻辑保持一致）
 _SCORE_PREFIX_MAP: list[tuple[str, str]] = [
+    ("aiprofile_", "ai_profile"),
+    ("aiprofilekey_", "ai_profile_key"),
+    ("aiexposure_", "ai_profile_exposure"),
+    ("airaw_", "ai_raw_exposure_score"),
+    ("aibonus_", "ai_accelerator_bonus"),
+    ("aibasis_", "ai_profile_basis"),
+    ("weighted_", "weighted_score"),
     ("val_",     "valuation_score"),
     ("grw_",     "growth_score"),
     ("qlt_",     "quality_score"),
@@ -152,6 +159,16 @@ _FUNDAMENTAL_CSV_COLS: dict[str, str] = {
     "raw_depr_yf":             "n/a [--]",
     "raw_rd_yf":               "n/a [--]",
     "raw_op_inc_yf":           "n/a [--]",
+}
+
+_PROFILE_CSV_COLS: dict[str, object] = {
+    "aiprofile_AI角色": "AI待验证",
+    "aiprofilekey_AI角色代码": "AI_UNVERIFIED",
+    "aiexposure_AI暴露基础": "",
+    "airaw_原始AI信号": 0.0,
+    "aibonus_AI加速器": 0.0,
+    "aibasis_AI分类依据": "缺少可用AI暴露数据",
+    "weighted_基础加权": 0.0,
 }
 
 
@@ -397,7 +414,7 @@ def refresh_all(
 
     # 首次运行时自动添加基本面分母列
     _added_cols = []
-    for col, default in _FUNDAMENTAL_CSV_COLS.items():
+    for col, default in {**_FUNDAMENTAL_CSV_COLS, **_PROFILE_CSV_COLS}.items():
         if col not in df.columns:
             df[col] = default
             _added_cols.append(col)
@@ -505,6 +522,14 @@ def refresh_all(
 
         # ── 写回 score 列 ──────────────────────────────────
         score_updates: dict[str, object] = {
+            "ai_profile":           result.ai_profile_label,
+            "ai_profile_key":       result.ai_profile_key,
+            "ai_profile_exposure":  ("" if result.ai_profile_exposure is None
+                                      else f"{result.ai_profile_exposure:.4f}"),
+            "ai_raw_exposure_score": result.ai_raw_exposure_score,
+            "ai_accelerator_bonus": result.ai_accelerator_bonus,
+            "ai_profile_basis":     result.ai_profile_basis,
+            "weighted_score":       result.raw_sum,
             "valuation_score":      result.dim_scores.get("valuation",     0),
             "growth_score":         result.dim_scores.get("growth",        0),
             "quality_score":        result.dim_scores.get("quality",       0),
@@ -680,6 +705,14 @@ def refresh_prices_only(
             continue
 
         score_updates = {
+            "ai_profile":           result.ai_profile_label,
+            "ai_profile_key":       result.ai_profile_key,
+            "ai_profile_exposure":  ("" if result.ai_profile_exposure is None
+                                      else f"{result.ai_profile_exposure:.4f}"),
+            "ai_raw_exposure_score": result.ai_raw_exposure_score,
+            "ai_accelerator_bonus": result.ai_accelerator_bonus,
+            "ai_profile_basis":     result.ai_profile_basis,
+            "weighted_score":       result.raw_sum,
             "valuation_score":      result.dim_scores.get("valuation",      0),
             "growth_score":         result.dim_scores.get("growth",         0),
             "quality_score":        result.dim_scores.get("quality",        0),

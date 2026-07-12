@@ -22,8 +22,9 @@ from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, s
 from quant_engine import score_ticker
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
 from investor_lenses import all_investor_lenses
+from price_zone_chart import render_price_zone_svg
 import decision_policy as _decision_policy
-if getattr(_decision_policy, "POLICY_VERSION", 0) < 2:
+if getattr(_decision_policy, "POLICY_VERSION", 0) < 6:
     _decision_policy = importlib.reload(_decision_policy)
 evaluate_decision = _decision_policy.evaluate_decision
 score_band = _decision_policy.score_band
@@ -55,6 +56,13 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
     # first-wins: each target name is claimed by the first column whose prefix matches
     _taken: set[str] = set()
     _SCORE_PREFIXES = [
+        ("aiprofile_", "ai_profile"),
+        ("aiprofilekey_", "ai_profile_key"),
+        ("aiexposure_", "ai_profile_exposure"),
+        ("airaw_", "ai_raw_exposure_score"),
+        ("aibonus_", "ai_accelerator_bonus"),
+        ("aibasis_", "ai_profile_basis"),
+        ("weighted_", "weighted_score"),
         ("val_",      "valuation_score"),
         ("grw_",      "growth_score"),
         ("qlt_",      "quality_score"),
@@ -79,7 +87,9 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
 
     for col in ["valuation_score", "growth_score", "quality_score",
                 "ai_exposure_score", "expectation_gap_score",
-                "momentum_score", "risk_penalty", "final_score"]:
+                "momentum_score", "risk_penalty", "final_score",
+                "ai_profile_exposure", "ai_raw_exposure_score",
+                "ai_accelerator_bonus", "weighted_score"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
@@ -97,9 +107,22 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
     df["estimated_fields"] = (22 - pd.to_numeric(df[lf_col], errors="coerce").fillna(0)).clip(0).astype(int) \
         if lf_col else 0
 
-    # Final Score is a quality band, not a trade order.  Actionable conclusions
-    # additionally require valuation alignment and the 95% evidence gate.
-    df["rating"] = df["final_score"].apply(score_band)
+    def _csv_number(prefix: str, *, pct: bool = False):
+        column = next((c for c in df.columns if c.startswith(prefix)), None)
+        if not column:
+            return pd.Series(np.nan, index=df.index)
+        values = df[column].astype(str).str.extract(r"([-+]?\d*\.?\d+)")[0]
+        result = pd.to_numeric(values, errors="coerce")
+        return result / 100.0 if pct else result
+
+    _forward_pe = _csv_number("raw_forward_pe")
+    _ev_sales = _csv_number("raw_ev_sales")
+    _fcf_yield = _csv_number("raw_fcf_yield", pct=True)
+
+    # Final Score is a quality band, not a trade order. Actionable conclusions
+    # also require valuation alignment, the 95% evidence gate, and no
+    # independent high-multiple contradiction.
+    df["quality_band"] = df["final_score"].apply(score_band)
     def _row_decision(r):
         return evaluate_decision(
             r["final_score"],
@@ -107,17 +130,23 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
             r.get("validation_confidence"),
             human_review_required=str(r.get("human_review_required", "FALSE")).upper() == "TRUE",
             validation_status=r.get("validation_status"),
+            forward_pe=_forward_pe.loc[r.name],
+            ev_sales=_ev_sales.loc[r.name],
+            fcf_yield=_fcf_yield.loc[r.name],
         )
     _decisions = df.apply(_row_decision, axis=1)
     df["decision"] = [d.label for d in _decisions]
     df["decision_reason"] = [d.reason for d in _decisions]
     df["decision_actionable"] = [d.actionable for d in _decisions]
+    df["rating"] = df["decision"]
     df["kelly_position_pct"] = [
         suggested_position_pct(s) if actionable else None
         for s, actionable in zip(df["final_score"], df["decision_actionable"])
     ]
 
-    df = df.sort_values("final_score", ascending=False).reset_index(drop=True)
+    df = df.sort_values(
+        ["decision_actionable", "final_score"], ascending=[False, False]
+    ).reset_index(drop=True)
     df.index = df.index + 1   # 1-based ranking
     return df
 
@@ -434,36 +463,19 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
         max-width: 100% !important;
         overflow: hidden !important;
     }
-    /* ⚠️ Streamlit 每个 st.xxx() 调用都单独包一层 stElementContainer，
-       .price-zone-print-anchor（markdown 调用）和图表（plotly_chart 调用）
-       不是直接兄弟节点，是各自 stElementContainer 才互为兄弟——用 :has()
-       先定位到锚点所在的 stElementContainer，再选它的下一个兄弟容器。
-       之前用 ".price-zone-print-anchor + div" 直接选，永远选不中，
-       导致打印时图表宽度用了默认渲染宽度而不是 100%，右侧大片留白。 */
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"],
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] > div,
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .js-plotly-plot,
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .plot-container,
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .svg-container {
-        zoom: 1 !important;
+    /* 价格温度带使用原生 SVG viewBox。网页和打印共享同一坐标系，禁止改回
+       依赖 beforeprint 重排的 Plotly 图，否则 Chrome 预览可能再次截掉右侧。 */
+    .price-zone-svg-wrap {
         width: 100% !important;
         max-width: 100% !important;
+        overflow: hidden !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
     }
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] svg,
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] canvas {
+    .price-zone-svg {
+        display: block !important;
         width: 100% !important;
-        max-width: 100% !important;
-    }
-    div[data-testid="stElementContainer"]:has(.price-zone-print-anchor)
-        + div[data-testid="stElementContainer"] [data-testid="stPlotlyChart"] .modebar {
-        display: none !important;
+        height: auto !important;
     }
     .investor-lens-card {
         break-inside: avoid !important;
@@ -544,6 +556,7 @@ RATING_COLORS = {
     "⚠️ 谨慎评估":   "#FF8C42",
     "⚠️ 谨慎":       "#FF8C42",
     "⚠️ 高价观察":   "#FF8C42",
+    "⚠️ 高估值待验证": "#C46A3B",
     "🧾 数据待复核": "#A67C3D",
     "🧾 估值待复核": "#A67C3D",
     "🚫 风险较高":   "#FF4B6E",
@@ -1120,11 +1133,11 @@ df_view = df_view[df_view["final_score"] >= min_score]
 if page == "🏆 排行榜":
     # ── 顶部汇总指标（可点击筛选）────────────────────────
     total      = len(df_view)
-    strong_buy = (df_view["rating"] == "⭐ 综合强劲").sum()
-    buy        = (df_view["rating"] == "✅ 综合良好").sum()
-    watch      = (df_view["rating"] == "👀 综合中性").sum()
-    expensive  = (df_view["rating"] == "⚠️ 谨慎评估").sum()
-    avoid      = (df_view["rating"] == "🚫 风险较高").sum()
+    strong_buy = (df_view["rating"] == "⭐ 重点候选").sum()
+    buy        = (df_view["rating"] == "✅ 候选").sum()
+    watch      = (df_view["rating"] == "👀 观察").sum()
+    expensive  = df_view["rating"].isin(["⚠️ 高价观察", "⚠️ 高估值待验证"]).sum()
+    avoid      = df_view["rating"].isin(["🧾 数据待复核", "🧾 数据待复核（高价区）", "🧾 估值待复核", "🚫 回避"]).sum()
 
     # filter_rating 可取值：None / "buy_plus" / "watch" / "expensive" / "avoid"
     _fr = st.session_state.filter_rating
@@ -1141,26 +1154,26 @@ if page == "🏆 排行榜":
                   use_container_width=True)
 
     with _sc2:
-        _lbl = f"{'✓ ' if _fr == 'buy_plus' else ''}{strong_buy + buy}\n强劲/良好"
-        st.button(_lbl, key="flt_buy", help="筛选综合强劲与综合良好；这不是买入指令",
+        _lbl = f"{'✓ ' if _fr == 'buy_plus' else ''}{strong_buy + buy}\n优先候选"
+        st.button(_lbl, key="flt_buy", help="筛选通过数据、估值与综合质量闸门的候选；这不是买入指令",
                   on_click=_set_filter, args=["buy_plus"],
                   use_container_width=True)
 
     with _sc3:
-        _lbl = f"{'✓ ' if _fr == 'watch' else ''}{watch}\n中  性"
-        st.button(_lbl, key="flt_watch", help="筛选综合中性（50-64分）",
+        _lbl = f"{'✓ ' if _fr == 'watch' else ''}{watch}\n观  察"
+        st.button(_lbl, key="flt_watch", help="筛选暂未形成行动结论的观察标的",
                   on_click=_set_filter, args=["watch"],
                   use_container_width=True)
 
     with _sc4:
-        _lbl = f"{'✓ ' if _fr == 'expensive' else ''}{expensive}\n谨慎评估"
-        st.button(_lbl, key="flt_exp", help="筛选谨慎评估（35-49分）",
+        _lbl = f"{'✓ ' if _fr == 'expensive' else ''}{expensive}\n估值待验证"
+        st.button(_lbl, key="flt_exp", help="筛选存在独立估值压力或价格门槛问题的标的",
                   on_click=_set_filter, args=["expensive"],
                   use_container_width=True)
 
     with _sc5:
-        _lbl = f"{'✓ ' if _fr == 'avoid' else ''}{avoid}\n风险较高"
-        st.button(_lbl, key="flt_avoid", help="筛选综合风险较高（低于35分）",
+        _lbl = f"{'✓ ' if _fr == 'avoid' else ''}{avoid}\n复核/回避"
+        st.button(_lbl, key="flt_avoid", help="筛选数据待复核或当前不适合新增仓位的标的",
                   on_click=_set_filter, args=["avoid"],
                   use_container_width=True)
 
@@ -1185,14 +1198,10 @@ if page == "🏆 排行榜":
 
     # ── 激活筛选横幅 ──────────────────────────────────────
     _FR_META = {
-        "buy_plus":  ("综合强劲 / 综合良好", "#00D4AA",
-                      ["⭐ 综合强劲", "✅ 综合良好"]),
-        "watch":     ("👀 综合中性", "#FFB347",
-                      ["👀 综合中性"]),
-        "expensive": ("⚠️ 谨慎评估", "#FF8C42",
-                      ["⚠️ 谨慎评估"]),
-        "avoid":     ("🚫 风险较高", "#FF4B6E",
-                      ["🚫 风险较高"]),
+        "buy_plus":  ("重点候选 / 候选", "#00D4AA", ["⭐ 重点候选", "✅ 候选"]),
+        "watch":     ("👀 观察", "#FFB347", ["👀 观察"]),
+        "expensive": ("⚠️ 估值待验证", "#FF8C42", ["⚠️ 高价观察", "⚠️ 高估值待验证"]),
+        "avoid":     ("🧾 复核 / 回避", "#FF4B6E", ["🧾 数据待复核", "🧾 数据待复核（高价区）", "🧾 估值待复核", "🚫 回避"]),
     }
     if _fr and _fr in _FR_META:
         _fr_label, _fr_color, _fr_ratings = _FR_META[_fr]
@@ -1361,17 +1370,25 @@ elif page == "🔍 单股详情":
         (function() {
             var w = window.parent;
             if (!w || !w.document || !w.Plotly) return;
+
             function resizeAllPlots() {
                 w.document.querySelectorAll('.js-plotly-plot').forEach(function(gd) {
                     try { w.Plotly.Plots.resize(gd); } catch (e) {}
                 });
             }
+
             w.addEventListener('beforeprint', function() {
-                setTimeout(resizeAllPlots, 60);
+                resizeAllPlots();
             });
+            w.addEventListener('afterprint', resizeAllPlots);
             if (w.matchMedia) {
                 var mq = w.matchMedia('print');
-                var handler = function(e) { if (e.matches) setTimeout(resizeAllPlots, 60); };
+                var handler = function(e) {
+                    if (e.matches) {
+                        resizeAllPlots();
+                        w.requestAnimationFrame(resizeAllPlots);
+                    } else { resizeAllPlots(); }
+                };
                 if (mq.addEventListener) { mq.addEventListener('change', handler); }
                 else if (mq.addListener) { mq.addListener(handler); }
             }
@@ -1461,10 +1478,29 @@ elif page == "🔍 单股详情":
         _val_conf,
         human_review_required=_hr_needed,
         validation_status=_val_status,
+        forward_pe=data.get("forward_pe"),
+        ev_sales=data.get("ev_sales"),
+        fcf_yield=data.get("fcf_yield"),
     )
     _rating_plain = _ed_plain(_decision.label)
     r_color = _ed_rating_color(_decision.label)
     _quality_band = _ed_plain(score_band(fs))
+    _ai_profile = str(row.get("ai_profile", "AI待验证") or "AI待验证")
+    _ai_profile_key = str(row.get("ai_profile_key", "AI_UNVERIFIED") or "AI_UNVERIFIED")
+    _ai_exposure = row.get("ai_profile_exposure")
+    _ai_raw_score = float(row.get("ai_raw_exposure_score", 0) or 0)
+    _ai_bonus = float(row.get("ai_accelerator_bonus", 0) or 0)
+    _ai_basis = str(row.get("ai_profile_basis", "缺少可用AI暴露数据") or "缺少可用AI暴露数据")
+    _profile_weights_text = {
+        "AI_CORE": "估值20% · 成长25% · 质量15% · AI20% · 预期差10% · 动量10%",
+        "AI_ENABLED": "估值20% · 成长25% · 质量15% · AI中性基线50 · 预期差10% · 动量10%",
+        "QUALITY_TRADITIONAL": "估值20% · 成长25% · 质量15% · AI中性基线50 · 预期差10% · 动量10%",
+        "AI_UNVERIFIED": "AI中性基线50 · 不加分 · 等待证据",
+    }.get(_ai_profile_key, "AI分类权重待复核")
+    try:
+        _ai_exposure_text = f"{float(_ai_exposure) * 100:.1f}%"
+    except (TypeError, ValueError):
+        _ai_exposure_text = "待验证"
 
     # ── 打印专属抬头（仅 PDF/打印时可见，屏幕不显示）──────────
     _company = row.get("company", ticker)
@@ -1486,7 +1522,7 @@ elif page == "🔍 单股详情":
         f"<div style='font-size:34px;font-weight:700;color:{_ED_INK};line-height:1;"
         f"font-family:{_ED_SERIF}'>{ticker}</div>"
         f"<div style='font-size:13px;color:{_ED_MUTED};margin-top:4px'>{_company}"
-        f" · {row.get('category','')} · {cat.value}</div>"
+        f" · {row.get('category','')} · {cat.value} · {_ai_profile}</div>"
         f"</div>"
         f"<div style='text-align:right'>"
         f"<span style='color:{r_color};font-size:13px;font-weight:600;"
@@ -1524,6 +1560,10 @@ elif page == "🔍 单股详情":
             f"text-transform:uppercase'>类型</div>"
             f"<div style='font-size:14px;font-weight:500;"
             f"color:{_ED_INK};padding-top:3px'>{cat.value}</div></div>"
+            f"<div><div style='color:{_ED_MUTED};font-size:10px;"
+            f"text-transform:uppercase'>AI角色</div>"
+            f"<div style='font-size:14px;font-weight:500;"
+            f"color:{_ED_INK};padding-top:3px'>{_ai_profile}</div></div>"
             f"</div>"
             f"<div style='color:{_ED_MUTED};font-size:10px;margin-top:8px'>"
             f"results_validated.csv · 验证置信度 {conf_pct}"
@@ -1548,7 +1588,7 @@ elif page == "🔍 单股详情":
 
     with h3:
         rp = row["risk_penalty"]
-        rs = row["raw_score"]
+        rs = float(row.get("weighted_score", row["raw_score"] - _ai_bonus) or 0)
         st.markdown(
             f"<div style='padding:0 0 0 20px;border-left:1px solid {_ED_HAIR}'>"
             f"<div style='color:{_ED_MUTED};font-size:11px;"
@@ -1557,6 +1597,10 @@ elif page == "🔍 单股详情":
             f"margin-bottom:6px'>"
             f"<span style='color:{_ED_MUTED};font-size:12px'>加权合计</span>"
             f"<span style='color:{_ED_INK};font-weight:600'>{rs:.1f}</span></div>"
+            f"<div style='display:flex;justify-content:space-between;"
+            f"margin-bottom:6px'>"
+            f"<span style='color:{_ED_ACCENT_LIGHT};font-size:12px'>AI加速器</span>"
+            f"<span style='color:{_ED_ACCENT_LIGHT};font-weight:600'>+{_ai_bonus:.2f}</span></div>"
             f"<div style='display:flex;justify-content:space-between;"
             f"margin-bottom:6px'>"
             f"<span style='color:{_ED_DANGER};font-size:12px'>风险扣分</span>"
@@ -1577,6 +1621,17 @@ elif page == "🔍 单股详情":
             unsafe_allow_html=True)
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:#F3F0E8;border:1px solid {_ED_HAIR};"
+        f"border-left:3px solid {_ED_ACCENT_LIGHT};border-radius:8px;"
+        f"padding:9px 12px;margin:0 0 12px;color:{_ED_INK};font-size:11px;line-height:1.55'>"
+        f"<strong>AI角色分类：{_ai_profile}</strong> · 暴露基础 {_ai_exposure_text} · "
+        f"原始AI信号 {_ai_raw_score:.1f} · AI加速器 +{_ai_bonus:.2f}<br>"
+        f"{_profile_weights_text}<br>"
+        f"<span style='color:{_ED_MUTED}'>判断基础：{_ai_basis}。AI赋能型和传统优质型采用中性AI基线，"
+        f"只有已识别的AI贡献提供正向加分。</span></div>",
+        unsafe_allow_html=True,
+    )
 
     # ── 半凯利建议仓位 ───────────────────────────────────
     _kp     = suggested_position_pct(fs) if _decision.actionable else None
@@ -1670,12 +1725,7 @@ elif page == "🔍 单股详情":
             unsafe_allow_html=True,
         )
 
-        st.markdown("<div class='price-zone-print-anchor'></div>", unsafe_allow_html=True)
-        st.plotly_chart(
-            make_price_zone_chart(_ps),
-            use_container_width=True,
-            config={"displayModeBar": False, "responsive": True},
-        )
+        st.markdown(render_price_zone_svg(_ps), unsafe_allow_html=True)
         st.markdown(
             "<div style='background:#F3F0E8;"
             "border:1px solid #DAD5C6;border-left:3px solid #4A6B5C;"

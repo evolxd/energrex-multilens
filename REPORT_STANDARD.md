@@ -119,17 +119,19 @@ measures and what it does not claim to predict.
 
 ## 5. Rating and score display
 
-- The only source of truth for a ticker's rating label is
-  `_score_to_rating(final_score)` in `app.py` (≥65 Strong Buy, ≥55 Buy,
-  ≥45 Watch, ≥35 Expensive, else Avoid). This is applied once to the whole
-  `df` right after load (`df["rating"] = df["final_score"].apply(...)`),
-  so `row["rating"]` anywhere downstream in `app.py` is already correct —
-  you do not need to recompute it again.
+- The only source of truth for Final Score quality bands and actionable
+  conclusions is `scoring/decision_policy.py`. Final Score bands are
+  ≥80 综合强劲, ≥65 综合良好, ≥50 综合中性, ≥35 谨慎评估, else 风险较高. These are candidate
+  quality labels, not trade orders.
+- A displayed decision must use `evaluate_decision()` and pass all gates:
+  valuation score ≥60, data validity ≥95%, no unresolved human-review flag,
+  and an aligned Final Score. A high-price zone or failed data gate must never
+  display an actionable conclusion or Kelly position size.
 - **Do not read the CSV's `rating_评级` / `rating` column directly** in any
   new script or ad-hoc analysis (e.g. a bare `pandas.read_csv` outside
   `app.py`) and treat it as current — it can be stale relative to the live
-  thresholds. Always run it through `_score_to_rating()` (or the
-  equivalent band logic) before displaying or reasoning about it.
+  policy. Always run it through `score_band()` / `evaluate_decision()` before
+  displaying or reasoning about it.
 - Score color and rating badge color must come from the existing
   `score_color()` / `rating_color()` helpers — don't hardcode a hex value
   for a new UI element that shows a score or rating.
