@@ -212,6 +212,12 @@ narrative). They use different taxonomies (`sector_tag` string vs
 
 ## 4. Deployment status — nothing is confirmed fully live yet
 
+**Read `DEPLOYMENT_SYNC_STANDARD.md` before marking any task "done" in this
+repo.** The standing rule: local files + git push + actually-deployed
+server, all three, or it isn't finished — "committed and pushed" is not
+"live." This section is the current best-known state against that
+standard; keep the two in sync if the situation changes.
+
 - **GitHub**: `https://github.com/evolxd/energrex-multilens`, branch
   `master`, visibility **PUBLIC** (changed from private in this session
   after a full history audit found no secrets/credentials — see git log
