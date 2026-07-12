@@ -5,12 +5,13 @@ AI成长股估值评分系统 — Streamlit Dashboard
 数据源：results_validated.csv（84只美股，验证通过）
 """
 
-import sys, os, pathlib, datetime, io, subprocess, re
+import sys, os, pathlib, datetime, io, subprocess, re, importlib
 import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scoring"))
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -21,6 +22,13 @@ from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, s
 from quant_engine import score_ticker
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
 from investor_lenses import all_investor_lenses
+import decision_policy as _decision_policy
+if getattr(_decision_policy, "POLICY_VERSION", 0) < 2:
+    _decision_policy = importlib.reload(_decision_policy)
+evaluate_decision = _decision_policy.evaluate_decision
+score_band = _decision_policy.score_band
+from mock_data import MOCK_STOCKS
+from quant_data import QUANT_META, QUANT_AI_EXPOSURE
 
 _ROOT          = pathlib.Path(__file__).parent
 _CSV_VALIDATED = _ROOT / "results_validated.csv"
@@ -39,7 +47,8 @@ def _parse_raw_cell(cell) -> float | None:
 
 
 @st.cache_data(ttl=300)
-def load_from_csv() -> pd.DataFrame:
+def load_from_csv(policy_version: int) -> pd.DataFrame:
+    _ = policy_version  # part of the cache key; invalidates stale rating labels
     path = _CSV_VALIDATED if _CSV_VALIDATED.exists() else _CSV_RAW
     df = pd.read_csv(path, encoding="utf-8-sig")
 
@@ -88,16 +97,25 @@ def load_from_csv() -> pd.DataFrame:
     df["estimated_fields"] = (22 - pd.to_numeric(df[lf_col], errors="coerce").fillna(0)).clip(0).astype(int) \
         if lf_col else 0
 
-    # Always recompute rating from final_score — CSV column may be stale
-    def _score_to_rating(s: float) -> str:
-        if   s >= 65: return "⭐ Strong Buy"
-        elif s >= 55: return "✅ Buy"
-        elif s >= 45: return "👀 Watch"
-        elif s >= 35: return "⚠️ Expensive"
-        else:         return "🚫 Avoid"
-
-    df["rating"] = df["final_score"].apply(_score_to_rating)
-    df["kelly_position_pct"] = df["final_score"].apply(suggested_position_pct)
+    # Final Score is a quality band, not a trade order.  Actionable conclusions
+    # additionally require valuation alignment and the 95% evidence gate.
+    df["rating"] = df["final_score"].apply(score_band)
+    def _row_decision(r):
+        return evaluate_decision(
+            r["final_score"],
+            r.get("valuation_score"),
+            r.get("validation_confidence"),
+            human_review_required=str(r.get("human_review_required", "FALSE")).upper() == "TRUE",
+            validation_status=r.get("validation_status"),
+        )
+    _decisions = df.apply(_row_decision, axis=1)
+    df["decision"] = [d.label for d in _decisions]
+    df["decision_reason"] = [d.reason for d in _decisions]
+    df["decision_actionable"] = [d.actionable for d in _decisions]
+    df["kelly_position_pct"] = [
+        suggested_position_pct(s) if actionable else None
+        for s, actionable in zip(df["final_score"], df["decision_actionable"])
+    ]
 
     df = df.sort_values("final_score", ascending=False).reset_index(drop=True)
     df.index = df.index + 1   # 1-based ranking
@@ -148,11 +166,19 @@ def build_csv_data(df_json: str) -> dict[str, dict]:
     result: dict[str, dict] = {}
     for _, row in df.iterrows():
         ticker = row["ticker"]
-        d: dict = {"company_name": row.get("company", ticker)}
+        raw: dict = {"company_name": row.get("company", ticker)}
         for col, (field, pct) in col_map.items():
             v = _parse_raw_cell(row.get(col))
             if v is not None:
-                d[field] = v / 100.0 if (pct and abs(v) > 2) else v
+                raw[field] = v / 100.0 if (pct and abs(v) > 2) else v
+        # Rebuild the same input layers used by refresh_scores.py so the
+        # current-price simulation and stored score do not use different data.
+        d: dict = dict(MOCK_STOCKS.get(ticker, {}))
+        d.update(QUANT_META.get(ticker, {}))
+        for field, value in QUANT_AI_EXPOSURE.get(ticker, {}).items():
+            if field not in d or d[field] is None:
+                d[field] = value
+        d.update(raw)
         if "de_ratio" in d:
             d["debt_to_equity"] = d["de_ratio"]
         result[ticker] = d
@@ -169,7 +195,7 @@ def save_overrides(data: dict):
     OVERRIDES_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # ── 加载数据 ──────────────────────────────────────────────
-df = load_from_csv()
+df = load_from_csv(_decision_policy.POLICY_VERSION)
 _CSV_MTIME = (_CSV_VALIDATED if _CSV_VALIDATED.exists() else _CSV_RAW).stat().st_mtime
 _csv_data: dict[str, dict] = build_csv_data(df.reset_index().to_json(orient="split"))
 TICKERS = df["ticker"].tolist()
@@ -509,11 +535,19 @@ if "filter_rating" not in st.session_state:
 
 # ── 辅助函数 ─────────────────────────────────────────────
 RATING_COLORS = {
-    "⭐ Strong Buy": "#00D4AA",
-    "✅ Buy":        "#4CAF50",
-    "👀 Watch":      "#FFB347",
-    "⚠️ Expensive":  "#FF8C42",
-    "🚫 Avoid":      "#FF4B6E",
+    "⭐ 综合强劲":   "#00D4AA",
+    "⭐ 重点候选":   "#00D4AA",
+    "✅ 综合良好":   "#4CAF50",
+    "✅ 候选":       "#4CAF50",
+    "👀 综合中性":   "#FFB347",
+    "👀 观察":       "#FFB347",
+    "⚠️ 谨慎评估":   "#FF8C42",
+    "⚠️ 谨慎":       "#FF8C42",
+    "⚠️ 高价观察":   "#FF8C42",
+    "🧾 数据待复核": "#A67C3D",
+    "🧾 估值待复核": "#A67C3D",
+    "🚫 风险较高":   "#FF4B6E",
+    "🚫 回避":       "#FF4B6E",
 }
 
 SCORE_COLS = [
@@ -531,9 +565,9 @@ def rating_color(rating: str) -> str:
     return "#8B9BB4"
 
 def score_color(score: float) -> str:
-    if score >= 65: return "#00D4AA"
-    if score >= 55: return "#4CAF50"
-    if score >= 45: return "#FFB347"
+    if score >= 80: return "#00D4AA"
+    if score >= 65: return "#4CAF50"
+    if score >= 50: return "#FFB347"
     if score >= 35: return "#FF8C42"
     return "#FF4B6E"
 
@@ -707,14 +741,8 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
 
 def _quant_rating(score: float, circuit: bool = False) -> str:
     if circuit:
-        return "Watchlist" if score >= 50 else "Avoid"
-    if score >= 70:
-        return "Buy"
-    if score >= 60:
-        return "Hold"
-    if score >= 45:
-        return "Watchlist"
-    return "Avoid"
+        return "🧾 数据待复核"
+    return score_band(score)
 
 
 def _simulate_price_score(ticker: str, base_data: dict, price: float) -> dict | None:
@@ -1092,11 +1120,11 @@ df_view = df_view[df_view["final_score"] >= min_score]
 if page == "🏆 排行榜":
     # ── 顶部汇总指标（可点击筛选）────────────────────────
     total      = len(df_view)
-    strong_buy = (df_view["rating"] == "⭐ Strong Buy").sum()
-    buy        = (df_view["rating"] == "✅ Buy").sum()
-    watch      = (df_view["rating"] == "👀 Watch").sum()
-    expensive  = (df_view["rating"] == "⚠️ Expensive").sum()
-    avoid      = (df_view["rating"] == "🚫 Avoid").sum()
+    strong_buy = (df_view["rating"] == "⭐ 综合强劲").sum()
+    buy        = (df_view["rating"] == "✅ 综合良好").sum()
+    watch      = (df_view["rating"] == "👀 综合中性").sum()
+    expensive  = (df_view["rating"] == "⚠️ 谨慎评估").sum()
+    avoid      = (df_view["rating"] == "🚫 风险较高").sum()
 
     # filter_rating 可取值：None / "buy_plus" / "watch" / "expensive" / "avoid"
     _fr = st.session_state.filter_rating
@@ -1113,26 +1141,26 @@ if page == "🏆 排行榜":
                   use_container_width=True)
 
     with _sc2:
-        _lbl = f"{'✓ ' if _fr == 'buy_plus' else ''}{strong_buy + buy}\nBuy 以上"
-        st.button(_lbl, key="flt_buy", help="筛选 Buy 以上（Strong Buy + Buy）",
+        _lbl = f"{'✓ ' if _fr == 'buy_plus' else ''}{strong_buy + buy}\n强劲/良好"
+        st.button(_lbl, key="flt_buy", help="筛选综合强劲与综合良好；这不是买入指令",
                   on_click=_set_filter, args=["buy_plus"],
                   use_container_width=True)
 
     with _sc3:
-        _lbl = f"{'✓ ' if _fr == 'watch' else ''}{watch}\n观  察"
-        st.button(_lbl, key="flt_watch", help="筛选 👀 Watch（观察，≥45分）",
+        _lbl = f"{'✓ ' if _fr == 'watch' else ''}{watch}\n中  性"
+        st.button(_lbl, key="flt_watch", help="筛选综合中性（50-64分）",
                   on_click=_set_filter, args=["watch"],
                   use_container_width=True)
 
     with _sc4:
-        _lbl = f"{'✓ ' if _fr == 'expensive' else ''}{expensive}\n偏  贵"
-        st.button(_lbl, key="flt_exp", help="筛选 ⚠️ Expensive（偏贵）",
+        _lbl = f"{'✓ ' if _fr == 'expensive' else ''}{expensive}\n谨慎评估"
+        st.button(_lbl, key="flt_exp", help="筛选谨慎评估（35-49分）",
                   on_click=_set_filter, args=["expensive"],
                   use_container_width=True)
 
     with _sc5:
-        _lbl = f"{'✓ ' if _fr == 'avoid' else ''}{avoid}\n回  避"
-        st.button(_lbl, key="flt_avoid", help="筛选 🚫 Avoid（回避）",
+        _lbl = f"{'✓ ' if _fr == 'avoid' else ''}{avoid}\n风险较高"
+        st.button(_lbl, key="flt_avoid", help="筛选综合风险较高（低于35分）",
                   on_click=_set_filter, args=["avoid"],
                   use_container_width=True)
 
@@ -1157,14 +1185,14 @@ if page == "🏆 排行榜":
 
     # ── 激活筛选横幅 ──────────────────────────────────────
     _FR_META = {
-        "buy_plus":  ("Buy 以上", "#00D4AA",
-                      ["⭐ Strong Buy", "✅ Buy"]),
-        "watch":     ("👀 Watch（观察）", "#FFB347",
-                      ["👀 Watch"]),
-        "expensive": ("⚠️ Expensive（偏贵）", "#FF8C42",
-                      ["⚠️ Expensive"]),
-        "avoid":     ("🚫 Avoid（回避）", "#FF4B6E",
-                      ["🚫 Avoid"]),
+        "buy_plus":  ("综合强劲 / 综合良好", "#00D4AA",
+                      ["⭐ 综合强劲", "✅ 综合良好"]),
+        "watch":     ("👀 综合中性", "#FFB347",
+                      ["👀 综合中性"]),
+        "expensive": ("⚠️ 谨慎评估", "#FF8C42",
+                      ["⚠️ 谨慎评估"]),
+        "avoid":     ("🚫 风险较高", "#FF4B6E",
+                      ["🚫 风险较高"]),
     }
     if _fr and _fr in _FR_META:
         _fr_label, _fr_color, _fr_ratings = _FR_META[_fr]
@@ -1213,7 +1241,7 @@ if page == "🏆 排行榜":
             _kp_html = (
                 f"<span style='color:#8B9BB4;font-size:9px;margin-left:6px'>"
                 f"建议仓位(半凯利) {_kp*100:.1f}%</span>"
-                if _kp is not None else ""
+                if _kp is not None and pd.notna(_kp) else ""
             )
             st.markdown(
                 f"<div style='padding:6px 0;line-height:1.3'>"
@@ -1316,22 +1344,59 @@ elif page == "🔍 单股详情":
         "</style>",
         unsafe_allow_html=True)
 
+    # ── 打印时强制 Plotly 图表重新计算宽度 ──────────────────────
+    # 根因：Plotly.js 用 responsive/ResizeObserver 机制在屏幕上按容器宽度画图，
+    # 但真正从浏览器原生 Ctrl+P 触发打印时（不是 Playwright page.pdf() 那条走
+    # DevTools Print-to-PDF 协议的路径——那条路径会强制整页重新排版，掩盖了这个
+    # 问题，之前几次验证都是用它测的，所以"看起来修好了"），@media print 生效
+    # 时 Plotly 内部保留的还是屏幕阶段算出的旧宽度，SVG 不会自动重新排布，
+    # 导致图表比外层容器窄，右侧留白。CSS 的 width:100% 只能撑大 SVG 容器本身，
+    # 撑不动 Plotly 内部的坐标系统，必须显式调用 Plotly.Plots.resize() 才行。
+    # st.markdown 插入的 <script> 标签浏览器不会执行（innerHTML 插入的脚本天生
+    # 是"死"的），必须用 components.html（跑在 iframe 里）+ 穿透 window.parent
+    # 去操作父文档里真正的图表和 Plotly 实例。
+    components.html(
+        """
+        <script>
+        (function() {
+            var w = window.parent;
+            if (!w || !w.document || !w.Plotly) return;
+            function resizeAllPlots() {
+                w.document.querySelectorAll('.js-plotly-plot').forEach(function(gd) {
+                    try { w.Plotly.Plots.resize(gd); } catch (e) {}
+                });
+            }
+            w.addEventListener('beforeprint', function() {
+                setTimeout(resizeAllPlots, 60);
+            });
+            if (w.matchMedia) {
+                var mq = w.matchMedia('print');
+                var handler = function(e) { if (e.matches) setTimeout(resizeAllPlots, 60); };
+                if (mq.addEventListener) { mq.addEventListener('change', handler); }
+                else if (mq.addListener) { mq.addListener(handler); }
+            }
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
     _ED_INK, _ED_MUTED, _ED_HAIR = "#1E1E1B", "#6B6558", "#DAD5C6"
     _ED_ACCENT, _ED_ACCENT_LIGHT, _ED_WARN, _ED_DANGER = "#2F4A3C", "#4A6B5C", "#A67C3D", "#8B3A2E"
     _ED_SERIF = "Georgia, 'Times New Roman', serif"
 
     def _ed_score_color(score: float) -> str:
-        if score >= 65: return _ED_ACCENT
-        if score >= 55: return _ED_ACCENT_LIGHT
-        if score >= 45: return _ED_WARN
+        if score >= 80: return _ED_ACCENT
+        if score >= 65: return _ED_ACCENT_LIGHT
+        if score >= 50: return _ED_WARN
         if score >= 35: return "#8F5A2E"
         return _ED_DANGER
 
     def _ed_rating_color(rating: str) -> str:
-        if "Strong Buy" in rating: return _ED_ACCENT
-        if "Buy" in rating: return _ED_ACCENT_LIGHT
-        if "Watch" in rating: return _ED_WARN
-        if "Expensive" in rating: return "#8F5A2E"
+        if "综合强劲" in rating or "重点候选" in rating: return _ED_ACCENT
+        if "综合良好" in rating or "候选" in rating: return _ED_ACCENT_LIGHT
+        if "综合中性" in rating or "观察" in rating or "待复核" in rating: return _ED_WARN
+        if "谨慎" in rating: return "#8F5A2E"
         return _ED_DANGER
 
     def _ed_plain(label: str) -> str:
@@ -1362,11 +1427,9 @@ elif page == "🔍 单股详情":
 
     row  = df[df["ticker"] == ticker].iloc[0]
     # 使用合并后的数据（若已刷新则含实时字段）
-    data = get_active_stocks().get(ticker, {})
+    data = dict(get_active_stocks().get(ticker, {}))
     cat  = get_category(ticker)
     fs   = row["final_score"]
-    _rating_plain = _ed_plain(row["rating"])
-    r_color = _ed_rating_color(row["rating"])
     fs_color = _ed_score_color(fs)
 
     # validation metadata from the row
@@ -1377,6 +1440,31 @@ elif page == "🔍 单股详情":
     _tk_ov_detail = st.session_state.user_overrides.get(ticker, {})
     if any(isinstance(v, dict) and v.get("status") == "verified" for v in _tk_ov_detail.values()):
         _hr_needed = False
+    for field, entry in _tk_ov_detail.items():
+        value = entry.get("value") if isinstance(entry, dict) else entry
+        if value is not None:
+            try:
+                data[field] = float(value)
+            except (TypeError, ValueError):
+                pass
+
+    # The detail-page decision uses the same current-price simulation shown by
+    # the price-temperature chart.  This prevents stale stored valuation scores
+    # from producing a contradictory headline.
+    _ps = _price_sensitivity_report(ticker, data, fs)
+    _dynamic_val_score = row.get("valuation_score")
+    if _ps.get("available") and _ps.get("current_sim"):
+        _dynamic_val_score = _ps["current_sim"].get("valuation_score", _dynamic_val_score)
+    _decision = evaluate_decision(
+        fs,
+        _dynamic_val_score,
+        _val_conf,
+        human_review_required=_hr_needed,
+        validation_status=_val_status,
+    )
+    _rating_plain = _ed_plain(_decision.label)
+    r_color = _ed_rating_color(_decision.label)
+    _quality_band = _ed_plain(score_band(fs))
 
     # ── 打印专属抬头（仅 PDF/打印时可见，屏幕不显示）──────────
     _company = row.get("company", ticker)
@@ -1451,9 +1539,10 @@ elif page == "🔍 单股详情":
             f"text-transform:uppercase;letter-spacing:1px'>综合评分</div>"
             f"<div style='font-size:56px;font-weight:700;font-family:{_ED_SERIF};"
             f"color:{fs_color};line-height:1.1;margin:4px 0'>{fs:.0f}</div>"
-            f"<div style='color:{_ED_MUTED};font-size:11px'>/ 100</div>"
+            f"<div style='color:{_ED_MUTED};font-size:11px'>/ 100 · 候选质量分</div>"
             f"<div style='margin-top:8px'>"
             f"<span style='color:{r_color};font-size:12px;font-weight:600'>{_rating_plain}</span>"
+            f"<div style='color:{_ED_MUTED};font-size:10px;margin-top:3px'>质量分档：{_quality_band}</div>"
             f"</div></div>",
             unsafe_allow_html=True)
 
@@ -1490,13 +1579,13 @@ elif page == "🔍 单股详情":
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ── 半凯利建议仓位 ───────────────────────────────────
-    _kp     = suggested_position_pct(fs)
+    _kp     = suggested_position_pct(fs) if _decision.actionable else None
     _kmeta  = kelly_meta()
     _kdet   = band_detail(fs)
     if _kp is not None and _kdet:
         with st.expander(f"建议仓位（半凯利）：{_kp*100:.1f}%", expanded=False):
             kc1, kc2, kc3, kc4 = st.columns(4)
-            kc1.metric("所属分档", _kdet.get("rating_label", "—"))
+            kc1.metric("质量分档", _quality_band)
             kc2.metric("历史胜率(近似)", f"{_kdet.get('win_rate', 0)*100:.1f}%")
             kc3.metric("赔率(avg_win/avg_loss)", f"{_kdet.get('payoff_ratio', '—')}")
             kc4.metric("样本数", _kdet.get("sample_size", "—"))
@@ -1505,10 +1594,9 @@ elif page == "🔍 单股详情":
             )
             _ed_alert(_kmeta.get("caveat", ""), "warning")
     elif _kp is None:
-        st.caption("半凯利建议仓位：该分档样本不足或尚无回测数据，暂不显示")
+        st.caption(f"半凯利建议仓位：暂不显示。{_decision.reason}")
 
     # ── 价格温度带 ─────────────────────────────────
-    _ps = _price_sensitivity_report(ticker, data, fs)
     st.markdown("#### 价格温度带")
     if not _ps.get("available"):
         _ed_alert(f"价格温度带暂不可用：{_ps.get('reason', '缺少价格或基本面分母')}", "info")
@@ -1623,7 +1711,7 @@ elif page == "🔍 单股详情":
                 f"<td>{_shock:+.0%}</td>"
                 f"<td>${_r['price']:,.2f}</td>"
                 f"<td style='color:{_score_col};font-weight:700'>{_r['final_score']:.1f}</td>"
-                f"<td>{_r['rating']}</td>"
+                f"<td>{_ed_plain(score_band(_r['final_score']))}</td>"
                 f"<td>{_r['valuation_score']:.1f}</td>"
                 f"<td>{_r['forward_pe']:.1f}x</td>"
                 f"<td>{_r['ev_sales']:.1f}x</td>"
@@ -1640,7 +1728,7 @@ elif page == "🔍 单股详情":
             f"<th style='text-align:left;padding:7px 10px'>价格变化</th>"
             f"<th style='text-align:left;padding:7px 10px'>假设价格</th>"
             f"<th style='text-align:left;padding:7px 10px'>Final</th>"
-            f"<th style='text-align:left;padding:7px 10px'>评级</th>"
+            f"<th style='text-align:left;padding:7px 10px'>综合分档</th>"
             f"<th style='text-align:left;padding:7px 10px'>估值分</th>"
             f"<th style='text-align:left;padding:7px 10px'>Fwd PE</th>"
             f"<th style='text-align:left;padding:7px 10px'>EV/Sales</th>"
@@ -2674,7 +2762,7 @@ elif page == "🔬 评分审计":
         f"</div>",
         unsafe_allow_html=True)
 
-    rating_map = {"⭐ Strong Buy":65,"✅ Buy":55,"👀 Watch":45,"⚠️ Expensive":35}
+    rating_map = {"⭐ 综合强劲":80, "✅ 综合良好":65, "👀 综合中性":50, "⚠️ 谨慎评估":35, "🚫 风险较高":0}
     for r_label, threshold in rating_map.items():
         if final >= threshold:
             rc = rating_color(r_label)
