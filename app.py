@@ -687,6 +687,7 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
         text=[f"{v:.0f}" for v in values],
         textposition="inside",
         insidetextanchor="end",
+        textangle=0,
         textfont=dict(color="#FAF8F3", size=11),
         hovertemplate="%{y}: %{x:.1f}<extra></extra>",
     ))
