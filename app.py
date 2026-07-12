@@ -988,28 +988,43 @@ def _age_str(ts: datetime.datetime | None) -> str:
     return f"{h}小时{rm}分钟前" if rm else f"{h}小时前"
 
 import _sidebar as _sb
-_sb.render()
+
+# 二级导航（排行榜/单股详情/…）改成在 render_nav() 内部、紧贴着
+# "AI 估值评分" 一级入口下面原地渲染，不再和它中间隔着数据更新/风险状态——
+# 两级导航是同一件事（"我现在在哪 / 我要去哪"），不该被状态类widget拆开。
+# st.radio 在回调里创建，用这个字典把选中值带出闭包。
+_subnav = {}
+
+def _render_ai_valuation_subnav():
+    st.markdown(
+        "<div style='margin-left:26px;color:#6B7280;font-size:10px;"
+        "letter-spacing:0.5px;margin-bottom:2px'>该页面内导航</div>",
+        unsafe_allow_html=True)
+    _subnav["page"] = st.radio(
+        "AI估值评分页面内导航", key="ai_valuation_subnav",
+        options=["🏆 排行榜", "🔍 单股详情", "⚖️ 对比分析", "🔬 评分审计", "📝 数据编辑"],
+        label_visibility="collapsed",
+    )
+
+_sb.render_nav(subnav_render_fn=_render_ai_valuation_subnav)
+page = _subnav["page"]
+_sb.render_status()
 
 with st.sidebar:
-    st.markdown("### 📊 AI估值评分系统")
-
-    # CSV source info
+    # CSV source info（这页的数据状态，不是导航，放导航下面单独一块）
     _csv_file = _CSV_VALIDATED if _CSV_VALIDATED.exists() else _CSV_RAW
     _csv_dt   = datetime.datetime.fromtimestamp(_CSV_MTIME)
     _csv_age  = _age_str(_csv_dt)
+    st.markdown(
+        f"<div style='font-size:10px;color:#6B6558;text-transform:uppercase;"
+        f"letter-spacing:1px;margin-bottom:4px'>AI 估值评分数据</div>",
+        unsafe_allow_html=True)
     st.markdown(
         f"<span style='color:#4FC3F7;font-size:12px'>📄 {_csv_file.name} · {_csv_age}</span>",
         unsafe_allow_html=True)
     st.markdown(
         f"<span style='color:#8B9BB4;font-size:11px'>{len(df)} 只美股 · 84/84 验证通过</span>",
         unsafe_allow_html=True)
-    st.divider()
-
-    page = st.radio(
-        "导航",
-        ["🏆 排行榜", "🔍 单股详情", "⚖️ 对比分析", "🔬 评分审计", "📝 数据编辑"],
-        label_visibility="collapsed",
-    )
     st.divider()
 
     # 快速筛选

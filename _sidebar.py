@@ -85,11 +85,14 @@ def _hhmm(ts: str | None) -> str:
         return ts or "—"
 
 
-def render() -> None:
-    """渲染 ENERGREX 共享侧边栏。每个页面顶部调用一次。"""
-    d      = _load_db()
-    chrome = _chrome_ok()
+def render_nav(subnav_render_fn=None) -> None:
+    """渲染顶部品牌 + 导航（含可选的当前页二级导航，紧跟在对应一级入口下面，
+    不再和它中间隔着数据更新/风险状态——两级导航应该是同一个视觉群组）。
 
+    subnav_render_fn: 可选回调，在 "AI 估值评分" 这一项下面原地渲染二级导航
+    （比如 app.py 的 排行榜/单股详情/对比分析/评分审计/数据编辑），
+    只有当前就在该页面时才需要传。其余页面不传，行为不变。
+    """
     with st.sidebar:
         # ── 标题 ─────────────────────────────────────────
         st.markdown(
@@ -99,7 +102,7 @@ def render() -> None:
         )
         st.divider()
 
-        # ── 导航 ─────────────────────────────────────────
+        # ── 导航（一级 + 二级合并成一组）───────────────────
         st.markdown(
             f"<div style='font-size:10px;color:{_MUT};text-transform:uppercase;"
             f"letter-spacing:1px;margin-bottom:2px'>📍 导航</div>",
@@ -107,10 +110,20 @@ def render() -> None:
         )
         st.page_link("home.py",                        label="作战室（主页）", icon="🏠")
         st.page_link("pages/1_📊_AI_估值评分.py",      label="AI 估值评分",   icon="📊")
+        if subnav_render_fn is not None:
+            subnav_render_fn()
         st.page_link("pages/2_📈_期权分析.py",         label="期权分析",       icon="📈")
         st.page_link("pages/3_🏦_账户监控.py",         label="账户监控",       icon="🏦")
         st.divider()
 
+
+def render_status() -> None:
+    """渲染数据更新 + 风险状态。跟导航分开，因为它是全局状态展示，
+    不是"你要去哪"的问题，视觉上不该和导航混在一起。"""
+    d      = _load_db()
+    chrome = _chrome_ok()
+
+    with st.sidebar:
         # ── 数据更新 ─────────────────────────────────────
         st.markdown(
             f"<div style='font-size:10px;color:{_MUT};text-transform:uppercase;"
@@ -232,3 +245,10 @@ def render() -> None:
             f"{_cdp_lbl}</div>",
             unsafe_allow_html=True,
         )
+
+
+def render() -> None:
+    """向后兼容包装：等价于依次调用 render_nav() + render_status()。
+    不需要在导航里插二级导航的页面（home.py / 期权分析 / 账户监控）继续用这个即可。"""
+    render_nav()
+    render_status()
