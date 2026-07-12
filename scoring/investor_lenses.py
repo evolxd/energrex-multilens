@@ -25,10 +25,10 @@ from __future__ import annotations
 from scoring_engine import CompanyCategory
 
 # 颜色语义（与 app.py 现有配色一致）
-_GREEN = "#00D4AA"   # 强 / 正面
-_BLUE  = "#4FC3F7"   # 中性 / 混合
-_AMBER = "#FFB347"   # 谨慎
-_RED   = "#FF4B6E"   # 负面
+_GREEN = "#2F4A3C"   # 强 / 正面（与单股详情页 editorial 主题一致）
+_BLUE  = "#4A6B5C"   # 中性 / 混合
+_AMBER = "#A67C3D"   # 谨慎
+_RED   = "#8B3A2E"   # 负面
 
 
 def _g(d: dict, k: str, default=None):
@@ -71,8 +71,8 @@ def lens_cathie_wood(ticker, data, category, scores) -> dict:
         f"成长故事可能比市场想的更早遇到天花板。"
     )
     return {
-        "name": "木头姐 Cathie Wood", "icon": "🚀",
-        "framework": "成长 · S曲线 · 颠覆式创新", "dimension": "成长",
+        "name": "颠覆成长视角", "icon": "",
+        "framework": "参考框架：Cathie Wood · S曲线 · 颠覆式创新", "dimension": "成长",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -103,11 +103,11 @@ def lens_jensen_huang(ticker, data, category, scores) -> dict:
         f"AI 暴露评分 {ai:.0f}。在 AI 产业分工里，这家公司属于：{layer}。"
         f"毛利率 {gm:.0%} 是判断它有没有卡到「瓶颈环节」的关键信号——真正掌握瓶颈的公司"
         f"能拿到高毛利并维持住；毛利率被压说明它所在的环节正在被商品化、议价权在流失。"
-        f"黄仁勋的核心问题：瓶颈会不会随技术演进转移到别的层，把现在的赢家甩下？"
+        f"该镜头的核心问题：瓶颈会不会随技术演进转移到别的层，把现在的赢家甩下？"
     )
     return {
-        "name": "黄仁勋 Jensen Huang", "icon": "🤖",
-        "framework": "AI产业卡位 · 平台层级 · 全栈瓶颈", "dimension": "AI暴露",
+        "name": "AI瓶颈视角", "icon": "",
+        "framework": "参考框架：Jensen Huang · AI产业卡位 · 平台层级", "dimension": "AI暴露",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -130,19 +130,19 @@ def lens_lisa_su(ticker, data, category, scores) -> dict:
         body = "增速快于行业、毛利率站得住、资本回报也不错——这三条同时成立，通常意味着它不是靠降价换量，而是靠产品力实打实抢份额。"
     elif rev_g >= 0.15:
         verdict, color = "追赶中，需毛利率持续扩张来验证", _BLUE
-        body = "增长有，但毛利率/资本回报还没证明它拿到了真正的竞争优势——苏姿丰式翻身的关键标志是「份额涨的同时毛利率也涨」，只有一个不够。"
+        body = "增长有，但毛利率/资本回报还没证明它拿到了真正的竞争优势——路线图执行镜头下，关键标志是「份额涨的同时毛利率也涨」，只有一个不够。"
     else:
         verdict, color = "竞争力/份额趋势存疑", _AMBER
         body = "增速偏慢，暂时看不到从对手手里抢下地盘的迹象；要么产品周期还没到，要么在被更强的对手压制。"
 
     para = (
         f"收入增速 {rev_g:.0%}、毛利率 {gm:.0%}、ROIC {roic:.0%}。{body}"
-        f"苏姿丰最看重「路线图能不能一代代按时兑现」——一次两次执行到位不算，"
+        f"该镜头关注「路线图能不能一代代按时兑现」——一次两次执行到位不算，"
         f"要看它有没有能力连续多代产品都不掉链子。{scope_note}"
     )
     return {
-        "name": "苏姿丰 Lisa Su", "icon": "⚔️",
-        "framework": "竞争卡位 · 份额争夺 · 路线图执行", "dimension": "成长/质量",
+        "name": "路线图执行视角", "icon": "",
+        "framework": "参考框架：Lisa Su · 竞争卡位 · 份额争夺", "dimension": "成长/质量",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -179,13 +179,13 @@ def lens_satya_nadella(ticker, data, category, scores) -> dict:
     para = (
         f"AI 暴露 {ai:.0f}，FCF 利润率 {fcfm:.0%}"
         + (f"，净收入留存 {nrr:.0%}。" if nrr is not None else "。")
-        + f"变现模式判断：{mode}。纳德拉的核心问题——它有没有别人拿不到的数据护城河？"
+        + f"变现模式判断：{mode}。该镜头的核心问题——它有没有别人拿不到的数据护城河？"
         f"有，就能对生态里的其他玩家收「过路费」；没有，它做的 AI 功能迟早被更大的平台方"
         f"直接抄进自己的产品里，白忙一场。"
     )
     return {
-        "name": "纳德拉 Satya Nadella", "icon": "☁️",
-        "framework": "AI变现模式 · 数据护城河 · 生态税", "dimension": "AI暴露",
+        "name": "AI变现视角", "icon": "",
+        "framework": "参考框架：Satya Nadella · 数据护城河 · 生态税", "dimension": "AI暴露",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -233,11 +233,11 @@ def lens_howard_marks(ticker, data, category, scores) -> dict:
         + (f"（RSI {rsi:.0f}" if rsi is not None else "（")
         + (f"、价格 vs 200日均 {v200:+.0%}）。" if v200 is not None else "）。")
         + f"{judge} Beta {beta:.2f}，永久性资本损失风险{loss_risk}——"
-        f"马克斯反复强调：要担心的是本金永久亏掉，不是短期波动。"
+        f"周期风险镜头强调：要担心的是本金永久亏掉，不是短期波动。"
     )
     return {
-        "name": "霍华德·马克斯 Howard Marks", "icon": "🎯",
-        "framework": "市场周期 · 钟摆心理 · 永久损失", "dimension": "质量/风险",
+        "name": "周期风险视角", "icon": "",
+        "framework": "参考框架：Howard Marks · 钟摆心理 · 永久损失", "dimension": "质量/风险",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -263,13 +263,13 @@ def lens_mary_meeker(ticker, data, category, scores) -> dict:
     para = (
         f"预期差评分 {eg:.0f}"
         + (f"，卖方预期未来增速 {fwd:.0%}。" if fwd is not None else "。")
-        + f"{body} Meeker 的方法论：真正的机会来自「别人还没注意到的领先数据」——"
+        + f"{body} 采用曲线镜头关注「别人还没注意到的领先数据」——"
         f"某个新兴市场率先验证了模式、或海外渗透率数据领先几个季度，这类信号常常提前预示"
         f"接下来会发生什么，但大部分本土投资者没看。"
     )
     return {
-        "name": "Mary Meeker", "icon": "📊",
-        "framework": "采用曲线 · 数据优先 · 预期差", "dimension": "预期差",
+        "name": "采用曲线视角", "icon": "",
+        "framework": "参考框架：Mary Meeker · 数据优先 · 预期差", "dimension": "预期差",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -297,12 +297,12 @@ def lens_peter_thiel(ticker, data, category, scores) -> dict:
 
     para = (
         f"毛利率 {gm:.0%}、ROIC {roic:.0%}。{body}"
-        f"蒂尔的灵魂拷问：这家公司掌握了什么「大多数人不相信、但正确」的秘密？"
+        f"垄断镜头的核心问题：这家公司掌握了什么「大多数人不相信、但正确」的秘密？"
         f"以及 10 年后，它会是这个市场的最后赢家吗——垄断才是目标，竞争本身就是失败。"
     )
     return {
-        "name": "彼得·蒂尔 Peter Thiel", "icon": "♟️",
-        "framework": "0→1 vs 1→N · 垄断 · 秘密", "dimension": "元判断",
+        "name": "垄断质量视角", "icon": "",
+        "framework": "参考框架：Peter Thiel · 0→1 · 垄断 · 秘密", "dimension": "元判断",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -321,25 +321,25 @@ def lens_charlie_munger(ticker, data, category, scores) -> dict:
     if good_biz and v >= 45:
         verdict, color = "简单持久的好生意 + 价格还算公道", _GREEN
         body = ("高质量、高资本回报、负债不重，估值也没贵到离谱——这正是芒格最想要的组合："
-                "用公道的价格买一家伟大的公司，然后长期持有、什么都不做。")
+                "用公道的价格持有一家高质量公司，然后让复利和时间发挥作用。")
     elif good_biz and v < 45:
         verdict, color = "好生意，但价格不够公道", _AMBER
-        body = ("生意本身是好的，但现在的价格已经偏贵——芒格会把它放进「太难/等待」的篮子里，"
+        body = ("生意本身是好的，但现在的价格已经偏贵——能力圈镜头会把它放进「太难/等待」的篮子里，"
                 "耐心等一个更合理的价格，而不是追高。")
     else:
         verdict, color = "质量存疑，划入「回避」篮子", _RED
-        body = ("资本回报、负债或整体质量还没达到「无可争议的好生意」标准——按芒格的做法，"
+        body = ("资本回报、负债或整体质量还没达到「无可争议的好生意」标准——按能力圈框架，"
                 "看不懂或不够确定的，直接放进「太难」堆里回避，不勉强出手。")
 
     para = (
         f"质量评分 {q:.0f}、ROIC {roic:.0%}"
         + (f"、负债权益比 {de:.2f}。" if de is not None else "。")
-        + f"{body} 芒格的三个篮子——「可以投」「不能投」「太难」——大多数标的都该进第三个；"
+        + f"{body} 能力圈框架的三个篮子——「可以投」「不能投」「太难」——大多数标的都该进第三个；"
         f"只在能力圈内、又简单又便宜的极少数机会上重手出击。"
     )
     return {
-        "name": "查理·芒格 Charlie Munger", "icon": "🧠",
-        "framework": "能力圈 · 逆向 · 质量+公道价格", "dimension": "元判断",
+        "name": "能力圈质量视角", "icon": "",
+        "framework": "参考框架：Charlie Munger · 能力圈 · 质量+公道价格", "dimension": "元判断",
         "verdict": verdict, "verdict_color": color, "paragraph": para,
     }
 
@@ -368,7 +368,7 @@ def all_investor_lenses(ticker: str, data: dict, category, scores: dict) -> list
             out.append(fn(ticker, data, category, scores))
         except Exception as e:  # noqa: BLE001
             out.append({
-                "name": fn.__name__, "icon": "⚠️", "framework": "", "dimension": "",
+                "name": fn.__name__, "icon": "", "framework": "", "dimension": "",
                 "verdict": "计算失败", "verdict_color": _AMBER,
                 "paragraph": f"该视角计算出错：{e}",
             })

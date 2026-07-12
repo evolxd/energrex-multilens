@@ -5,7 +5,7 @@ AI成长股估值评分系统 — Streamlit Dashboard
 数据源：results_validated.csv（84只美股，验证通过）
 """
 
-import sys, os, pathlib, datetime, io, subprocess
+import sys, os, pathlib, datetime, io, subprocess, re
 import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scoring"))
@@ -348,7 +348,7 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
     html, body {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        background: #0B111A !important;
+        background: #FAF8F3 !important;
     }
 
     /* 隐藏所有非报告 UI（侧栏 / 顶栏 / 工具条 / 折叠钮 / 页脚） */
@@ -648,22 +648,22 @@ def make_radar(row: pd.Series, title: str = "") -> go.Figure:
         r=vals + [vals[0]],
         theta=cats + [cats[0]],
         fill="toself",
-        fillcolor="rgba(0,212,170,0.15)",
-        line=dict(color="#00D4AA", width=2),
-        marker=dict(size=5, color="#00D4AA"),
+        fillcolor="rgba(47,74,60,0.12)",
+        line=dict(color="#2F4A3C", width=2),
+        marker=dict(size=5, color="#2F4A3C"),
         hovertemplate="%{theta}: %{r:.1f}<extra></extra>",
     ))
     fig.update_layout(
         polar=dict(
             radialaxis=dict(visible=True, range=[0, 100],
-                            gridcolor="#1E2D3D", tickcolor="#1E2D3D",
-                            tickfont=dict(color="#8B9BB4", size=10)),
-            angularaxis=dict(gridcolor="#1E2D3D",
-                             tickfont=dict(color="#E2E8F0", size=12)),
-            bgcolor="#0A1628",
+                            gridcolor="#DAD5C6", tickcolor="#DAD5C6",
+                            tickfont=dict(color="#6B6558", size=10)),
+            angularaxis=dict(gridcolor="#DAD5C6",
+                             tickfont=dict(color="#1E1E1B", size=12)),
+            bgcolor="#FAF8F3",
         ),
-        paper_bgcolor="#0A1628",
-        plot_bgcolor="#0A1628",
+        paper_bgcolor="#FAF8F3",
+        plot_bgcolor="#FAF8F3",
         showlegend=False,
         margin=dict(l=28, r=28, t=10, b=10),
         height=210,
@@ -677,7 +677,8 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
         row["quality_score"],   row["ai_exposure_score"],
         row["expectation_gap_score"],
     ]
-    colors = ["#4FC3F7","#00D4AA","#A78BFA","#FFB347","#F472B6"]
+    # 单一强调色的深浅梯度，代替彩虹配色——editorial 风格里颜色不用来区分类别
+    colors = ["#8FA89A","#6E8A79","#4A6B5C","#3A5A4C","#2F4A3C"]
 
     fig = go.Figure(go.Bar(
         x=values, y=labels,
@@ -686,16 +687,16 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
         text=[f"{v:.0f}" for v in values],
         textposition="inside",
         insidetextanchor="end",
-        textfont=dict(color="#0B111A", size=11),
+        textfont=dict(color="#FAF8F3", size=11),
         hovertemplate="%{y}: %{x:.1f}<extra></extra>",
     ))
-    fig.add_vline(x=50, line=dict(color="#2D3F55", width=1, dash="dot"))
+    fig.add_vline(x=50, line=dict(color="#B8B2A0", width=1, dash="dot"))
     fig.update_layout(
         xaxis=dict(range=[0, 105], showgrid=False,
-                   zeroline=False, tickfont=dict(color="#8B9BB4")),
-        yaxis=dict(showgrid=False, tickfont=dict(color="#E2E8F0", size=11)),
-        paper_bgcolor="#0A1628",
-        plot_bgcolor="#0A1628",
+                   zeroline=False, tickfont=dict(color="#6B6558")),
+        yaxis=dict(showgrid=False, tickfont=dict(color="#1E1E1B", size=11)),
+        paper_bgcolor="#FAF8F3",
+        plot_bgcolor="#FAF8F3",
         margin=dict(l=14, r=28, t=6, b=8),
         height=160,
         bargap=0.28,
@@ -875,16 +876,16 @@ def make_price_zone_chart(report: dict) -> go.Figure:
     bands = []
     cursor = x_min
     if p80 and p80 > cursor:
-        bands.append((cursor, p80, "低价区", "#3ee8bd", 0.20, "估值分 ≥ 80"))
+        bands.append((cursor, p80, "低价区", "#2F4A3C", 0.14, "估值分 ≥ 80"))
         cursor = p80
     if p75 and p75 > cursor:
-        bands.append((cursor, p75, "合适区", "#56d9ff", 0.18, "估值分 75-80"))
+        bands.append((cursor, p75, "合适区", "#4A6B5C", 0.12, "估值分 75-80"))
         cursor = p75
     if p60 and p60 > cursor:
-        bands.append((cursor, p60, "观察区", "#ffd166", 0.15, "估值分 60-75"))
+        bands.append((cursor, p60, "观察区", "#A67C3D", 0.10, "估值分 60-75"))
         cursor = p60
     if x_max > cursor:
-        bands.append((cursor, x_max, "高价区", "#ff6077", 0.18, "估值分 < 60"))
+        bands.append((cursor, x_max, "高价区", "#8B3A2E", 0.12, "估值分 < 60"))
 
     fig = go.Figure()
     for start, end, label, color, opacity, note in bands:
@@ -905,9 +906,9 @@ def make_price_zone_chart(report: dict) -> go.Figure:
                 y=0.50,
                 text=f"<b>{label}</b>",
                 showarrow=False,
-                font=dict(color="#eef7ff", size=13, family="Inter, Noto Sans SC, system-ui"),
-                bgcolor="rgba(16,43,73,0.50)",
-                bordercolor="rgba(142,190,235,0.18)",
+                font=dict(color="#1E1E1B", size=13, family="Georgia, 'Times New Roman', serif"),
+                bgcolor="rgba(250,248,243,0.72)",
+                bordercolor="rgba(107,101,88,0.25)",
                 borderwidth=1,
                 borderpad=4,
                 align="center",
@@ -917,23 +918,23 @@ def make_price_zone_chart(report: dict) -> go.Figure:
         x=[x["price"] for x in scored_grid],
         y=[x["valuation_score"] / 100 for x in scored_grid],
         mode="lines",
-        line=dict(color="#eef7ff", width=2),
+        line=dict(color="#1E1E1B", width=2),
         hovertemplate="价格 $%{x:.2f}<br>估值分 %{customdata[0]:.1f}<br>Final Score %{customdata[1]:.1f}<extra></extra>",
         customdata=[[x["valuation_score"], x["final_score"]] for x in scored_grid],
         name="Valuation curve",
     ))
     fig.add_vline(
         x=current_price,
-        line=dict(color="#ffffff", width=2, dash="solid"),
+        line=dict(color="#2F4A3C", width=2, dash="solid"),
         annotation_text="当前价",
         annotation_position="top",
-        annotation_font_color="#eef7ff",
+        annotation_font_color="#2F4A3C",
     )
 
     marker_points = [
-        (p80, "#3ee8bd"),
-        (p75, "#56d9ff"),
-        (p60, "#ffd166"),
+        (p80, "#2F4A3C"),
+        (p75, "#4A6B5C"),
+        (p60, "#A67C3D"),
     ]
     for price, color in marker_points:
         if price:
@@ -943,26 +944,26 @@ def make_price_zone_chart(report: dict) -> go.Figure:
             )
 
     fig.update_layout(
-        paper_bgcolor="rgba(16,43,73,0.82)",
-        plot_bgcolor="rgba(11,31,53,0.72)",
+        paper_bgcolor="#FAF8F3",
+        plot_bgcolor="#FAF8F3",
         height=240,
         margin=dict(l=24, r=24, t=16, b=32),
         showlegend=False,
         xaxis=dict(
-            title=dict(text="价格区间", font=dict(color="#b5c7dc")),
+            title=dict(text="价格区间", font=dict(color="#6B6558")),
             range=[x_min, x_max],
             tickprefix="$",
-            gridcolor="rgba(142,190,235,0.10)",
-            tickfont=dict(color="#b5c7dc", size=11, family="Inter, Noto Sans SC, system-ui"),
+            gridcolor="rgba(107,101,88,0.14)",
+            tickfont=dict(color="#6B6558", size=11, family="Georgia, 'Times New Roman', serif"),
             zeroline=False,
         ),
         yaxis=dict(
-            title=dict(text="估值温度 / Valuation Score", font=dict(color="#b5c7dc")),
+            title=dict(text="估值温度 / Valuation Score", font=dict(color="#6B6558")),
             range=[0, 1],
             tickvals=[0.45, 0.60, 0.75, 0.80],
             ticktext=["45", "60", "75", "80"],
-            gridcolor="rgba(142,190,235,0.10)",
-            tickfont=dict(color="#b5c7dc", size=11, family="Inter, Noto Sans SC, system-ui"),
+            gridcolor="rgba(107,101,88,0.14)",
+            tickfont=dict(color="#6B6558", size=11, family="Georgia, 'Times New Roman', serif"),
             zeroline=False,
         ),
     )
@@ -1272,13 +1273,62 @@ if page == "🏆 排行榜":
 # 页面 2：单股详情
 # ══════════════════════════════════════════════════════════
 elif page == "🔍 单股详情":
-    st.markdown("<div class='screen-only'><h2 style='margin:0'>单股详情</h2></div>",
+    # ── Editorial 报告主题（仅本页面生效，其余页面仍是深色系）────
+    # 定稿方向 B：暖白纸感背景 + 单一强调色（森林绿）+ 衬线大号数字。
+    # 见 REPORT_STANDARD.md 与 PRINT_REPORT_STANDARD.md 的样式约定。
+    st.markdown(
+        "<style>"
+        "[data-testid='stMain'] .block-container{background:#FAF8F3 !important;}"
+        "[data-testid='stAppViewContainer']{background:#FAF8F3 !important;}"
+        # 原生 Streamlit 文字（组件label、#### 标题等）继承的是全局深色主题的浅色字，
+        # 换成暖白底之后完全看不清——这里给页面内容设一个默认深色文字，注意不加
+        # !important，好让本页所有自定义 inline style="color:..." 继续按原样生效
+        # （inline 样式在同等优先级下天然覆盖 stylesheet 规则，不需要用 !important 抢）。
+        "[data-testid='stMain'] .block-container{color:#1E1E1B;}"
+        "[data-testid='stMain'] .block-container h1,"
+        "[data-testid='stMain'] .block-container h2,"
+        "[data-testid='stMain'] .block-container h3,"
+        "[data-testid='stMain'] .block-container h4,"
+        "[data-testid='stMain'] .block-container label,"
+        "[data-testid='stMain'] .block-container p{color:#1E1E1B;font-family:Georgia,'Times New Roman',serif;}"
+        "[data-testid='stMain'] .block-container [data-testid='stWidgetLabel'] p{color:#6B6558;font-family:Arial,sans-serif;}"
+        "[data-testid='stMain'] .block-container [data-testid='stSelectbox'] *{color:#1E1E1B !important;font-family:Arial,sans-serif;}"
+        "[data-testid='stMain'] .block-container [data-testid='stSelectbox'] input,"
+        "[data-testid='stMain'] .block-container [data-testid='stSelectbox'] .react-aria-ComboBox,"
+        "[data-testid='stMain'] .block-container [data-testid='stSelectbox'] .react-aria-ComboBox > div"
+        "{background:#FFFFFF !important;border-color:#DAD5C6 !important;}"
+        "</style>",
+        unsafe_allow_html=True)
+
+    _ED_INK, _ED_MUTED, _ED_HAIR = "#1E1E1B", "#6B6558", "#DAD5C6"
+    _ED_ACCENT, _ED_ACCENT_LIGHT, _ED_WARN, _ED_DANGER = "#2F4A3C", "#4A6B5C", "#A67C3D", "#8B3A2E"
+    _ED_SERIF = "Georgia, 'Times New Roman', serif"
+
+    def _ed_score_color(score: float) -> str:
+        if score >= 65: return _ED_ACCENT
+        if score >= 55: return _ED_ACCENT_LIGHT
+        if score >= 45: return _ED_WARN
+        if score >= 35: return "#8F5A2E"
+        return _ED_DANGER
+
+    def _ed_rating_color(rating: str) -> str:
+        if "Strong Buy" in rating: return _ED_ACCENT
+        if "Buy" in rating: return _ED_ACCENT_LIGHT
+        if "Watch" in rating: return _ED_WARN
+        if "Expensive" in rating: return "#8F5A2E"
+        return _ED_DANGER
+
+    def _ed_plain(label: str) -> str:
+        """去掉评级文字前面的 emoji，只留英文评级本身。"""
+        return re.sub(r"^[^\w]+", "", label).strip()
+
+    st.markdown("<div class='screen-only'><h2 style='margin:0;font-family:Georgia,serif;color:#1E1E1B'>单股详情</h2></div>",
                 unsafe_allow_html=True)
 
     ticker = st.selectbox(
         "选择股票",
         df["ticker"].tolist(),
-        format_func=lambda t: f"{t}  —  {df[df['ticker']==t]['rating'].values[0]}",
+        format_func=lambda t: f"{t}  —  {_ed_plain(df[df['ticker']==t]['rating'].values[0])}",
     )
 
     row  = df[df["ticker"] == ticker].iloc[0]
@@ -1286,8 +1336,9 @@ elif page == "🔍 单股详情":
     data = get_active_stocks().get(ticker, {})
     cat  = get_category(ticker)
     fs   = row["final_score"]
-    r_color = rating_color(row["rating"])
-    fs_color = score_color(fs)
+    _rating_plain = _ed_plain(row["rating"])
+    r_color = _ed_rating_color(row["rating"])
+    fs_color = _ed_score_color(fs)
 
     # validation metadata from the row
     _val_conf  = row.get("validation_confidence", 0)
@@ -1305,25 +1356,27 @@ elif page == "🔍 单股详情":
         f"<div class='print-only' style='margin-bottom:18px'>"
         # 品牌带
         f"<div style='display:flex;justify-content:space-between;align-items:center;"
-        f"border-bottom:2px solid {fs_color};padding-bottom:8px;margin-bottom:14px'>"
-        f"<div style='font-size:15px;font-weight:800;letter-spacing:1px;color:#E2E8F0'>"
-        f"⚡ ENERGREX <span style='color:#8B9BB4;font-weight:500'>· AI 估值评分报告</span></div>"
-        f"<div style='font-size:11px;color:#8B9BB4;letter-spacing:0.5px'>"
+        f"border-bottom:1px solid {_ED_INK};padding-bottom:8px;margin-bottom:14px'>"
+        f"<div style='font-size:14px;font-weight:700;letter-spacing:1.5px;color:{_ED_INK};"
+        f"font-family:{_ED_SERIF};text-transform:uppercase'>"
+        f"Energrex <span style='color:{_ED_MUTED};font-weight:400'>· AI 估值评分报告</span></div>"
+        f"<div style='font-size:11px;color:{_ED_MUTED};letter-spacing:0.5px'>"
         f"报告日期 {_report_date} · 数据源 results_validated.csv</div>"
         f"</div>"
         # 标的头部：代码/公司 + 评分
         f"<div style='display:flex;justify-content:space-between;align-items:flex-end'>"
         f"<div>"
-        f"<div style='font-size:34px;font-weight:900;color:#E2E8F0;line-height:1'>{ticker}</div>"
-        f"<div style='font-size:13px;color:#8B9BB4;margin-top:4px'>{_company}"
+        f"<div style='font-size:34px;font-weight:700;color:{_ED_INK};line-height:1;"
+        f"font-family:{_ED_SERIF}'>{ticker}</div>"
+        f"<div style='font-size:13px;color:{_ED_MUTED};margin-top:4px'>{_company}"
         f" · {row.get('category','')} · {cat.value}</div>"
         f"</div>"
         f"<div style='text-align:right'>"
-        f"<span style='background:{r_color}22;color:{r_color};font-size:13px;"
-        f"font-weight:700;padding:3px 12px;border-radius:4px;border:1px solid {r_color}44'>"
-        f"{row['rating']}</span>"
-        f"<div style='font-size:40px;font-weight:900;color:{fs_color};line-height:1.05;margin-top:6px'>"
-        f"{fs:.0f}<span style='font-size:15px;color:#8B9BB4;font-weight:600'> / 100</span></div>"
+        f"<span style='color:{r_color};font-size:13px;font-weight:600;"
+        f"letter-spacing:0.3px'>{_rating_plain}</span>"
+        f"<div style='font-size:40px;font-weight:700;color:{fs_color};line-height:1.05;"
+        f"margin-top:6px;font-family:{_ED_SERIF}'>"
+        f"{fs:.0f}<span style='font-size:15px;color:{_ED_MUTED};font-weight:400'> / 100</span></div>"
         f"</div>"
         f"</div>"
         f"</div>",
@@ -1336,47 +1389,42 @@ elif page == "🔍 单股详情":
         company = row.get("company", ticker)
         val_badge = ""
         if _hr_needed:
-            val_badge = ("<span style='background:#FFB34722;color:#FFB347;"
-                         "font-size:10px;padding:2px 6px;border-radius:3px;"
-                         "border:1px solid #FFB34744;margin-left:6px'>🔍待核查</span>")
+            val_badge = (f"<span style='color:{_ED_WARN};"
+                         f"font-size:10px;margin-left:8px;border-bottom:1px solid {_ED_WARN}'>待核查</span>")
         conf_pct = f"{_val_conf*100:.0f}%" if _val_conf else "—"
         st.markdown(
-            f"<div style='padding:16px;background:#0F1923;"
-            f"border:1px solid #1E2D3D;border-radius:8px'>"
-            f"<div style='font-size:28px;font-weight:800;"
-            f"color:#E2E8F0'>{ticker}{val_badge}</div>"
-            f"<div style='color:#8B9BB4;font-size:13px;"
+            f"<div style='padding:0 20px 0 0'>"
+            f"<div style='font-size:28px;font-weight:700;font-family:{_ED_SERIF};"
+            f"color:{_ED_INK}'>{ticker}{val_badge}</div>"
+            f"<div style='color:{_ED_MUTED};font-size:13px;"
             f"margin-top:2px'>{company}</div>"
             f"<div style='margin-top:10px;display:flex;gap:16px'>"
-            f"<div><div style='color:#8B9BB4;font-size:10px;"
+            f"<div><div style='color:{_ED_MUTED};font-size:10px;"
             f"text-transform:uppercase'>板块</div>"
-            f"<div style='font-size:14px;font-weight:600;"
-            f"color:#8B9BB4;padding-top:3px'>{row.get('category','—')}</div></div>"
-            f"<div><div style='color:#8B9BB4;font-size:10px;"
+            f"<div style='font-size:14px;font-weight:500;"
+            f"color:{_ED_INK};padding-top:3px'>{row.get('category','—')}</div></div>"
+            f"<div><div style='color:{_ED_MUTED};font-size:10px;"
             f"text-transform:uppercase'>类型</div>"
-            f"<div style='font-size:14px;font-weight:600;"
-            f"color:#8B9BB4;padding-top:3px'>{cat.value}</div></div>"
+            f"<div style='font-size:14px;font-weight:500;"
+            f"color:{_ED_INK};padding-top:3px'>{cat.value}</div></div>"
             f"</div>"
-            f"<div style='color:#4FC3F7;font-size:10px;margin-top:6px'>"
-            f"📄 results_validated.csv · 验证置信度 {conf_pct}"
+            f"<div style='color:{_ED_MUTED};font-size:10px;margin-top:8px'>"
+            f"results_validated.csv · 验证置信度 {conf_pct}"
             f"</div>"
             f"</div>",
             unsafe_allow_html=True)
 
     with h2:
         st.markdown(
-            f"<div style='padding:16px;background:#0F1923;"
-            f"border:1px solid #1E2D3D;border-radius:8px;"
+            f"<div style='padding:0 20px;border-left:1px solid {_ED_HAIR};"
             f"text-align:center;height:100%'>"
-            f"<div style='color:#8B9BB4;font-size:11px;"
+            f"<div style='color:{_ED_MUTED};font-size:11px;"
             f"text-transform:uppercase;letter-spacing:1px'>综合评分</div>"
-            f"<div style='font-size:56px;font-weight:900;"
+            f"<div style='font-size:56px;font-weight:700;font-family:{_ED_SERIF};"
             f"color:{fs_color};line-height:1.1;margin:4px 0'>{fs:.0f}</div>"
-            f"<div style='color:#8B9BB4;font-size:11px'>/ 100</div>"
+            f"<div style='color:{_ED_MUTED};font-size:11px'>/ 100</div>"
             f"<div style='margin-top:8px'>"
-            f"<span style='background:{r_color}22;color:{r_color};"
-            f"font-size:12px;padding:3px 12px;border-radius:4px;"
-            f"border:1px solid {r_color}44'>{row['rating']}</span>"
+            f"<span style='color:{r_color};font-size:12px;font-weight:600'>{_rating_plain}</span>"
             f"</div></div>",
             unsafe_allow_html=True)
 
@@ -1384,29 +1432,28 @@ elif page == "🔍 单股详情":
         rp = row["risk_penalty"]
         rs = row["raw_score"]
         st.markdown(
-            f"<div style='padding:16px;background:#0F1923;"
-            f"border:1px solid #1E2D3D;border-radius:8px'>"
-            f"<div style='color:#8B9BB4;font-size:11px;"
+            f"<div style='padding:0 0 0 20px;border-left:1px solid {_ED_HAIR}'>"
+            f"<div style='color:{_ED_MUTED};font-size:11px;"
             f"text-transform:uppercase;letter-spacing:1px;margin-bottom:10px'>分数构成</div>"
             f"<div style='display:flex;justify-content:space-between;"
             f"margin-bottom:6px'>"
-            f"<span style='color:#8B9BB4;font-size:12px'>加权合计</span>"
-            f"<span style='color:#E2E8F0;font-weight:600'>{rs:.1f}</span></div>"
+            f"<span style='color:{_ED_MUTED};font-size:12px'>加权合计</span>"
+            f"<span style='color:{_ED_INK};font-weight:600'>{rs:.1f}</span></div>"
             f"<div style='display:flex;justify-content:space-between;"
             f"margin-bottom:6px'>"
-            f"<span style='color:#FF4B6E;font-size:12px'>风险扣分</span>"
-            f"<span style='color:#FF4B6E;font-weight:600'>-{rp:.2f}</span></div>"
-            f"<div style='height:1px;background:#1E2D3D;margin:8px 0'></div>"
+            f"<span style='color:{_ED_DANGER};font-size:12px'>风险扣分</span>"
+            f"<span style='color:{_ED_DANGER};font-weight:600'>-{rp:.2f}</span></div>"
+            f"<div style='height:1px;background:{_ED_HAIR};margin:8px 0'></div>"
             f"<div style='display:flex;justify-content:space-between'>"
-            f"<span style='color:#E2E8F0;font-size:13px;font-weight:600'>"
+            f"<span style='color:{_ED_INK};font-size:13px;font-weight:600'>"
             f"Final Score</span>"
             f"<span style='color:{fs_color};font-size:16px;"
-            f"font-weight:800'>{fs:.1f}</span></div>"
-            f"<div style='height:1px;background:#1E2D3D;margin:8px 0'></div>"
+            f"font-weight:700;font-family:{_ED_SERIF}'>{fs:.1f}</span></div>"
+            f"<div style='height:1px;background:{_ED_HAIR};margin:8px 0'></div>"
             f"<div style='display:flex;justify-content:space-between;"
             f"align-items:center;margin-top:3px'>"
-            f"<span style='color:#8B9BB4;font-size:11px'>数据质量</span>"
-            f"<span style='color:#FF8C42;font-size:12px;font-weight:700'>"
+            f"<span style='color:{_ED_MUTED};font-size:11px'>数据质量</span>"
+            f"<span style='color:#8F5A2E;font-size:12px;font-weight:600'>"
             f"{row.get('confidence_grade','?')} · {row.get('estimated_fields','-')} 项估算</span></div>"
             f"</div>",
             unsafe_allow_html=True)
@@ -1418,7 +1465,7 @@ elif page == "🔍 单股详情":
     _kmeta  = kelly_meta()
     _kdet   = band_detail(fs)
     if _kp is not None and _kdet:
-        with st.expander(f"💰 建议仓位（半凯利）：{_kp*100:.1f}%", expanded=False):
+        with st.expander(f"建议仓位（半凯利）：{_kp*100:.1f}%", expanded=False):
             kc1, kc2, kc3, kc4 = st.columns(4)
             kc1.metric("所属分档", _kdet.get("rating_label", "—"))
             kc2.metric("历史胜率(近似)", f"{_kdet.get('win_rate', 0)*100:.1f}%")
@@ -1427,9 +1474,9 @@ elif page == "🔍 单股详情":
             st.caption(
                 f"回测生成于 {_kmeta.get('generated_at','—')} · {_kmeta.get('method','')}"
             )
-            st.warning(_kmeta.get("caveat", ""), icon="⚠️")
+            st.warning(_kmeta.get("caveat", ""))
     elif _kp is None:
-        st.caption("💰 半凯利建议仓位：该分档样本不足或尚无回测数据，暂不显示")
+        st.caption("半凯利建议仓位：该分档样本不足或尚无回测数据，暂不显示")
 
     # ── 价格温度带 ─────────────────────────────────
     _ps = _price_sensitivity_report(ticker, data, fs)
@@ -1451,16 +1498,16 @@ elif page == "🔍 单股详情":
             return f"{(v / _cur_px - 1) * 100:+.1f}%" if v else "—"
 
         st.markdown(
-            "<div style='background:rgba(16,43,73,0.84);"
-            "border:1px solid rgba(142,190,235,0.22);border-left:3px solid #3ee8bd;"
+            "<div style='background:#F3F0E8;"
+            "border:1px solid #DAD5C6;border-left:3px solid #2F4A3C;"
             "border-radius:12px;padding:10px 14px;margin:2px 0 12px 0;"
-            "color:#b5c7dc;font-size:12px;line-height:1.6'>"
-            "<span style='color:#eef7ff;font-weight:800'>价格温度带：</span>"
+            "color:#2A2A26;font-size:12px;line-height:1.6'>"
+            "<span style='color:#1E1E1B;font-weight:800'>价格温度带：</span>"
             "用同一套估值评分引擎，在不同假设价格下重算估值倍数和 Valuation Score。"
-            "<span style='color:#3ee8bd;font-weight:700'>低价区</span>代表估值分≥80，"
-            "<span style='color:#56d9ff;font-weight:700'>合适区</span>代表75-80，"
-            "<span style='color:#ffd166;font-weight:700'>观察区</span>代表60-75，"
-            "<span style='color:#ff6077;font-weight:700'>高价区</span>代表<60。"
+            "<span style='color:#2F4A3C;font-weight:700'>低价区</span>代表估值分≥80，"
+            "<span style='color:#4A6B5C;font-weight:700'>合适区</span>代表75-80，"
+            "<span style='color:#A67C3D;font-weight:700'>观察区</span>代表60-75，"
+            "<span style='color:#8B3A2E;font-weight:700'>高价区</span>代表<60。"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -1468,39 +1515,39 @@ elif page == "🔍 单股详情":
         b1, b2, b3, b4, b5 = st.columns(5)
         _cards = [
             (b1, "当前价", _fmt_px(_cur_px), f"Final Score {fs:.1f}", fs_color),
-            (b2, "低价区上限", _fmt_px(_deep_px), f"估值分 ≥80 · {_disc(_deep_px)}", "#3ee8bd"),
-            (b3, "合适区上限", _fmt_px(_fit_px), f"估值分 ≥75 · {_disc(_fit_px)}", "#56d9ff"),
-            (b4, "观察区上限", _fmt_px(_watch_px), f"估值分 ≥60 · {_disc(_watch_px)}", "#ffd166"),
-            (b5, "当前估值分", f"{_cur_val_score:.1f}" if _cur_val_score is not None else "未计算", "价格温带主判断口径", "#eef7ff"),
+            (b2, "低价区上限", _fmt_px(_deep_px), f"估值分 ≥80 · {_disc(_deep_px)}", "#2F4A3C"),
+            (b3, "合适区上限", _fmt_px(_fit_px), f"估值分 ≥75 · {_disc(_fit_px)}", "#4A6B5C"),
+            (b4, "观察区上限", _fmt_px(_watch_px), f"估值分 ≥60 · {_disc(_watch_px)}", "#A67C3D"),
+            (b5, "当前估值分", f"{_cur_val_score:.1f}" if _cur_val_score is not None else "未计算", "价格温带主判断口径", "#1E1E1B"),
         ]
         for _col, _label, _value, _sub, _color in _cards:
             with _col:
                 st.markdown(
-                    f"<div style='background:rgba(16,43,73,0.82);"
-                    f"border:1px solid rgba(142,190,235,0.22);"
+                    f"<div style='background:#F3F0E8;"
+                    f"border:1px solid #DAD5C6;"
                     f"border-radius:12px;padding:12px 12px;min-height:94px'>"
-                    f"<div style='color:#b5c7dc;font-size:10px;"
+                    f"<div style='color:#2A2A26;font-size:10px;"
                     f"text-transform:uppercase;letter-spacing:.4px;font-weight:700'>{_label}</div>"
                     f"<div style='color:{_color};font-size:19px;font-weight:900;"
                     f"margin-top:4px'>{_value}</div>"
-                    f"<div style='color:#8ea8c3;font-size:10px;margin-top:3px;line-height:1.35'>{_sub}</div>"
+                    f"<div style='color:#6B6558;font-size:10px;margin-top:3px;line-height:1.35'>{_sub}</div>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
 
         st.markdown(
             "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 8px 0'>"
-            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
-            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#3ee8bd;font-size:12px;font-weight:800'>"
+            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
+            "padding:6px 10px;background:#EFEBDF;color:#2F4A3C;font-size:12px;font-weight:800'>"
             "低价区 80-100</span>"
-            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
-            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#56d9ff;font-size:12px;font-weight:800'>"
+            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
+            "padding:6px 10px;background:#EFEBDF;color:#4A6B5C;font-size:12px;font-weight:800'>"
             "合适区 75-80</span>"
-            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
-            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#ffd166;font-size:12px;font-weight:800'>"
+            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
+            "padding:6px 10px;background:#EFEBDF;color:#A67C3D;font-size:12px;font-weight:800'>"
             "观察区 60-75</span>"
-            "<span style='border:1px solid rgba(142,190,235,0.22);border-radius:8px;"
-            "padding:6px 10px;background:rgba(16,43,73,0.72);color:#ff6077;font-size:12px;font-weight:800'>"
+            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
+            "padding:6px 10px;background:#EFEBDF;color:#8B3A2E;font-size:12px;font-weight:800'>"
             "高价区 <60</span>"
             "</div>",
             unsafe_allow_html=True,
@@ -1513,14 +1560,14 @@ elif page == "🔍 单股详情":
             config={"displayModeBar": False, "responsive": True},
         )
         st.markdown(
-            "<div style='background:rgba(16,43,73,0.84);"
-            "border:1px solid rgba(142,190,235,0.22);border-left:3px solid #56d9ff;"
+            "<div style='background:#F3F0E8;"
+            "border:1px solid #DAD5C6;border-left:3px solid #4A6B5C;"
             "border-radius:12px;padding:12px 16px;margin:8px 0 12px 0;"
-            "color:#b5c7dc;font-size:12px;line-height:1.65'>"
-            "<span style='color:#eef7ff;font-weight:700'>温度带来源：</span>"
+            "color:#2A2A26;font-size:12px;line-height:1.65'>"
+            "<span style='color:#1E1E1B;font-weight:700'>温度带来源：</span>"
             "价格区间不是主观猜测，而是在当前基本面假设不变的前提下，逐档改变股价，"
             "重新计算 Forward PE、PEG、EV/Sales、EV/EBITDA、FCF Yield，并调用同一套评分引擎得到 Valuation Score。"
-            "<br><span style='color:#ffd166;font-weight:700'>模型局限：</span>"
+            "<br><span style='color:#A67C3D;font-weight:700'>模型局限：</span>"
             "它衡量的是“价格变化对估值评分的机械影响”，不是对未来股价的预测；"
             "若未来增长、利润率、利率、股本、财报口径或市场风险偏好变化，区间会随之失效或需要重算。"
             "当前边界未声明为已回测验证胜率。"
@@ -1554,13 +1601,13 @@ elif page == "🔍 单股详情":
                 f"</tr>"
             )
         st.markdown(
-            f"<div style='background:rgba(16,43,73,0.82);border:1px solid rgba(142,190,235,0.22);"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:12px;margin-top:10px;overflow:hidden'>"
-            f"<div style='padding:9px 12px;color:#b5c7dc;font-size:11px;"
-            f"border-bottom:1px solid rgba(142,190,235,0.22)'>{_sens_text} "
+            f"<div style='padding:9px 12px;color:#2A2A26;font-size:11px;"
+            f"border-bottom:1px solid #DAD5C6'>{_sens_text} "
             f"边界价基于当前基本面不变、仅价格驱动估值比率重算；不是自动交易指令。</div>"
-            f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#eef7ff'>"
-            f"<thead><tr style='color:#b5c7dc;background:rgba(11,31,53,0.72)'>"
+            f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#1E1E1B'>"
+            f"<thead><tr style='color:#2A2A26;background:#EFEBDF'>"
             f"<th style='text-align:left;padding:7px 10px'>价格变化</th>"
             f"<th style='text-align:left;padding:7px 10px'>假设价格</th>"
             f"<th style='text-align:left;padding:7px 10px'>Final</th>"
@@ -1584,14 +1631,14 @@ elif page == "🔍 单股详情":
         # 权重说明
         w = WEIGHT_CONFIG[cat]
         weight_html = (
-            f"<div style='background:#0A1628;border:1px solid #1E2D3D;"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:6px;padding:10px 12px;font-size:11px;"
-            f"color:#8B9BB4;line-height:2'>"
-            f"<span style='color:#4FC3F7'>估值×{w.valuation:.0%}</span> · "
-            f"<span style='color:#00D4AA'>成长×{w.growth:.0%}</span> · "
-            f"<span style='color:#A78BFA'>质量×{w.quality:.0%}</span> · "
-            f"<span style='color:#FFB347'>AI暴露×{w.ai_exposure:.0%}</span> · "
-            f"<span style='color:#F472B6'>预期差×{w.expectation_gap:.0%}</span>"
+            f"color:#6B6558;line-height:2'>"
+            f"<span style='color:#2F4A3C'>估值×{w.valuation:.0%}</span> · "
+            f"<span style='color:#2F4A3C'>成长×{w.growth:.0%}</span> · "
+            f"<span style='color:#4A6B5C'>质量×{w.quality:.0%}</span> · "
+            f"<span style='color:#A67C3D'>AI暴露×{w.ai_exposure:.0%}</span> · "
+            f"<span style='color:#8B3A2E'>预期差×{w.expectation_gap:.0%}</span>"
             f"</div>"
         )
         st.markdown(weight_html, unsafe_allow_html=True)
@@ -1618,9 +1665,9 @@ elif page == "🔍 单股详情":
             val_str = fmt.format(val) if val is not None else "N/A"
             c = score_color(score)
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:12px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;"
+                f"<div style='color:#6B6558;font-size:10px;"
                 f"text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px'>"
                 f"{label}</div>"
                 f"<div style='font-size:20px;font-weight:700;"
@@ -1745,30 +1792,33 @@ elif page == "🔍 单股详情":
             f"适合作为组合里相对稳的那一部分仓位。"
         )
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("<div class='investment-summary-anchor'></div>", unsafe_allow_html=True)
-        st.info(f"📐 {val_text}")
-        if row["growth_score"] >= 75:
-            st.success(f"📈 {grow_text}")
-        elif row["growth_score"] >= 50:
-            st.warning(f"📈 {grow_text}")
-        else:
-            st.error(f"📈 {grow_text}")
-        st.info(f"🏆 {qual_text}")
-    with col_b:
-        st.info(f"🤖 {ai_text}")
-        if row["risk_penalty"] >= 10:
-            st.error(f"⚡ {risk_text}")
-        elif row["risk_penalty"] >= 6:
-            st.warning(f"⚡ {risk_text}")
-        else:
-            st.success(f"⚡ {risk_text}")
+    def _ed_summary_color(level: str) -> str:
+        return {"info": _ED_ACCENT_LIGHT, "success": _ED_ACCENT,
+                "warning": _ED_WARN, "error": _ED_DANGER}[level]
+
+    def _ed_render_summary(text: str, level: str):
+        lead, _, rest = text.partition("** — ")
+        lead = lead.lstrip("*")
+        c = _ed_summary_color(level)
+        st.markdown(
+            f"<div style='border-top:1px solid {_ED_HAIR};padding:12px 0'>"
+            f"<span style='color:{c};font-weight:700;font-size:13px'>{lead}</span>"
+            f"<span style='color:{_ED_INK};font-size:13px;line-height:1.7'> — {rest}</span>"
+            f"</div>",
+            unsafe_allow_html=True)
+
+    _ed_render_summary(val_text, "info")
+    _grow_level = "success" if row["growth_score"] >= 75 else ("warning" if row["growth_score"] >= 50 else "error")
+    _ed_render_summary(grow_text, _grow_level)
+    _ed_render_summary(qual_text, "info")
+    _ed_render_summary(ai_text, "info")
+    _risk_level = "error" if row["risk_penalty"] >= 10 else ("warning" if row["risk_penalty"] >= 6 else "success")
+    _ed_render_summary(risk_text, _risk_level)
 
     st.divider()
 
     # ── Damodaran 估值纪律分析 ────────────────────────────────
-    st.markdown("#### 📐 Damodaran 估值纪律分析")
+    st.markdown("#### Damodaran 估值纪律分析")
 
     dam = calc_damodaran_report(ticker, data, cat)
 
@@ -1779,43 +1829,43 @@ elif page == "🔍 单股详情":
 
     # 颜色辅助
     def _excess_color(e):
-        return "#00D4AA" if e >= 5 else ("#FFB347" if e >= -2 else "#FF4B6E")
+        return "#2F4A3C" if e >= 5 else ("#A67C3D" if e >= -2 else "#8B3A2E")
 
     # 行 1：资本成本模块
     dc1, dc2, dc3, dc4 = st.columns(4)
     with dc1:
         st.markdown(
-            f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:6px;padding:14px;text-align:center'>"
-            f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+            f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
             f"letter-spacing:0.8px;margin-bottom:4px'>Beta (β)</div>"
-            f"<div style='font-size:22px;font-weight:700;color:#E2E8F0'>{dam['beta']:.2f}</div>"
+            f"<div style='font-size:22px;font-weight:700;color:#1E1E1B'>{dam['beta']:.2f}</div>"
             f"</div>", unsafe_allow_html=True)
     with dc2:
         st.markdown(
-            f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:6px;padding:14px;text-align:center'>"
-            f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+            f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
             f"letter-spacing:0.8px;margin-bottom:4px'>权益成本 ke</div>"
-            f"<div style='font-size:22px;font-weight:700;color:#E2E8F0'>{_ke_pct:.1f}%</div>"
-            f"<div style='color:#8B9BB4;font-size:10px;margin-top:2px'>"
+            f"<div style='font-size:22px;font-weight:700;color:#1E1E1B'>{_ke_pct:.1f}%</div>"
+            f"<div style='color:#6B6558;font-size:10px;margin-top:2px'>"
             f"4.3% + {dam['beta']:.2f}β × 4.8%ERP</div>"
             f"</div>", unsafe_allow_html=True)
     with dc3:
         st.markdown(
-            f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:6px;padding:14px;text-align:center'>"
-            f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+            f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
             f"letter-spacing:0.8px;margin-bottom:4px'>WACC</div>"
-            f"<div style='font-size:22px;font-weight:700;color:#E2E8F0'>{_wacc_pct:.1f}%</div>"
-            f"<div style='color:#8B9BB4;font-size:10px;margin-top:2px'>加权资本成本</div>"
+            f"<div style='font-size:22px;font-weight:700;color:#1E1E1B'>{_wacc_pct:.1f}%</div>"
+            f"<div style='color:#6B6558;font-size:10px;margin-top:2px'>加权资本成本</div>"
             f"</div>", unsafe_allow_html=True)
     with dc4:
         _ec = _excess_color(_excess_pct)
         st.markdown(
-            f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:6px;padding:14px;text-align:center'>"
-            f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+            f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
             f"letter-spacing:0.8px;margin-bottom:4px'>ROIC − WACC 超额回报</div>"
             f"<div style='font-size:22px;font-weight:700;color:{_ec}'>{_excess_pct:+.1f}%</div>"
             f"<div style='color:{_ec};font-size:11px;margin-top:2px'>{dam['quality_verdict']}</div>"
@@ -1833,44 +1883,44 @@ elif page == "🔍 单股详情":
         dc5, dc6, dc7, dc8 = st.columns(4)
         with dc5:
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>当前 EV/Sales</div>"
-                f"<div style='font-size:22px;font-weight:700;color:#E2E8F0'>"
+                f"<div style='font-size:22px;font-weight:700;color:#1E1E1B'>"
                 f"{f'{ev_c:.1f}x' if ev_c else 'N/A'}</div>"
                 f"</div>", unsafe_allow_html=True)
         with dc6:
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>成熟期目标 EV/Sales</div>"
-                f"<div style='font-size:22px;font-weight:700;color:#8B9BB4'>{ev_t:.1f}x</div>"
-                f"<div style='color:#8B9BB4;font-size:10px;margin-top:2px'>"
+                f"<div style='font-size:22px;font-weight:700;color:#6B6558'>{ev_t:.1f}x</div>"
+                f"<div style='color:#6B6558;font-size:10px;margin-top:2px'>"
                 f"{cat.value} 成熟基准</div>"
                 f"</div>", unsafe_allow_html=True)
         with dc7:
-            _ic = "#FF8C42" if impl > 0.5 else ("#FFB347" if impl > 0.25 else "#E2E8F0")
+            _ic = "#8F5A2E" if impl > 0.5 else ("#A67C3D" if impl > 0.25 else "#1E1E1B")
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>市场隐含5年CAGR</div>"
                 f"<div style='font-size:22px;font-weight:700;color:{_ic}'>"
                 f"{impl*100:.1f}%</div>"
-                f"<div style='color:#8B9BB4;font-size:10px;margin-top:2px'>市场要求的年均增速</div>"
+                f"<div style='color:#6B6558;font-size:10px;margin-top:2px'>市场要求的年均增速</div>"
                 f"</div>", unsafe_allow_html=True)
         with dc8:
-            _nc_map = {"✅": "#00D4AA", "⚖️": "#4FC3F7", "⚠️": "#FFB347", "🔴": "#FF4B6E", "📉": "#FF4B6E"}
+            _nc_map = {"": "#2F4A3C", "": "#2F4A3C", "": "#A67C3D", "": "#8B3A2E", "": "#8B3A2E"}
             _nc_emoji = dam["narrative_consistency"][:2] if dam["narrative_consistency"] else "—"
-            _nc_color = next((v for k, v in _nc_map.items() if _nc_emoji.startswith(k)), "#8B9BB4")
+            _nc_color = next((v for k, v in _nc_map.items() if _nc_emoji.startswith(k)), "#6B6558")
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>分析师NTM增长 vs 市场要求</div>"
-                f"<div style='font-size:18px;font-weight:700;color:#E2E8F0'>"
+                f"<div style='font-size:18px;font-weight:700;color:#1E1E1B'>"
                 f"{fwd*100:.1f}% vs {impl*100:.1f}%</div>"
                 f"<div style='color:{_nc_color};font-size:11px;margin-top:3px'>"
                 f"{dam['narrative_consistency']}</div>"
@@ -1881,18 +1931,18 @@ elif page == "🔍 单股详情":
         # 叙事一致性可视化横条
         _ratio = fwd / impl if impl > 0 else 0
         _bar_pct = min(int(_ratio * 80), 100)
-        _bar_color = "#00D4AA" if _ratio >= 1.2 else ("#4FC3F7" if _ratio >= 0.85 else ("#FFB347" if _ratio >= 0.6 else "#FF4B6E"))
+        _bar_color = "#2F4A3C" if _ratio >= 1.2 else ("#2F4A3C" if _ratio >= 0.85 else ("#A67C3D" if _ratio >= 0.6 else "#8B3A2E"))
         st.markdown(
-            f"<div style='background:#0A1628;border:1px solid #1E2D3D;"
+            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
             f"border-radius:6px;padding:12px 16px'>"
-            f"<div style='font-size:11px;color:#8B9BB4;margin-bottom:6px'>"
+            f"<div style='font-size:11px;color:#6B6558;margin-bottom:6px'>"
             f"叙事覆盖率（分析师预测 / 市场隐含要求）= {_ratio:.2f}x</div>"
-            f"<div style='background:#1E2D3D;border-radius:4px;height:8px;overflow:hidden'>"
+            f"<div style='background:#DAD5C6;border-radius:4px;height:8px;overflow:hidden'>"
             f"<div style='background:{_bar_color};height:8px;width:{_bar_pct}%;border-radius:4px'></div>"
             f"</div><div style='display:flex;justify-content:space-between;margin-top:4px;"
-            f"font-size:10px;color:#8B9BB4'>"
-            f"<span>0×（叙事崩溃）</span><span style='color:#FFB347'>0.85×（匹配）</span>"
-            f"<span style='color:#00D4AA'>1.2×（领先）</span></div>"
+            f"font-size:10px;color:#6B6558'>"
+            f"<span>0×（叙事崩溃）</span><span style='color:#A67C3D'>0.85×（匹配）</span>"
+            f"<span style='color:#2F4A3C'>1.2×（领先）</span></div>"
             f"</div>",
             unsafe_allow_html=True)
     else:
@@ -1908,42 +1958,42 @@ elif page == "🔍 单股详情":
         dc9, dc10, dc11 = st.columns(3)
         with dc9:
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>ROIC</div>"
-                f"<div style='font-size:22px;font-weight:700;color:#A78BFA'>{_roic_disp:.1f}%</div>"
+                f"<div style='font-size:22px;font-weight:700;color:#4A6B5C'>{_roic_disp:.1f}%</div>"
                 f"</div>", unsafe_allow_html=True)
         with dc10:
             _ri_label = {"proper": "|CapEx|+R&D−D&A / NOPAT",
                          "capex_only": "|CapEx|−D&A / NOPAT",
                          "estimate": "估算：营收增速 / ROIC"}.get(_ri_method, "—")
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>再投资率</div>"
-                f"<div style='font-size:22px;font-weight:700;color:#E2E8F0'>{ri*100:.0f}%</div>"
-                f"<div style='color:#8B9BB4;font-size:10px;margin-top:2px'>"
+                f"<div style='font-size:22px;font-weight:700;color:#1E1E1B'>{ri*100:.0f}%</div>"
+                f"<div style='color:#6B6558;font-size:10px;margin-top:2px'>"
                 f"{_ri_label}</div>"
                 f"</div>", unsafe_allow_html=True)
         with dc11:
-            _sg_c = "#00D4AA" if sg and sg > 0.30 else "#E2E8F0"
+            _sg_c = "#2F4A3C" if sg and sg > 0.30 else "#1E1E1B"
             _sg_str = f"{sg*100:.0f}%" if sg else "N/A"
             st.markdown(
-                f"<div style='background:#0F1923;border:1px solid #1E2D3D;"
+                f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
                 f"border-radius:6px;padding:14px;text-align:center'>"
-                f"<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
+                f"<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
                 f"letter-spacing:0.8px;margin-bottom:4px'>可持续增长率</div>"
                 f"<div style='font-size:22px;font-weight:700;color:{_sg_c}'>{_sg_str}</div>"
-                f"<div style='color:#8B9BB4;font-size:10px;margin-top:2px'>"
+                f"<div style='color:#6B6558;font-size:10px;margin-top:2px'>"
                 f"ROIC × 再投资率</div>"
                 f"</div>", unsafe_allow_html=True)
 
     st.markdown(
-        "<div style='background:#0A1628;border:1px solid #1E2D3D;border-left:3px solid #4FC3F7;"
-        "border-radius:4px;padding:10px 14px;font-size:11px;color:#8B9BB4;margin-top:8px'>"
-        "📌 <b style='color:#4FC3F7'>游戏类型说明</b>：ENERGREX 使用<b>定价游戏</b>（EV倍数比较），"
+        "<div style='background:#F3F0E8;border:1px solid #DAD5C6;border-left:3px solid #2F4A3C;"
+        "border-radius:4px;padding:10px 14px;font-size:11px;color:#6B6558;margin-top:8px'>"
+        "<b style='color:#2F4A3C'>游戏类型说明</b>：ENERGREX 使用<b>定价游戏</b>（EV倍数比较），"
         "非 DCF 内在价值计算。Damodaran 分析为补充视角，"
         "用于检验市场隐含叙事是否与基本面叙事一致。"
         "市场隐含 CAGR 基于「成熟期 EV/Sales 回归」假设，仅供参考。"
@@ -2000,11 +2050,11 @@ elif page == "🔍 单股详情":
                 )
 
     st.markdown(
-        "<div style='background:#0F1923;border:1px solid #1E2D3D;border-radius:6px;"
+        "<div style='background:#F3F0E8;border:1px solid #DAD5C6;border-radius:6px;"
         "padding:14px 16px;margin-top:8px'>"
-        "<div style='color:#8B9BB4;font-size:10px;text-transform:uppercase;"
-        "letter-spacing:0.8px;margin-bottom:8px'>🗣️ 解读</div>"
-        f"<div style='color:#E2E8F0;font-size:13px;line-height:1.7'>{_excess_text}"
+        "<div style='color:#6B6558;font-size:10px;text-transform:uppercase;"
+        "letter-spacing:0.8px;margin-bottom:8px'>解读</div>"
+        f"<div style='color:#1E1E1B;font-size:13px;line-height:1.7'>{_excess_text}"
         + (f"<br><br>{_ri_sg_text}" if _ri_sg_text else "") +
         "</div></div>",
         unsafe_allow_html=True)
@@ -2013,9 +2063,8 @@ elif page == "🔍 单股详情":
 
     # ── 框架镜头分析（公开思想框架映射，页面直接算出的白话判断）────────
     st.markdown(
-        "<div style='display:flex;align-items:center;gap:10px;margin:4px 0 8px 0'>"
-        "<span style='font-size:22px;line-height:1'>🧠</span>"
-        "<span style='font-size:24px;font-weight:800;color:#eef7ff'>框架镜头分析</span>"
+        "<div style='margin:4px 0 8px 0'>"
+        f"<span style='font-size:22px;font-weight:700;color:#1E1E1B;font-family:{_ED_SERIF}'>框架镜头分析</span>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -2040,32 +2089,26 @@ elif page == "🔍 单股详情":
         "final":          float(row["final_score"]),
     })
 
-    # 两列卡片布局
-    _lc = st.columns(2)
-    for _i, _L in enumerate(_lenses):
-        with _lc[_i % 2]:
-            _c = _L["verdict_color"]
-            st.markdown(
-                f"<div class='investor-lens-card' style='background:rgba(16,43,73,0.82);"
-                f"border:1px solid rgba(142,190,235,0.22);"
-                f"border-left:3px solid {_c};border-radius:12px;"
-                f"padding:18px 20px;margin-bottom:16px;min-height:220px;"
-                f"box-shadow:0 4px 24px rgba(0,0,0,0.26)'>"
-                f"<div style='display:flex;justify-content:space-between;"
-                f"align-items:baseline;margin-bottom:2px'>"
-                f"<span style='font-size:16px;font-weight:800;color:#eef7ff'>"
-                f"{_L['icon']} {_L['name']}</span>"
-                f"<span style='font-size:10px;color:#8ea8c3;text-transform:uppercase;"
-                f"letter-spacing:0.5px'>{_L['dimension']}</span></div>"
-                f"<div style='font-size:12px;color:#b5c7dc;margin-bottom:10px'>"
-                f"{_L['framework']}</div>"
-                f"<div style='display:inline-block;background:{_c}22;color:{_c};"
-                f"font-size:12px;font-weight:600;padding:3px 10px;border-radius:4px;"
-                f"border:1px solid {_c}44;margin-bottom:8px'>{_L['verdict']}</div>"
-                f"<div style='color:#d9e8f7;font-size:13px;line-height:1.65'>"
-                f"{_L['paragraph']}</div>"
-                f"</div>",
-                unsafe_allow_html=True)
+    # 单列（editorial 风格不用卡片网格，靠上边细线分隔，见 min-height 移除说明）
+    for _L in _lenses:
+        _c = _L["verdict_color"]
+        st.markdown(
+            f"<div class='investor-lens-card' style='border-top:1px solid #DAD5C6;"
+            f"padding:14px 0 6px 0;margin-bottom:6px'>"
+            f"<div style='display:flex;justify-content:space-between;"
+            f"align-items:baseline;margin-bottom:4px'>"
+            f"<span style='font-size:16px;font-weight:700;color:#1E1E1B;"
+            f"font-family:{_ED_SERIF}'>{_L['name']}</span>"
+            f"<span style='font-size:10px;color:#6B6558;text-transform:uppercase;"
+            f"letter-spacing:0.5px'>{_L['dimension']}</span></div>"
+            f"<div style='font-size:12px;color:#6B6558;margin-bottom:8px'>"
+            f"{_L['framework']}</div>"
+            f"<div style='color:{_c};font-size:12px;font-weight:600;margin-bottom:8px'>"
+            f"{_L['verdict']}</div>"
+            f"<div style='color:#2A2A26;font-size:13px;line-height:1.65'>"
+            f"{_L['paragraph']}</div>"
+            f"</div>",
+            unsafe_allow_html=True)
 
     # ── 打印专属页脚（仅 PDF/打印时可见）──────────────────────
     # 用固定高度的占位块强制留白，而不是纯靠 margin——打印引擎在"容器被迫跨页/
@@ -2075,7 +2118,7 @@ elif page == "🔍 单股详情":
         unsafe_allow_html=True)
     st.markdown(
         f"<div class='print-only report-print-footer' style='margin-top:18px;padding-top:10px;"
-        f"border-top:1px solid #1E2D3D;font-size:9px;color:#8B9BB4;line-height:1.6'>"
+        f"border-top:1px solid #DAD5C6;font-size:9px;color:#6B6558;line-height:1.6'>"
         f"本报告由 ENERGREX AI 估值评分系统于 {_report_date} 自动生成，"
         f"评分与「框架镜头分析」均为规则化模型输出，不构成投资建议；"
         f"相关人物姓名仅用于说明公开思想框架来源，非本人观点、授权或背书。请自行核查数据来源与口径。"
