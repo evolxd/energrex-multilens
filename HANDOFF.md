@@ -32,16 +32,16 @@ permanently eliminates that section's exposure to the flex-fragmentation
 print-clipping bug class (§7.6), since there's no `st.columns()` there
 anymore to fragment.
 
-**Known follow-up, not yet done**: two native `st.warning()` / `st.info()`
-calls remain in low-traffic edge-case paths (the Kelly-sizing caveat
-message, and the "price zone unavailable" fallback). Native Streamlit
-alert components can't be restyled via inline CSS, so if either of these
-actually renders, it'll show Streamlit's default yellow/blue alert box
-instead of matching the new cream/hairline system. Low priority since
-they're edge cases, but if you're doing further polish on this page, this
-is the next thing on the list — replace them with the same
-`_ed_render_summary()`-style custom hairline block already used elsewhere
-on this page.
+**Follow-up resolved** (commit `2f18a33`, same session): the two remaining
+native `st.warning()` / `st.info()` calls (Kelly-sizing caveat, "price
+zone unavailable" fallback) were replaced with a new general-purpose
+`_ed_alert(text, level)` helper (colored left hairline, no fill) defined
+alongside the other `_ed_*` page-local helpers. There are no native
+Streamlit alert boxes left anywhere on this page. If you add a new
+alert/warning message to this page in the future, use `_ed_alert()`, not
+`st.info/success/warning/error` directly — those can't be restyled inline
+and will show Streamlit's default colored box, breaking the cream/
+hairline visual system.
 
 **Self-inflicted bug during this pass, now a standing lesson**: a bulk
 emoji-removal script (intended to strip decorative emoji like 🚀⚡📈 from
