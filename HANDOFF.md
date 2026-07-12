@@ -1,10 +1,69 @@
 # HANDOFF — ENERGREX AI Valuation (ai_valuation)
 
-Last updated: 2026-07-11 (revised twice post-initial-handoff: fixed the
-investor-lens print clipping bug, then found and fixed the same bug in the
-投资分析摘要 section, then generalized both into a standing rule in
-`PRINT_REPORT_STANDARD.md` and a new `REPORT_STANDARD.md`), by Claude
+Last updated: 2026-07-11 (revised three times post-initial-handoff: two
+print-clipping bug fixes generalized into standing standards, then a full
+visual redesign of the single-stock report page — see §11), by Claude
 (Sonnet 5) in a Claude Code session.
+
+## 11. Single-stock report visual redesign (2026-07-11, commit `1003f9f`)
+
+User feedback on the original dark neon dashboard theme: too dark, too
+long, too much "AI slop" visual noise. Presented 3 restrained editorial
+mockups; user picked **"Editorial quant"** and confirmed scope: **only the
+单股详情 page** (screen + print), every other page keeps the original dark
+theme. This is now the report's identity — do not casually revert toward
+the old dark/neon look for this page.
+
+**Palette** (page-scoped constants defined right after
+`elif page == "🔍 单股详情":` — `_ED_INK`, `_ED_MUTED`, `_ED_HAIR`,
+`_ED_ACCENT`, `_ED_ACCENT_LIGHT`, `_ED_WARN`, `_ED_DANGER`, `_ED_SERIF`):
+paper `#FAF8F3`, ink `#1E1E1B`, muted `#6B6558`, hairline `#DAD5C6`,
+accent (forest green) `#2F4A3C` / lighter `#4A6B5C`, caution (ochre)
+`#A67C3D`, danger (brick) `#8B3A2E`. Georgia serif for headline/score
+numbers, sans for body. This collapsed what used to be ~15 neon colors
+system-wide for this page down to this restrained set — see the commit
+message on `1003f9f` for the full old-color → new-color mapping table if
+you need to trace a specific hex back.
+
+**Structural change, not just color**: the investor-lens cards and the
+investment-summary alerts were converted from `st.columns(2)` grids to a
+single-column hairline-divided flow. This wasn't just aesthetic — it also
+permanently eliminates that section's exposure to the flex-fragmentation
+print-clipping bug class (§7.6), since there's no `st.columns()` there
+anymore to fragment.
+
+**Known follow-up, not yet done**: two native `st.warning()` / `st.info()`
+calls remain in low-traffic edge-case paths (the Kelly-sizing caveat
+message, and the "price zone unavailable" fallback). Native Streamlit
+alert components can't be restyled via inline CSS, so if either of these
+actually renders, it'll show Streamlit's default yellow/blue alert box
+instead of matching the new cream/hairline system. Low priority since
+they're edge cases, but if you're doing further polish on this page, this
+is the next thing on the list — replace them with the same
+`_ed_render_summary()`-style custom hairline block already used elsewhere
+on this page.
+
+**Self-inflicted bug during this pass, now a standing lesson**: a bulk
+emoji-removal script (intended to strip decorative emoji like 🚀⚡📈 from
+headers/labels) accidentally matched 🔍 inside the literal string
+`elif page == "🔍 单股详情":` — the page-routing condition itself, not
+decorative text. This silently broke the page match against the sidebar
+radio's option string (`"🔍 单股详情"`, unchanged), so the page rendered
+completely blank with **no exception thrown anywhere** — Streamlit doesn't
+error on an elif chain simply never matching. Diagnosed by restarting the
+server fresh (the running instance's log file had gone stale and stopped
+being written to well before this session, which cost real time chasing a
+phantom "no error in the log" dead end) and walking the DOM to find
+rendering stopped after the first injected `<style>` block. **Lesson for
+any future bulk find/replace across this file**: never run an
+emoji-strip / text-transform script across a line range without excluding
+string literals used as routing keys, dict keys, or Streamlit API
+parameters (a second, related hit from the same script: it emptied a real
+`icon="⚠️"` parameter to `icon=""`, which `st.warning()` rejects with
+`StreamlitAPIException` — Streamlit validates `icon=` strictly and empty
+string is not an accepted value). Grep for the exact routing strings
+(`elif page ==`) and any `icon="` occurrences before and after any such
+script, not just a visual glance at the diff.
 Read this file top to bottom before touching anything. It supersedes
 `CLAUDE.md` and `PROJECT_STATUS.md` in this repo — both are stale (CLAUDE.md
 describes a 10-ticker prototype; PROJECT_STATUS.md is dated 2026-06-13). Do
