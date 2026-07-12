@@ -98,10 +98,23 @@ PowerShell-driven risk-monitoring system with its own GitHub repos
 
 ```bash
 cd C:\Users\evolx\ai_valuation
-python -X utf8 -m streamlit run home.py --server.port 8501
+python -X utf8 -m streamlit run home.py --server.port 8502
 ```
-Open `http://localhost:8501`. Sidebar nav: 作战室（主页） / AI 估值评分 /
+Open `http://localhost:8502`. Sidebar nav: 作战室（主页） / AI 估值评分 /
 期权分析 / 账户监控.
+
+**Port is 8502, not 8501** — during this session's navigation-restructure
+work (commit `b53d30f`), two zombie Streamlit processes ended up both bound
+to port 8501 simultaneously (one had a stale pre-edit module cache for
+`_sidebar.py`, causing intermittent `AttributeError` depending on which
+process happened to serve a given request — confusing to debug since it
+looked like a hot-reload race, not a duplicate-process problem). One of the
+two (`PID 13516` at the time) could not be killed even with
+`taskkill /F /T` — access denied. Rather than fight it, dev moved to 8502.
+Before starting a server, check `netstat -ano | grep :8502` (or whatever
+port you intend to use) for stale listeners first, and don't assume
+`taskkill` will succeed — if it reports access denied, just pick a fresh
+port instead of debugging Windows process permissions.
 
 **Known environment gotcha**: this machine's global Python env previously had
 `starlette==0.27.0` (too old for `streamlit>=1.58`, which needs
@@ -223,8 +236,9 @@ narrative). They use different taxonomies (`sector_tag` string vs
   tier supports custom domains + free SSL; the only free-tier cost is a
   ~15-minute-idle spin-down (first visitor after idle eats a ~10-30s cold
   start, everyone else during the "warm" window is instant).
-- Local dev server (`streamlit run home.py --server.port 8501`) was running
-  throughout this session for verification — check if it's still up before
+- Local dev server (`streamlit run home.py --server.port 8502` — see §2 for
+  why it's 8502 and not 8501) was running throughout this session for
+  verification — check if it's still up before
   assuming you need to restart it.
 
 ## 5. What was done in this session (chronological, verified — not just claimed)
@@ -466,3 +480,46 @@ inline comments.
 - Don't write a new print-CSS `+`-sibling selector without verifying the
   actual DOM relationship first (§7.3) — it has bitten this project three
   times already.
+
+## 12. Sidebar navigation architecture (2026-07-11, commit `b53d30f`)
+
+User feedback with a screenshot: the AI估值评分 page's own sub-navigation
+(排行榜/单股详情/对比分析/评分审计/数据编辑, a `st.radio` inside `app.py`)
+rendered visually disconnected from the top-level page nav (作战室/AI估值
+评分/期权分析/账户监控, native `st.page_link`s in `_sidebar.py`) — split
+apart by an unrelated 数据更新 + 风险状态 status block sitting between them.
+Two levels of "where am I / where can I go" navigation, separated by
+global account-status widgets.
+
+**Fix**: `_sidebar.py`'s old monolithic `render()` is now split into
+`render_nav(subnav_render_fn=None)` and `render_status()`, plus a
+`render()` compat wrapper that just calls both in order (unchanged
+behavior for `home.py` and the 期权分析/账户监控 pages, which don't pass a
+callback). `render_nav()` renders the "AI 估值评分" `page_link`, then — if
+a callback was passed — calls it immediately afterward, *before* continuing
+to 期权分析/账户监控. `app.py` now builds its `st.radio` sub-nav inside
+that callback (its return value is captured through a one-key dict since a
+callback's return value can't otherwise escape the closure) and calls
+`render_nav(subnav_render_fn=...)` then `render_status()`. The CSV
+data-status caption (`📄 results_validated.csv · 16小时前` etc.) moved to
+its own small block *after* `render_status()` — it's this page's data
+status, not navigation, so it doesn't belong folded into the nav group
+either.
+
+**If you add a page-level sub-nav to 期权分析 or 账户监控 in the future**,
+follow the same pattern — don't invent a third approach. `render_nav()`
+currently only has one injection point (right after "AI 估值评分"); if a
+second page needs one too, generalize the parameter to something like
+`subnav_render_fns: dict[str, Callable]` keyed by which `page_link` it
+should follow, rather than adding a second single-purpose parameter.
+
+**Unrelated infra problem found and fixed while verifying this**: two
+zombie Streamlit processes were both bound to port 8501 at the same time,
+causing intermittent `AttributeError: module '_sidebar' has no attribute
+'render'` depending on which stale-cached process happened to serve a
+given request — looked like a hot-reload race at first, was actually just
+two servers. One process refused to die even under `taskkill /F /T`
+(access denied). Dev server now runs on **8502** (§2) — don't assume 8501
+is free before starting a new one; check `netstat -ano` first, and if
+`taskkill` reports access denied, don't burn time fighting Windows
+permissions — just use a different port.
