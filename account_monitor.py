@@ -2620,7 +2620,8 @@ def _build_spread_portfolios(acct_id: str) -> list[dict]:
                         matched[si] = True
                     else:
                         legs[si]["qty"] = -rem_s
-                    break
+                    if matched[li]:
+                        break
 
         # Round 2: Cross-expiry → diagonal / calendar
         dir_groups: dict[str, list[int]] = {}
@@ -2653,7 +2654,8 @@ def _build_spread_portfolios(acct_id: str) -> list[dict]:
                         matched[si] = True
                     else:
                         legs[si]["qty"] = -rem_s
-                    break
+                    if matched[li]:
+                        break
 
         # Round 3: Remaining → naked
         for i in und_indices:
