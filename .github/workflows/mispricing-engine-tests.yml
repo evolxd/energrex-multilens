@@ -1,0 +1,46 @@
+name: Mispricing Engine Tests
+
+on:
+  pull_request:
+    paths:
+      - "scoring/mispricing_engine.py"
+      - "scoring/mispricing_store.py"
+      - "tests/test_mispricing_engine.py"
+      - "tests/test_mispricing_store.py"
+      - "tests/test_mispricing_cases.py"
+      - "data/mispricing/**"
+      - ".github/workflows/mispricing-engine-tests.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "scoring/mispricing_engine.py"
+      - "scoring/mispricing_store.py"
+      - "tests/test_mispricing_engine.py"
+      - "tests/test_mispricing_store.py"
+      - "tests/test_mispricing_cases.py"
+      - "data/mispricing/**"
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install test dependency
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run mispricing contract and case tests
+        run: >-
+          python -m pytest -q
+          tests/test_mispricing_engine.py
+          tests/test_mispricing_store.py
+          tests/test_mispricing_cases.py
