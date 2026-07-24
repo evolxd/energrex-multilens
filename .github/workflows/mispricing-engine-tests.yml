@@ -7,6 +7,7 @@ on:
       - "scoring/mispricing_store.py"
       - "tests/test_mispricing_engine.py"
       - "tests/test_mispricing_store.py"
+      - "tests/test_mispricing_cases.py"
       - "data/mispricing/**"
       - ".github/workflows/mispricing-engine-tests.yml"
   push:
@@ -17,6 +18,7 @@ on:
       - "scoring/mispricing_store.py"
       - "tests/test_mispricing_engine.py"
       - "tests/test_mispricing_store.py"
+      - "tests/test_mispricing_cases.py"
       - "data/mispricing/**"
 
 jobs:
@@ -36,5 +38,9 @@ jobs:
       - name: Install test dependency
         run: python -m pip install --upgrade pip pytest
 
-      - name: Run mispricing contract tests
-        run: python -m pytest -q tests/test_mispricing_engine.py tests/test_mispricing_store.py
+      - name: Run mispricing contract and case tests
+        run: >-
+          python -m pytest -q
+          tests/test_mispricing_engine.py
+          tests/test_mispricing_store.py
+          tests/test_mispricing_cases.py
