@@ -42,8 +42,8 @@ def test_unassigned_slots_remain_empty_and_leak_free():
 
 def test_evidence_collection_cases_have_future_reveal_and_source_ledgers():
     assigned = [case for case in _payload()["cases"] if case["status"] == "EVIDENCE_COLLECTION"]
-    assert len(assigned) == 3
-    assert {case["ticker"] for case in assigned} == {"FUTU", "VSAT", "HRBR"}
+    assert len(assigned) == 2
+    assert {case["ticker"] for case in assigned} == {"VSAT", "HRBR"}
     for case in assigned:
         cutoff = date.fromisoformat(case["evidence_cutoff"])
         reveal = date.fromisoformat(case["reveal_date"])
@@ -59,24 +59,27 @@ def test_evidence_collection_cases_have_future_reveal_and_source_ledgers():
         assert FORBIDDEN.isdisjoint(ledger)
 
 
-def test_sealed_dva_case_points_to_locked_snapshot_and_ledger():
+def test_sealed_cases_point_to_locked_snapshots_and_ledgers():
     sealed = [case for case in _payload()["cases"] if case["status"] == "SEALED_UNRESOLVED"]
-    assert len(sealed) == 1
-    case = sealed[0]
-    assert case["case_id"] == "BB-001"
-    assert case["ticker"] == "DVA"
-    assert date.fromisoformat(case["evidence_cutoff"]) < date.fromisoformat(case["reveal_date"])
+    assert len(sealed) == 2
+    assert {(case["case_id"], case["ticker"]) for case in sealed} == {("BB-001", "DVA"), ("TT-001", "FUTU")}
 
-    snapshot = json.loads(Path(case["snapshot_file"]).read_text(encoding="utf-8"))
-    ledger = json.loads(Path(case["source_ledger"]).read_text(encoding="utf-8"))
-    assert snapshot["status"] == "SEALED"
-    assert snapshot["sealed"] is True
-    assert snapshot["sealed_decision"] == "REJECT_AT_CUTOFF"
-    assert snapshot["published_discovery_score"] is None
-    assert ledger["status"] == "SEALED_UNRESOLVED"
-    assert ledger["outcome_fields_locked"] is True
-    assert FORBIDDEN.isdisjoint(snapshot)
-    assert FORBIDDEN.isdisjoint(ledger)
+    for case in sealed:
+        assert date.fromisoformat(case["evidence_cutoff"]) < date.fromisoformat(case["reveal_date"])
+        snapshot = json.loads(Path(case["snapshot_file"]).read_text(encoding="utf-8"))
+        ledger = json.loads(Path(case["source_ledger"]).read_text(encoding="utf-8"))
+        assert snapshot["status"] == "SEALED"
+        assert snapshot["sealed"] is True
+        assert ledger["status"] == "SEALED_UNRESOLVED"
+        assert ledger["outcome_fields_locked"] is True
+        assert FORBIDDEN.isdisjoint(snapshot)
+        assert FORBIDDEN.isdisjoint(ledger)
+
+    by_ticker = {case["ticker"]: json.loads(Path(case["snapshot_file"]).read_text(encoding="utf-8")) for case in sealed}
+    assert by_ticker["DVA"]["sealed_decision"] == "REJECT_AT_CUTOFF"
+    assert by_ticker["DVA"]["published_discovery_score"] is None
+    assert by_ticker["FUTU"]["decision_at_cutoff"] == "WAIT_FOR_EVIDENCE"
+    assert by_ticker["FUTU"]["overall_gate"] == "NEEDS_EVIDENCE"
 
 
 def test_minimum_unresolved_ratio_is_preserved():
