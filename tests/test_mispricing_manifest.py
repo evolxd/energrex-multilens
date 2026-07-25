@@ -1,9 +1,11 @@
 import json
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 
 MANIFEST = Path("data/mispricing/backtests/case_manifest.v2.3.json")
+FORBIDDEN = {"outcome", "outcome_label", "realized_return", "post_reveal_notes"}
 
 
 def _payload():
@@ -13,7 +15,7 @@ def _payload():
 def test_manifest_has_frozen_v23_contract():
     payload = _payload()
     assert payload["version"] == "2.3"
-    assert payload["status"] == "candidate_registry_only"
+    assert payload["status"] == "mixed_registry_and_evidence_collection"
     assert payload["rules"]["result_fields_locked_until_reveal"] is True
     assert payload["rules"]["point_in_time_sources_required"] is True
 
@@ -28,16 +30,39 @@ def test_manifest_has_at_least_12_unique_slots_and_four_paths():
     assert len(paths) >= payload["rules"]["minimum_paths"]
 
 
-def test_unassigned_registry_contains_no_outcome_leakage():
-    payload = _payload()
-    forbidden = {"outcome", "outcome_label", "realized_return", "post_reveal_notes"}
-    for case in payload["cases"]:
-        assert case["status"] == "UNASSIGNED"
-        assert case["ticker"] is None
-        assert case["evidence_cutoff"] is None
-        assert case["reveal_date"] is None
-        assert case["snapshot_file"] is None
-        assert forbidden.isdisjoint(case)
+def test_unassigned_slots_remain_empty_and_leak_free():
+    for case in _payload()["cases"]:
+        assert FORBIDDEN.isdisjoint(case)
+        if case["status"] == "UNASSIGNED":
+            assert case["ticker"] is None
+            assert case["evidence_cutoff"] is None
+            assert case["reveal_date"] is None
+            assert case["snapshot_file"] is None
+
+
+def test_assigned_cases_have_future_reveal_and_existing_source_ledger():
+    assigned = [case for case in _payload()["cases"] if case["status"] == "EVIDENCE_COLLECTION"]
+    assert len(assigned) == 4
+    assert {case["ticker"] for case in assigned} == {"FUTU", "DVA", "VSAT", "HRBR"}
+    for case in assigned:
+        cutoff = date.fromisoformat(case["evidence_cutoff"])
+        reveal = date.fromisoformat(case["reveal_date"])
+        assert cutoff < reveal
+        path = Path(case["snapshot_file"])
+        assert path.exists()
+        ledger = json.loads(path.read_text(encoding="utf-8"))
+        assert ledger["case_id"] == case["case_id"]
+        assert ledger["ticker"] == case["ticker"]
+        assert ledger["outcome_fields_locked"] is True
+        assert ledger["status"] == "EVIDENCE_COLLECTION"
+        assert ledger["point_in_time_sources"]
+        assert FORBIDDEN.isdisjoint(ledger)
+
+
+def test_minimum_unresolved_ratio_is_preserved():
+    cases = _payload()["cases"]
+    unresolved = [case for case in cases if case["status"] in {"UNASSIGNED", "EVIDENCE_COLLECTION", "SEALED_UNRESOLVED"}]
+    assert len(unresolved) / len(cases) >= _payload()["rules"]["minimum_unresolved_ratio"]
 
 
 def test_registry_is_not_dominated_by_one_path():
