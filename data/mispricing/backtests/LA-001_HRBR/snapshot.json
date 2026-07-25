@@ -1,0 +1,9 @@
+{
+  "version":"2.3","case_id":"LA-001","ticker":"HRBR","evidence_cutoff":"2026-07-24","reveal_date":"2027-07-24","status":"DRAFT","sealed":false,
+  "market_data":{"price":null,"shares_diluted":null,"market_cap":null,"currency":"USD","source":null},
+  "capital_structure":{"cash":null,"marketable_securities":null,"restricted_cash":null,"debt":null,"other_claims":null,"sources":[]},
+  "business_evidence":{"cash_burn_rate":null,"strategic_alternatives":[],"board_support":null,"liquidation_catalyst":null,"sources":[]},
+  "market_expectations":{"consensus_view":null,"discount_to_conservative_recovery":null,"sources":[]},
+  "pillars":[{"name":"business_truth","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"survival","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"mispricing","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"value_capture","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"price_odds","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]}],
+  "kill_thesis":[],"monitoring":[],"notes":"Draft only. No liquidation thesis may pass without an actionable catalyst and full common-equity waterfall."
+}
