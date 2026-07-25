@@ -5,27 +5,49 @@
   "study_type": "prospective_blind",
   "evidence_cutoff": "2026-07-24",
   "reveal_date": "2027-07-24",
-  "status": "EVIDENCE_COLLECTION",
+  "status": "SEALED_UNRESOLVED",
+  "sealed_commit_scope": "Snapshot, source ledger and manifest state are frozen before outcome reveal.",
   "point_in_time_sources": [
     {
       "source_type": "SEC_20F",
       "period_end": "2025-12-31",
-      "filed_at": "2026-04-28",
+      "filed_at": "2026-04-15",
       "url": "https://www.sec.gov/Archives/edgar/data/1754581/000110465926043451/futu-20251231x20f.htm"
+    },
+    {
+      "source_type": "SEC_EX99_Q1_RESULTS",
+      "period_end": "2026-03-31",
+      "filed_at": "2026-05-28",
+      "url": "https://www.sec.gov/Archives/edgar/data/1754581/000110465926067159/tm2615605d1_ex99-1.htm"
+    },
+    {
+      "source_type": "HISTORICAL_MARKET_PRICE",
+      "period_end": "2026-07-24",
+      "filed_at": "2026-07-24",
+      "url": "https://ca.investing.com/equities/futu-holdings-historical-data",
+      "note": "Used only for the 2026-07-24 closing price; non-official market-data source."
     }
   ],
-  "required_freeze_fields": [
-    "funded_accounts",
-    "client_assets",
-    "revenue_mix",
-    "regulatory_market_access",
-    "regulatory_capital",
-    "diluted_share_count",
-    "market_price_and_market_cap_at_cutoff",
-    "consensus_or_reverse_implied_expectations",
-    "five_pillar_gates",
-    "kill_thesis"
+  "frozen_fields": {
+    "funded_accounts": 3590325,
+    "client_assets_hkd": 1220000000000,
+    "revenue_hkd": 5856000000,
+    "operating_income_hkd": 3530200000,
+    "pre_penalty_net_income_hkd": 2922000000,
+    "proposed_csrc_penalty_rmb": 1850000000,
+    "company_cash_and_short_term_investments_hkd": 23003309000,
+    "borrowings_and_repo_hkd": 21906267000,
+    "diluted_ordinary_shares": 1133330016,
+    "ordinary_shares_per_ads": 8,
+    "closing_price_usd": 99.31,
+    "estimated_market_cap_usd": 14067415386
+  },
+  "unresolved_evidence": [
+    "Final CSRC decision and any durable business restrictions",
+    "Consolidated excess regulatory capital by material jurisdiction",
+    "Verified net ADS-equivalent share-count bridge after repurchases and SBC",
+    "Independent reverse-DCF or normalized mid-cycle earnings range"
   ],
   "outcome_fields_locked": true,
-  "notes": "No outcome, future return or post-cutoff evidence may be added before reveal."
+  "notes": "Sealed with overall Gate NEEDS_EVIDENCE and decision WAIT_FOR_EVIDENCE. No outcome, future return or post-cutoff evidence may be added before reveal."
 }
