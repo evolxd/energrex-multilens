@@ -6,16 +6,16 @@ import pytest
 from scoring.mispricing_snapshot import load_snapshot, validate_snapshot_dict
 
 DRAFT_SNAPSHOTS = [
-    Path("data/mispricing/backtests/TT-001_FUTU/snapshot.json"),
     Path("data/mispricing/backtests/HA-001_VSAT/snapshot.json"),
     Path("data/mispricing/backtests/LA-001_HRBR/snapshot.json"),
 ]
 DVA_SNAPSHOT = Path("data/mispricing/backtests/BB-001_DVA/snapshot.json")
+FUTU_SNAPSHOT = Path("data/mispricing/backtests/TT-001_FUTU/snapshot.json")
 
 
 def test_remaining_first_wave_snapshots_load_as_unsealed_drafts():
     metas = [load_snapshot(path) for path in DRAFT_SNAPSHOTS]
-    assert {meta.case_id for meta in metas} == {"TT-001", "HA-001", "LA-001"}
+    assert {meta.case_id for meta in metas} == {"HA-001", "LA-001"}
     assert all(meta.status == "DRAFT" and not meta.sealed for meta in metas)
 
 
@@ -28,6 +28,22 @@ def test_dva_snapshot_is_sealed_and_unresolved():
     assert payload["overall_gate"] == "FAIL"
     assert payload["published_discovery_score"] is None
     assert payload["sealed_decision"] == "REJECT_AT_CUTOFF"
+    assert "outcome" not in payload
+    assert "realized_return" not in payload
+
+
+def test_futu_snapshot_is_sealed_as_needs_evidence_without_score():
+    meta = load_snapshot(FUTU_SNAPSHOT)
+    payload = json.loads(FUTU_SNAPSHOT.read_text(encoding="utf-8"))
+    assert meta.case_id == "TT-001"
+    assert meta.status == "SEALED"
+    assert meta.sealed is True
+    assert payload["overall_gate"] == "NEEDS_EVIDENCE"
+    assert payload["decision_at_cutoff"] == "WAIT_FOR_EVIDENCE"
+    assert {item["name"] for item in payload["pillars"] if item["gate"] == "NEEDS_EVIDENCE"} == {
+        "mispricing",
+        "value_capture",
+    }
     assert "outcome" not in payload
     assert "realized_return" not in payload
 
