@@ -9,7 +9,7 @@
     "point_in_time_sources_required": true
   },
   "cases": [
-    {"case_id": "TT-001", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": "FUTU", "evidence_cutoff": "2026-07-24", "reveal_date": "2027-07-24", "snapshot_file": "data/mispricing/backtests/TT-001_FUTU/source_ledger.json", "status": "EVIDENCE_COLLECTION"},
+    {"case_id": "TT-001", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": "FUTU", "evidence_cutoff": "2026-07-24", "reveal_date": "2027-07-24", "snapshot_file": "data/mispricing/backtests/TT-001_FUTU/snapshot.json", "source_ledger": "data/mispricing/backtests/TT-001_FUTU/source_ledger.json", "status": "SEALED_UNRESOLVED"},
     {"case_id": "TT-002", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
     {"case_id": "TT-003", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
     {"case_id": "BB-001", "path": "cashflow_buyback_compounder", "role": "candidate", "ticker": "DVA", "evidence_cutoff": "2026-07-24", "reveal_date": "2027-07-24", "snapshot_file": "data/mispricing/backtests/BB-001_DVA/snapshot.json", "source_ledger": "data/mispricing/backtests/BB-001_DVA/source_ledger.json", "status": "SEALED_UNRESOLVED"},
