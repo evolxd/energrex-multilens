@@ -10,6 +10,7 @@ on:
       - "tests/test_mispricing_store.py"
       - "tests/test_mispricing_cases.py"
       - "tests/test_mispricing_backtest.py"
+      - "tests/test_mispricing_manifest.py"
       - "data/mispricing/**"
       - ".github/workflows/mispricing-engine-tests.yml"
   push:
@@ -23,6 +24,7 @@ on:
       - "tests/test_mispricing_store.py"
       - "tests/test_mispricing_cases.py"
       - "tests/test_mispricing_backtest.py"
+      - "tests/test_mispricing_manifest.py"
       - "data/mispricing/**"
 
 jobs:
@@ -49,3 +51,4 @@ jobs:
           tests/test_mispricing_store.py
           tests/test_mispricing_cases.py
           tests/test_mispricing_backtest.py
+          tests/test_mispricing_manifest.py
