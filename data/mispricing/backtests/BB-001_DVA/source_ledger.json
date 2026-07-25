@@ -5,27 +5,60 @@
   "study_type": "prospective_blind",
   "evidence_cutoff": "2026-07-24",
   "reveal_date": "2027-07-24",
-  "status": "EVIDENCE_COLLECTION",
+  "status": "SEALED_UNRESOLVED",
+  "sealed_snapshot": "data/mispricing/backtests/BB-001_DVA/snapshot.json",
   "point_in_time_sources": [
     {
       "source_type": "SEC_10K",
       "period_end": "2025-12-31",
       "filed_at": "2026-02-20",
       "url": "https://www.sec.gov/Archives/edgar/data/927066/000092706626000012/dva-20251231.htm"
+    },
+    {
+      "source_type": "SEC_10Q",
+      "period_end": "2026-03-31",
+      "filed_at": "2026-05-05",
+      "url": "https://www.sec.gov/Archives/edgar/data/927066/000092706626000062/dva-20260331.htm"
+    },
+    {
+      "source_type": "SEC_8K_EARNINGS_RELEASE",
+      "period_end": "2026-03-31",
+      "filed_at": "2026-05-05",
+      "url": "https://www.sec.gov/Archives/edgar/data/927066/000092706626000060/dva33126ex991.htm"
+    },
+    {
+      "source_type": "HISTORICAL_MARKET_PRICE",
+      "period_end": "2026-07-23",
+      "filed_at": "2026-07-24",
+      "url": "https://chartexchange.com/symbol/nyse-dva/historical/",
+      "note": "Used the latest verified closing price before the 2026-07-24 evidence cutoff; no unverified intraday or post-cutoff close was substituted."
+    },
+    {
+      "source_type": "COMPANY_EARNINGS_SCHEDULE",
+      "period_end": "2026-07-21",
+      "filed_at": "2026-07-21",
+      "url": "https://newsroom.davita.com/2026-07-21-davita-inc-schedules-2nd-quarter-2026-investor-conference-call/",
+      "note": "Confirms Q2 results were not available before the evidence cutoff."
     }
   ],
-  "required_freeze_fields": [
+  "freeze_fields_completed": [
     "payer_mix",
-    "reimbursement_and_labor_cost_spread",
+    "reimbursement_and_labor_cost_spread_risk",
     "free_cash_flow",
     "gross_buybacks",
-    "stock_based_compensation",
     "net_diluted_share_count_change",
     "debt_maturity_and_interest_coverage",
     "market_price_and_market_cap_at_cutoff",
     "five_pillar_gates",
     "kill_thesis"
   ],
+  "known_limitations": [
+    "Stock-based compensation was not isolated as a standalone Q1 cash figure; the value-capture conclusion relies on observed net diluted share-count reduction rather than gross repurchases alone.",
+    "Interest coverage is a simplified operating-income-to-debt-expense proxy and not the company's covenant definition.",
+    "The price-odds screen annualizes one quarter of free cash flow only as a rough rejection check; it is not a formal intrinsic-value model.",
+    "Q2 2026 results were unavailable at cutoff and are prohibited from this sealed snapshot."
+  ],
   "outcome_fields_locked": true,
-  "notes": "Government and insurance payment stability must not be treated as automatic pricing power or unlimited leverage capacity."
+  "outcome_reveal_allowed_on_or_after": "2027-07-24",
+  "notes": "Government and insurance payment stability was not treated as automatic pricing power. Snapshot conclusion was REJECT_AT_CUTOFF because mispricing and price-odds gates failed despite strong buyback execution."
 }
