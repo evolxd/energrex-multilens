@@ -1,0 +1,25 @@
+{
+  "version": "2.3",
+  "status": "candidate_registry_only",
+  "rules": {
+    "minimum_cases": 12,
+    "minimum_paths": 4,
+    "minimum_unresolved_ratio": 0.5,
+    "result_fields_locked_until_reveal": true,
+    "point_in_time_sources_required": true
+  },
+  "cases": [
+    {"case_id": "TT-001", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "TT-002", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "TT-003", "path": "great_business_temporary_trouble", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "BB-001", "path": "cashflow_buyback_compounder", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "BB-002", "path": "cashflow_buyback_compounder", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "BB-003", "path": "cashflow_buyback_compounder", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "HA-001", "path": "hidden_asset_or_scarce_right", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "HA-002", "path": "hidden_asset_or_scarce_right", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "LA-001", "path": "liquidation_value_arbitrage", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "LA-002", "path": "liquidation_value_arbitrage", "role": "candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "F-001", "path": "implied_expectation_mismatch", "role": "known_failure_candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"},
+    {"case_id": "F-002", "path": "capital_allocation_rerating", "role": "known_failure_candidate", "ticker": null, "evidence_cutoff": null, "reveal_date": null, "snapshot_file": null, "status": "UNASSIGNED"}
+  ]
+}
