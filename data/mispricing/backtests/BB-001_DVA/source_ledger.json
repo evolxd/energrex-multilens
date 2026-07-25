@@ -1,0 +1,31 @@
+{
+  "case_id": "BB-001",
+  "ticker": "DVA",
+  "path": "cashflow_buyback_compounder",
+  "study_type": "prospective_blind",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "EVIDENCE_COLLECTION",
+  "point_in_time_sources": [
+    {
+      "source_type": "SEC_10K",
+      "period_end": "2025-12-31",
+      "filed_at": "2026-02-20",
+      "url": "https://www.sec.gov/Archives/edgar/data/927066/000092706626000012/dva-20251231.htm"
+    }
+  ],
+  "required_freeze_fields": [
+    "payer_mix",
+    "reimbursement_and_labor_cost_spread",
+    "free_cash_flow",
+    "gross_buybacks",
+    "stock_based_compensation",
+    "net_diluted_share_count_change",
+    "debt_maturity_and_interest_coverage",
+    "market_price_and_market_cap_at_cutoff",
+    "five_pillar_gates",
+    "kill_thesis"
+  ],
+  "outcome_fields_locked": true,
+  "notes": "Government and insurance payment stability must not be treated as automatic pricing power or unlimited leverage capacity."
+}
