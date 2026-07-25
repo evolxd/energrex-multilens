@@ -6,11 +6,13 @@ on:
       - "scoring/mispricing_engine.py"
       - "scoring/mispricing_store.py"
       - "scoring/mispricing_backtest.py"
+      - "scoring/mispricing_snapshot.py"
       - "tests/test_mispricing_engine.py"
       - "tests/test_mispricing_store.py"
       - "tests/test_mispricing_cases.py"
       - "tests/test_mispricing_backtest.py"
       - "tests/test_mispricing_manifest.py"
+      - "tests/test_mispricing_snapshot.py"
       - "data/mispricing/**"
       - ".github/workflows/mispricing-engine-tests.yml"
   push:
@@ -20,11 +22,13 @@ on:
       - "scoring/mispricing_engine.py"
       - "scoring/mispricing_store.py"
       - "scoring/mispricing_backtest.py"
+      - "scoring/mispricing_snapshot.py"
       - "tests/test_mispricing_engine.py"
       - "tests/test_mispricing_store.py"
       - "tests/test_mispricing_cases.py"
       - "tests/test_mispricing_backtest.py"
       - "tests/test_mispricing_manifest.py"
+      - "tests/test_mispricing_snapshot.py"
       - "data/mispricing/**"
 
 jobs:
@@ -44,7 +48,7 @@ jobs:
       - name: Install test dependency
         run: python -m pip install --upgrade pip pytest
 
-      - name: Run mispricing contract, case and anti-hindsight tests
+      - name: Run mispricing contract, case, snapshot and anti-hindsight tests
         run: >-
           python -m pytest -q
           tests/test_mispricing_engine.py
@@ -52,3 +56,4 @@ jobs:
           tests/test_mispricing_cases.py
           tests/test_mispricing_backtest.py
           tests/test_mispricing_manifest.py
+          tests/test_mispricing_snapshot.py
