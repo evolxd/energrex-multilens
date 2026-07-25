@@ -15,7 +15,7 @@ def _payload():
 def test_manifest_has_frozen_v23_contract():
     payload = _payload()
     assert payload["version"] == "2.3"
-    assert payload["status"] == "mixed_registry_and_evidence_collection"
+    assert payload["status"] == "mixed_registry_evidence_collection_and_sealed"
     assert payload["rules"]["result_fields_locked_until_reveal"] is True
     assert payload["rules"]["point_in_time_sources_required"] is True
 
@@ -40,10 +40,10 @@ def test_unassigned_slots_remain_empty_and_leak_free():
             assert case["snapshot_file"] is None
 
 
-def test_assigned_cases_have_future_reveal_and_existing_source_ledger():
+def test_evidence_collection_cases_have_future_reveal_and_source_ledgers():
     assigned = [case for case in _payload()["cases"] if case["status"] == "EVIDENCE_COLLECTION"]
-    assert len(assigned) == 4
-    assert {case["ticker"] for case in assigned} == {"FUTU", "DVA", "VSAT", "HRBR"}
+    assert len(assigned) == 3
+    assert {case["ticker"] for case in assigned} == {"FUTU", "VSAT", "HRBR"}
     for case in assigned:
         cutoff = date.fromisoformat(case["evidence_cutoff"])
         reveal = date.fromisoformat(case["reveal_date"])
@@ -57,6 +57,26 @@ def test_assigned_cases_have_future_reveal_and_existing_source_ledger():
         assert ledger["status"] == "EVIDENCE_COLLECTION"
         assert ledger["point_in_time_sources"]
         assert FORBIDDEN.isdisjoint(ledger)
+
+
+def test_sealed_dva_case_points_to_locked_snapshot_and_ledger():
+    sealed = [case for case in _payload()["cases"] if case["status"] == "SEALED_UNRESOLVED"]
+    assert len(sealed) == 1
+    case = sealed[0]
+    assert case["case_id"] == "BB-001"
+    assert case["ticker"] == "DVA"
+    assert date.fromisoformat(case["evidence_cutoff"]) < date.fromisoformat(case["reveal_date"])
+
+    snapshot = json.loads(Path(case["snapshot_file"]).read_text(encoding="utf-8"))
+    ledger = json.loads(Path(case["source_ledger"]).read_text(encoding="utf-8"))
+    assert snapshot["status"] == "SEALED"
+    assert snapshot["sealed"] is True
+    assert snapshot["sealed_decision"] == "REJECT_AT_CUTOFF"
+    assert snapshot["published_discovery_score"] is None
+    assert ledger["status"] == "SEALED_UNRESOLVED"
+    assert ledger["outcome_fields_locked"] is True
+    assert FORBIDDEN.isdisjoint(snapshot)
+    assert FORBIDDEN.isdisjoint(ledger)
 
 
 def test_minimum_unresolved_ratio_is_preserved():
