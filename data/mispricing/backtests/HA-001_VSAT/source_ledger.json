@@ -1,0 +1,31 @@
+{
+  "case_id": "HA-001",
+  "ticker": "VSAT",
+  "path": "hidden_asset_or_scarce_right",
+  "study_type": "prospective_blind",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "EVIDENCE_COLLECTION",
+  "point_in_time_sources": [
+    {
+      "source_type": "SEC_10K",
+      "period_end": "2025-03-31",
+      "filed_at": "2025-05-27",
+      "url": "https://investors.viasat.com/sec-filings/sec-filing/10-k/0000950170-25-077138"
+    }
+  ],
+  "required_freeze_fields": [
+    "satellite_and_spectrum_rights",
+    "asset_ownership_and_encumbrances",
+    "inmarsat_integration_economics",
+    "debt_maturities",
+    "capital_expenditure_commitments",
+    "cash_burn_and_liquidity_runway",
+    "common_equity_value_capture",
+    "market_price_and_market_cap_at_cutoff",
+    "five_pillar_gates",
+    "kill_thesis"
+  ],
+  "outcome_fields_locked": true,
+  "notes": "Hidden assets receive no credit until ownership, saleability, senior claims and ordinary-share capture are verified."
+}
