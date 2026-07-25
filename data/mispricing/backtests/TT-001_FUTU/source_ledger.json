@@ -1,0 +1,31 @@
+{
+  "case_id": "TT-001",
+  "ticker": "FUTU",
+  "path": "great_business_temporary_trouble",
+  "study_type": "prospective_blind",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "EVIDENCE_COLLECTION",
+  "point_in_time_sources": [
+    {
+      "source_type": "SEC_20F",
+      "period_end": "2025-12-31",
+      "filed_at": "2026-04-28",
+      "url": "https://www.sec.gov/Archives/edgar/data/1754581/000110465926043451/futu-20251231x20f.htm"
+    }
+  ],
+  "required_freeze_fields": [
+    "funded_accounts",
+    "client_assets",
+    "revenue_mix",
+    "regulatory_market_access",
+    "regulatory_capital",
+    "diluted_share_count",
+    "market_price_and_market_cap_at_cutoff",
+    "consensus_or_reverse_implied_expectations",
+    "five_pillar_gates",
+    "kill_thesis"
+  ],
+  "outcome_fields_locked": true,
+  "notes": "No outcome, future return or post-cutoff evidence may be added before reveal."
+}
