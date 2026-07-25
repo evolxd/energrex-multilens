@@ -1,0 +1,23 @@
+{
+  "version": "2.3",
+  "case_id": "TT-001",
+  "ticker": "FUTU",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "DRAFT",
+  "sealed": false,
+  "market_data": {"price": null, "shares_diluted": null, "market_cap": null, "currency": "USD", "source": null},
+  "capital_structure": {"cash": null, "debt": null, "net_cash_or_debt": null, "maturity_schedule": [], "regulatory_capital": null, "sources": []},
+  "business_evidence": {"revenue_mix": {}, "cash_flow": null, "customer_assets": null, "funded_accounts": null, "sources": []},
+  "market_expectations": {"consensus_view": null, "reverse_implied_assumptions": {}, "sources": []},
+  "pillars": [
+    {"name": "business_truth", "gate": "NEEDS_EVIDENCE", "score": 0, "evidence": []},
+    {"name": "survival", "gate": "NEEDS_EVIDENCE", "score": 0, "evidence": []},
+    {"name": "mispricing", "gate": "NEEDS_EVIDENCE", "score": 0, "evidence": []},
+    {"name": "value_capture", "gate": "NEEDS_EVIDENCE", "score": 0, "evidence": []},
+    {"name": "price_odds", "gate": "NEEDS_EVIDENCE", "score": 0, "evidence": []}
+  ],
+  "kill_thesis": [],
+  "monitoring": [],
+  "notes": "Draft only. Do not seal until all market data and evidence are point-in-time verified."
+}
