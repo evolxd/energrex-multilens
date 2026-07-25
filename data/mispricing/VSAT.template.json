@@ -1,0 +1,43 @@
+{
+  "version": "2.3",
+  "ticker": "VSAT",
+  "primary_path": "hidden_asset_or_scarce_right",
+  "secondary_paths": ["implied_expectation_mismatch"],
+  "variant_view": "Template only: spectrum and orbital rights may be undervalued relative to market capitalization, but ownership, encumbrances, monetization path, debt seniority and cash burn must be verified before any conclusion.",
+  "pillars": [
+    {"name": "business_truth", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 25, "evidence": [], "warnings": ["Verify operating segments, asset ownership and cash generation."]},
+    {"name": "survival", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 20, "evidence": [], "warnings": ["Verify liquidity runway, maturities, covenants and capital commitments."]},
+    {"name": "mispricing", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 20, "evidence": [], "warnings": ["Document market-implied value for spectrum and orbital rights."]},
+    {"name": "value_capture", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 20, "evidence": [], "warnings": ["Prove value reaches common equity after debt and partner claims."]},
+    {"name": "price_odds", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 15, "evidence": [], "warnings": ["Use conservative NAV and cash-burn scenarios."]}
+  ],
+  "payer_economics": {
+    "end_user": "government, aviation, maritime and broadband connectivity users",
+    "economic_payers": ["government agencies", "enterprise customers", "distribution partners", "consumers"],
+    "price_setter": "contractual and competitive pricing",
+    "payment_necessity": "mixed",
+    "payer_credit_quality": "mixed-to-high",
+    "payer_concentration": "medium",
+    "policy_dependency": "high",
+    "cost_pass_through_ability": "medium",
+    "bad_debt_risk": "needs_evidence",
+    "payer_mix_trend": "needs_evidence",
+    "revenue_predictability": "mixed",
+    "pricing_pressure_risk": "medium",
+    "policy_shock_risk": "high",
+    "leverage_support_assessment": "Contract quality may support portions of debt, but capital intensity, launch risk, spectrum regulation and cash burn govern survival.",
+    "reasonable_net_leverage_ceiling": null,
+    "stress_case_reimbursement_change_pct": null
+  },
+  "conviction": {
+    "thesis_core_facts": ["scarce rights are legally controlled", "rights are transferable or monetizable", "common equity retains residual value after claims"],
+    "price_review_rule": {"reference": "entry_price", "threshold_pct": -30, "lookback_days": null},
+    "metric_rules": [
+      {"metric": "liquidity_runway_months", "operator": "<", "threshold": 12, "action": "EXIT", "rationale": "The company may not survive to asset monetization."},
+      {"metric": "verified_common_equity_nav_ratio", "operator": "<", "threshold": 1.0, "action": "REASSESS", "rationale": "Verified residual asset value no longer exceeds market value."}
+    ],
+    "add_on_weakness_conditions": ["All rights and encumbrances verified", "survival gate remains PASS", "common-equity NAV margin expands"],
+    "prohibited_actions": ["Value spectrum without legal-right verification", "Ignore debt seniority or required future capex"],
+    "maximum_waiting_months": 24
+  }
+}

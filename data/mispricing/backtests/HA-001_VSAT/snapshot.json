@@ -1,0 +1,9 @@
+{
+  "version":"2.3","case_id":"HA-001","ticker":"VSAT","evidence_cutoff":"2026-07-24","reveal_date":"2027-07-24","status":"DRAFT","sealed":false,
+  "market_data":{"price":null,"shares_diluted":null,"market_cap":null,"currency":"USD","source":null},
+  "capital_structure":{"cash":null,"debt":null,"net_cash_or_debt":null,"maturity_schedule":[],"liquidity_runway_months":null,"sources":[]},
+  "business_evidence":{"segment_cash_flow":{},"satellite_and_spectrum_rights":[],"asset_ownership":[],"sources":[]},
+  "market_expectations":{"consensus_view":null,"reverse_implied_assumptions":{},"sources":[]},
+  "pillars":[{"name":"business_truth","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"survival","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"mispricing","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"value_capture","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"price_odds","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]}],
+  "kill_thesis":[],"monitoring":[],"notes":"Draft only. Hidden assets must be ownership-verified and tested against debt claims and cash burn."
+}

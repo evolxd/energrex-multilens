@@ -1,0 +1,43 @@
+{
+  "version": "2.3",
+  "ticker": "FUTU",
+  "primary_path": "implied_expectation_mismatch",
+  "secondary_paths": ["great_business_temporary_trouble"],
+  "variant_view": "Template only: the market may be over-discounting durable customer-asset growth relative to regulatory and trading-cycle risks. No investment conclusion until evidence fields are verified.",
+  "pillars": [
+    {"name": "business_truth", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 25, "evidence": [], "warnings": ["Verify revenue mix, customer assets and payer mechanics."]},
+    {"name": "survival", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 20, "evidence": [], "warnings": ["Verify liquidity, regulatory capital and jurisdiction risk."]},
+    {"name": "mispricing", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 20, "evidence": [], "warnings": ["Document consensus and reverse-implied expectations."]},
+    {"name": "value_capture", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 20, "evidence": [], "warnings": ["Verify diluted share count, buybacks and ordinary-share access."]},
+    {"name": "price_odds", "gate": "NEEDS_EVIDENCE", "score": 0, "max_score": 15, "evidence": [], "warnings": ["Run valuation scenarios using current verified data."]}
+  ],
+  "payer_economics": {
+    "end_user": "brokerage and wealth-management clients",
+    "economic_payers": ["trading clients", "margin-financing clients", "wealth-management clients"],
+    "price_setter": "mixed market and platform pricing",
+    "payment_necessity": "low-to-medium",
+    "payer_credit_quality": "distributed",
+    "payer_concentration": "low",
+    "policy_dependency": "high",
+    "cost_pass_through_ability": "medium",
+    "bad_debt_risk": "needs_evidence",
+    "payer_mix_trend": "needs_evidence",
+    "revenue_predictability": "cyclical",
+    "pricing_pressure_risk": "medium",
+    "policy_shock_risk": "high",
+    "leverage_support_assessment": "Do not infer utility-like leverage capacity; verify regulatory capital, client-credit exposure and liquidity.",
+    "reasonable_net_leverage_ceiling": null,
+    "stress_case_reimbursement_change_pct": null
+  },
+  "conviction": {
+    "thesis_core_facts": ["funded-account quality", "client-asset retention", "regulatory access in core markets"],
+    "price_review_rule": {"reference": "entry_price", "threshold_pct": -30, "lookback_days": null},
+    "metric_rules": [
+      {"metric": "client_assets_growth", "operator": "<", "threshold": 0, "action": "REASSESS", "rationale": "Sustained asset contraction challenges the compounding thesis."},
+      {"metric": "regulatory_market_access", "operator": "<", "threshold": 1, "action": "EXIT", "rationale": "Loss of access to a core market can permanently impair the thesis."}
+    ],
+    "add_on_weakness_conditions": ["All five gates PASS with refreshed evidence", "valuation margin of safety expands"],
+    "prohibited_actions": ["Average down solely because price fell", "Use unverified regulatory rumors as evidence"],
+    "maximum_waiting_months": 24
+  }
+}

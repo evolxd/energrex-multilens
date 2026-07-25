@@ -1,0 +1,128 @@
+{
+  "version": "2.3",
+  "case_id": "TT-001",
+  "ticker": "FUTU",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "SEALED",
+  "sealed": true,
+  "decision_at_cutoff": "WAIT_FOR_EVIDENCE",
+  "overall_gate": "NEEDS_EVIDENCE",
+  "market_data": {
+    "price": 99.31,
+    "price_date": "2026-07-24",
+    "shares_diluted": 141666252,
+    "share_unit": "ADS",
+    "market_cap": 14067415386,
+    "currency": "USD",
+    "source": "Investing.com historical close; Q1 2026 diluted ordinary shares divided by 8 ordinary shares per ADS"
+  },
+  "capital_structure": {
+    "cash": 2934096173,
+    "cash_definition": "Company cash and cash equivalents plus short-term investments; excludes cash held on behalf of clients",
+    "debt": 2794166717,
+    "debt_definition": "Borrowings plus securities sold under repurchase agreements",
+    "net_cash_or_debt": 139929456,
+    "maturity_schedule": ["Detailed maturity schedule not established in the Q1 earnings exhibit; retain as evidence gap."],
+    "regulatory_capital": "Broker-dealer subsidiaries are subject to jurisdiction-specific capital requirements; exact consolidated excess regulatory capital was not established in the frozen source set.",
+    "sources": [
+      "SEC Q1 2026 earnings exhibit filed 2026-05-28",
+      "SEC 2025 Form 20-F filed 2026-04-15"
+    ]
+  },
+  "business_evidence": {
+    "revenue_mix": {
+      "brokerage_commission_and_handling_hkd": 2641400000,
+      "interest_income_hkd": 2650200000,
+      "other_income_hkd": 564300000
+    },
+    "cash_flow": "Q1 operating income was HK$3.53 billion. Reported net income was distorted by a proposed RMB1.85 billion CSRC penalty; pre-adjustment Q1 net income was approximately HK$2.92 billion.",
+    "customer_assets": {"value_hkd": 1220000000000, "yoy_growth": 0.472},
+    "funded_accounts": {"count": 3590325, "yoy_growth": 0.343},
+    "trading_volume_hkd": 4150000000000,
+    "margin_financing_and_securities_lending_hkd": 72900000000,
+    "share_repurchases_usd_through_2026_05_27": 418000000,
+    "sources": [
+      "SEC Q1 2026 earnings exhibit filed 2026-05-28",
+      "SEC 2025 Form 20-F filed 2026-04-15"
+    ]
+  },
+  "market_expectations": {
+    "consensus_view": "The market appears to be pricing a material regulatory and earnings-quality discount after the proposed mainland-China penalty, despite continued account and client-asset growth.",
+    "reverse_implied_assumptions": {
+      "normalized_q1_diluted_eps_usd_approx": 2.63,
+      "annualized_normalized_eps_usd_approx": 10.52,
+      "spot_to_annualized_normalized_pe_approx": 9.44,
+      "caveat": "Annualization is a rough stress lens, not a forecast; brokerage earnings are cyclical and interest-rate sensitive."
+    },
+    "sources": [
+      "Q1 2026 pre-penalty net income and diluted share count from SEC earnings exhibit",
+      "2026-07-24 historical close from Investing.com"
+    ]
+  },
+  "pillars": [
+    {
+      "name": "business_truth",
+      "gate": "PASS",
+      "score": 21,
+      "evidence": [
+        "Funded accounts grew 34.3% year over year to 3.59 million.",
+        "Client assets grew 47.2% year over year to HK$1.22 trillion.",
+        "Revenue is diversified across brokerage, interest and other financial services income."
+      ]
+    },
+    {
+      "name": "survival",
+      "gate": "PASS",
+      "score": 17,
+      "evidence": [
+        "Company cash plus short-term investments approximately matched borrowings plus repo financing at quarter end.",
+        "Q1 operating income remained strongly positive even though reported net income absorbed the proposed regulatory penalty."
+      ]
+    },
+    {
+      "name": "mispricing",
+      "gate": "NEEDS_EVIDENCE",
+      "score": 0,
+      "evidence": [],
+      "warnings": [
+        "The proposed CSRC penalty is quantified, but the final decision and durable effect on mainland-related access were unresolved at cutoff.",
+        "A low normalized earnings multiple alone does not prove the market has overestimated structural regulatory risk."
+      ]
+    },
+    {
+      "name": "value_capture",
+      "gate": "NEEDS_EVIDENCE",
+      "score": 0,
+      "evidence": [],
+      "warnings": [
+        "ADS holders face foreign-private-issuer, holding-company and China regulatory structure risks.",
+        "Repurchases are meaningful, but net ADS-equivalent share-count reduction and long-run capital return require a verified bridge."
+      ]
+    },
+    {
+      "name": "price_odds",
+      "gate": "PASS",
+      "score": 12,
+      "evidence": [
+        "At US$99.31, spot price was about 9.4 times a simple annualization of Q1 pre-penalty diluted EPS.",
+        "The balance sheet showed company cash and short-term investments broadly offsetting borrowings and repo financing."
+      ],
+      "warnings": ["The earnings base is cyclical and sensitive to trading activity, client leverage and interest rates."]
+    }
+  ],
+  "kill_thesis": [
+    {"metric": "core_market_regulatory_access", "operator": "<", "threshold": 1, "action": "EXIT"},
+    {"metric": "client_assets_yoy_growth", "operator": "<", "threshold": 0, "action": "REASSESS"},
+    {"metric": "funded_accounts_yoy_growth", "operator": "<", "threshold": 0.10, "action": "REASSESS"},
+    {"metric": "regulatory_capital_compliance", "operator": "<", "threshold": 1, "action": "EXIT"}
+  ],
+  "monitoring": [
+    {"metric": "final_csrc_penalty_and_business_restrictions", "frequency": "event_driven"},
+    {"metric": "funded_accounts_and_client_assets", "frequency": "quarterly"},
+    {"metric": "net_ads_equivalent_share_count", "frequency": "quarterly"},
+    {"metric": "margin_financing_balance_and_credit_losses", "frequency": "quarterly"},
+    {"metric": "revenue_mix_and_normalized_operating_margin", "frequency": "quarterly"}
+  ],
+  "notes": "Sealed as NEEDS_EVIDENCE. Strong operating growth, balance-sheet liquidity and apparent valuation support are not sufficient to classify the regulatory episode as temporary until final restrictions and value-capture mechanics are verified. No formal discovery score is published."
+}

@@ -1,0 +1,32 @@
+{
+  "case_id": "LA-001",
+  "ticker": "HRBR",
+  "path": "liquidation_value_arbitrage",
+  "study_type": "prospective_blind",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "EVIDENCE_COLLECTION",
+  "point_in_time_sources": [
+    {
+      "source_type": "SEC_8K",
+      "event_date": "2026-01-09",
+      "filed_at": "2026-01-15",
+      "url": "https://www.sec.gov/Archives/edgar/data/899394/000119312526014391/d23873d8k.htm"
+    }
+  ],
+  "required_freeze_fields": [
+    "sale_consideration_and_adjustments",
+    "cash_restricted_cash_and_marketable_securities",
+    "remaining_non_operating_assets",
+    "all_debt_and_priority_claims",
+    "litigation_tax_and_transaction_costs",
+    "cash_burn_until_realization",
+    "board_supported_catalyst",
+    "common_equity_recovery_bear_base_bull",
+    "market_price_and_market_cap_at_cutoff",
+    "five_pillar_gates",
+    "kill_thesis"
+  ],
+  "outcome_fields_locked": true,
+  "notes": "The January 2026 filing says liquidation is only one possible strategic alternative. Do not classify the case as actionable liquidation until a board-supported catalyst and full common-equity waterfall are verified."
+}
