@@ -1,9 +1,155 @@
 {
-  "version":"2.3","case_id":"BB-001","ticker":"DVA","evidence_cutoff":"2026-07-24","reveal_date":"2027-07-24","status":"DRAFT","sealed":false,
-  "market_data":{"price":null,"shares_diluted":null,"market_cap":null,"currency":"USD","source":null},
-  "capital_structure":{"cash":null,"debt":null,"net_cash_or_debt":null,"maturity_schedule":[],"interest_coverage":null,"sources":[]},
-  "business_evidence":{"revenue_mix":{},"cash_flow":null,"net_share_count_change":null,"payer_mix":null,"sources":[]},
-  "market_expectations":{"consensus_view":null,"reverse_implied_assumptions":{},"sources":[]},
-  "pillars":[{"name":"business_truth","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"survival","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"mispricing","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"value_capture","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]},{"name":"price_odds","gate":"NEEDS_EVIDENCE","score":0,"evidence":[]}],
-  "kill_thesis":[],"monitoring":[],"notes":"Draft only. Verify payer economics, leverage and true net buyback before sealing."
+  "version": "2.3",
+  "case_id": "BB-001",
+  "ticker": "DVA",
+  "evidence_cutoff": "2026-07-24",
+  "reveal_date": "2027-07-24",
+  "status": "SEALED",
+  "sealed": true,
+  "market_data": {
+    "price": 234.27,
+    "price_as_of": "2026-07-23",
+    "price_basis": "latest verified closing price available before the evidence cutoff",
+    "shares_diluted": 64.2,
+    "shares_basis": "common shares outstanding as of 2026-05-05; used instead of Q1 weighted-average diluted shares for point-in-time market capitalization",
+    "market_cap": 15040.13,
+    "currency": "USD",
+    "units": "millions except per-share price",
+    "source": "https://www.sec.gov/Archives/edgar/data/927066/000092706626000062/dva-20260331.htm; https://chartexchange.com/symbol/nyse-dva/historical/"
+  },
+  "capital_structure": {
+    "cash": 644.243,
+    "short_term_investments": 22.303,
+    "debt_principal": 10694.329,
+    "net_debt": 10027.783,
+    "maturity_schedule": [
+      {"instrument": "Term Loan A-2", "amount": 1987.5, "maturity": "2030-11-24", "rate": "SOFR + 1.50%"},
+      {"instrument": "Term Loan B-2", "amount": 1863.864, "maturity": "2031-05-09", "rate": "SOFR + 1.75%"},
+      {"instrument": "6.875% Senior Notes", "amount": 1000.0, "maturity": "2032-09-01", "rate": "6.875%"},
+      {"instrument": "6.75% Senior Notes", "amount": 1000.0, "maturity": "2033-07-15", "rate": "6.75%"}
+    ],
+    "interest_coverage": 3.32,
+    "interest_coverage_basis": "Q1 2026 operating income of 482 divided by debt expense of 145; a simplified coverage proxy, not covenant EBITDA coverage",
+    "weighted_average_debt_rate": 5.44,
+    "revolver_drawn": 375.0,
+    "revolver_available": 1125.0,
+    "sources": [
+      "https://www.sec.gov/Archives/edgar/data/927066/000092706626000062/dva-20260331.htm"
+    ]
+  },
+  "business_evidence": {
+    "revenue_mix": {
+      "medicare_and_medicare_advantage": 1783.919,
+      "medicaid_and_managed_medicaid": 212.830,
+      "other_government": 341.119,
+      "commercial": 1067.555,
+      "other": 33.885,
+      "eliminations": -23.760,
+      "total_revenue": 3415.548,
+      "units": "USD millions"
+    },
+    "payer_mix_interpretation": "Government and insurance payment sources support collection stability, but profit concentration in higher-paying commercial plans creates pricing and policy risk. Payment stability is not treated as unrestricted pricing power.",
+    "cash_flow": {
+      "q1_2026_operating_cash_flow": 321.0,
+      "q1_2026_free_cash_flow": 140.0
+    },
+    "buybacks": {
+      "q1_2026_shares_repurchased": 3.005,
+      "q1_2026_cash_spent": 402.864,
+      "average_price": 133.70,
+      "additional_shares_repurchased_through_2026_05_05": 2.007,
+      "additional_cash_spent_through_2026_05_05": 301.811
+    },
+    "net_share_count_change": -0.1526,
+    "net_share_count_change_basis": "Q1 weighted-average diluted shares declined from 81.275 million in 2025 to 68.875 million in 2026; this is a year-over-year period-average comparison, not an exact endpoint share-count bridge.",
+    "patients_and_centers": "Approximately 296,300 patients at 3,262 outpatient dialysis centers as of 2026-03-31.",
+    "sources": [
+      "https://www.sec.gov/Archives/edgar/data/927066/000092706626000062/dva-20260331.htm",
+      "https://www.sec.gov/Archives/edgar/data/927066/000092706626000060/dva33126ex991.htm"
+    ]
+  },
+  "market_expectations": {
+    "consensus_view": "At the cutoff, the stock traded near its recent 52-week high after a major rerating. The market no longer appeared to price a severe temporary impairment; the remaining thesis depended more on continued earnings and buyback execution than on obvious expectation compression.",
+    "reverse_implied_assumptions": {
+      "observation": "A roughly USD 15.0 billion equity value against Q1 free cash flow of USD 140 million implies demanding continuation assumptions if Q1 is simply annualized. No formal reverse DCF is sealed because Q2 2026 results were not available before the cutoff.",
+      "annualized_q1_fcf_multiple": 26.86,
+      "method_warning": "Annualizing one quarter is a rough screening calculation and not a valuation conclusion."
+    },
+    "sources": [
+      "https://chartexchange.com/symbol/nyse-dva/historical/",
+      "https://newsroom.davita.com/2026-07-21-davita-inc-schedules-2nd-quarter-2026-investor-conference-call/"
+    ]
+  },
+  "pillars": [
+    {
+      "name": "business_truth",
+      "gate": "PASS",
+      "score": 21,
+      "evidence": [
+        "Q1 2026 revenue was USD 3.416 billion and operating cash flow was USD 321 million.",
+        "Payer-source revenue is disclosed and the dialysis service model is understandable and cash generative."
+      ]
+    },
+    {
+      "name": "survival",
+      "gate": "PASS",
+      "score": 13,
+      "evidence": [
+        "Debt maturities are substantially beyond the one-year reveal window and the company reported USD 1.125 billion of undrawn revolver availability.",
+        "Simplified Q1 operating-income-to-debt-expense coverage was approximately 3.32x."
+      ],
+      "warnings": [
+        "Net debt was approximately USD 10.0 billion and leverage remains a material thesis risk.",
+        "Commercial payer and reimbursement pressure can weaken cash-flow durability."
+      ]
+    },
+    {
+      "name": "mispricing",
+      "gate": "FAIL",
+      "score": 5,
+      "evidence": [
+        "The stock was near a recent 52-week high at the cutoff, so the market was not visibly pricing a deep temporary impairment.",
+        "Q2 2026 results were scheduled after the cutoff, leaving insufficient point-in-time evidence for a positive expectation-gap claim."
+      ]
+    },
+    {
+      "name": "value_capture",
+      "gate": "PASS",
+      "score": 17,
+      "evidence": [
+        "Q1 repurchases totaled 3.005 million shares and another 2.007 million shares were repurchased through May 5, 2026.",
+        "Q1 weighted-average diluted shares fell approximately 15.3% year over year, indicating buybacks were more than cosmetic over that comparison period."
+      ],
+      "warnings": [
+        "Buybacks funded alongside rising gross debt can transfer timing risk to equity holders if reimbursement or operating performance weakens."
+      ]
+    },
+    {
+      "name": "price_odds",
+      "gate": "FAIL",
+      "score": 3,
+      "evidence": [
+        "The latest verified pre-cutoff close was USD 234.27, implying approximately USD 15.04 billion of equity value using 64.2 million shares outstanding.",
+        "The rough annualized Q1 free-cash-flow multiple was approximately 26.9x, which did not provide an evident margin of safety for a leveraged buyback thesis."
+      ]
+    }
+  ],
+  "overall_gate": "FAIL",
+  "published_discovery_score": null,
+  "sealed_decision": "REJECT_AT_CUTOFF",
+  "decision_rationale": "DaVita passed business durability, near-term survival and value-capture checks, but failed the mispricing and price-odds gates. The company may remain a strong operator and effective repurchaser, yet the cutoff price did not offer a sufficiently demonstrated expectation gap or margin of safety.",
+  "kill_thesis": [
+    {"metric": "interest_coverage", "operator": "<", "threshold": 2.0, "action": "EXIT", "rationale": "Debt service would be insufficiently protected."},
+    {"metric": "commercial_revenue_mix", "operator": "<", "threshold": 0.25, "action": "REASSESS", "rationale": "A lower commercial mix can materially compress economics."},
+    {"metric": "trailing_twelve_month_net_share_count_change", "operator": ">=", "threshold": 0.0, "action": "REASSESS", "rationale": "The buyback-compounder mechanism fails if diluted shares stop declining."},
+    {"metric": "free_cash_flow", "operator": "<", "threshold": 0.0, "action": "EXIT", "rationale": "Persistent negative free cash flow would invalidate debt-supported repurchases."}
+  ],
+  "monitoring": [
+    {"metric": "revenue_per_treatment_vs_patient_care_cost_per_treatment", "frequency": "quarterly", "warning": "spread contracts for two consecutive quarters"},
+    {"metric": "commercial_payer_revenue_mix", "frequency": "quarterly", "warning": "material decline or adverse contract repricing"},
+    {"metric": "net_debt_and_interest_coverage", "frequency": "quarterly", "warning": "net debt rises while coverage falls"},
+    {"metric": "diluted_share_count", "frequency": "quarterly", "warning": "buybacks no longer reduce diluted shares"},
+    {"metric": "repurchase_price_vs_intrinsic_value", "frequency": "quarterly", "warning": "repurchases continue at valuations lacking margin of safety"}
+  ],
+  "notes": "Prospective blind-test snapshot sealed with information available by 2026-07-24. No post-cutoff evidence or outcome data may be added to this file before the reveal date."
 }
