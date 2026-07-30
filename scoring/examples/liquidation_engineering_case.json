@@ -1,0 +1,200 @@
+{
+  "schema_version": "2.4",
+  "ticker": "NETNETCO",
+  "primary_path": "LIQUIDATION_AND_ASSET_ARBITRAGE",
+  "secondary_paths": [],
+  "style_lineage": "GRAHAM_LIQUIDATION",
+  "quick_reject": {
+    "business_explainable_150_words": true,
+    "payer_identified": true,
+    "price_setter_identified": true,
+    "core_cash_flow_verifiable": true,
+    "liquidity_runway_36m": true,
+    "forced_refinancing_risk": false,
+    "forced_dilution_risk": false,
+    "common_equity_capture_verifiable": true,
+    "asset_title_and_transferability_verifiable": true,
+    "liquidation_hidden_liabilities_estimable": true,
+    "thesis_beyond_famous_holder_or_short_interest": true,
+    "source_quality_sufficient": true,
+    "evidence_ids": ["liq-balance-sheet"]
+  },
+  "payer_economics": {
+    "end_user": "工程样例：不适用——本案例的回报来自资产清算/出售，不来自持续经营的付款方",
+    "economic_payers": ["清算/出售交易对手方"],
+    "price_setter": "资产买家与清算管理人协商",
+    "leverage_support_assessment": "工程假设：不依赖付款方杠杆推导，回报由资产回收值与市值折价支撑。"
+  },
+  "liquidation_value": {
+    "cash_and_equivalents": {"value": 300, "evidence_ids": ["liq-balance-sheet"]},
+    "marketable_securities_recovery_value": {"value": 120, "evidence_ids": ["liq-balance-sheet"]},
+    "receivables_gross": {"value": 200, "evidence_ids": ["liq-balance-sheet"]},
+    "receivables_recovery_rate": {"value": 0.80, "evidence_ids": ["liq-balance-sheet"]},
+    "inventory_recovery_value": {"value": 90, "evidence_ids": ["liq-balance-sheet"]},
+    "property_and_equipment_conservative_sale_value": {"value": 100, "evidence_ids": ["liq-balance-sheet"]},
+    "subsidiaries_and_stakes_value": {"value": 40, "evidence_ids": ["liq-hidden-assets"]},
+    "hidden_assets_value": {"value": 30, "evidence_ids": ["liq-hidden-assets"]},
+    "total_debt": {"value": 250, "evidence_ids": ["liq-balance-sheet"]},
+    "lease_liabilities": {"value": 70, "evidence_ids": ["liq-claims"]},
+    "pension_claims": {"value": 20, "evidence_ids": ["liq-claims"]},
+    "legal_and_regulatory_claims": {"value": 25, "evidence_ids": ["liq-claims"]},
+    "preferred_equity": {"value": 0, "evidence_ids": ["liq-claims"]},
+    "minority_interest": {"value": 15, "evidence_ids": ["liq-claims"]},
+    "tax_cost": {"value": 20, "evidence_ids": ["liq-claims"]},
+    "transaction_and_wind_down_cost": {"value": 30, "evidence_ids": ["liq-claims"]},
+    "cash_burn_until_realization": {"value": 40, "evidence_ids": ["liq-claims"]},
+    "liquidation_timeline_months": 24,
+    "current_market_cap": 220,
+    "liquidation_gate": {
+      "title_verified": true,
+      "recovery_rates_supported": true,
+      "hidden_liabilities_bounded": true,
+      "cash_burn_bounded": true,
+      "common_equity_priority_clear": true,
+      "catalyst_or_control_path_present": true,
+      "annualized_return_above_hurdle": true
+    }
+  },
+  "thesis": {
+    "market_believes": "市场按持续经营给普通股定价，忽略了清算/出售场景下资产回收值明显高于当前市值。",
+    "variant_view": "扣除全部优先索偿后，普通股清算回收值相对当前市值有实质折价空间，且已有清算或控制权路径的催化剂。",
+    "because": "工程样例：资产负债表回收测算+第三方评估支持清算价值高于市值。",
+    "falsifiable_by": "隐藏负债超出预估、清算路径被阻断，或资产回收速度大幅慢于预期导致年化回报跌破门槛。"
+  },
+  "evidence": [
+    {
+      "evidence_id": "liq-balance-sheet",
+      "claim": "现金、有价证券、应收、存货、固定资产与总负债的资产负债表数字。",
+      "source": "最新10-Q资产负债表（工程样例占位）",
+      "source_tier": "PRIMARY_FILING",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-hidden-assets",
+      "claim": "子公司股权与隐藏资产的第三方评估价值。",
+      "source": "独立评估报告（工程样例占位）",
+      "source_tier": "MODEL",
+      "status": "VERIFIED",
+      "as_of": "2026-07-15",
+      "verified_at": "2026-07-18",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-claims",
+      "claim": "租赁、养老金、法律、优先股、少数股东权益、税务与清算成本等扣除项。",
+      "source": "10-Q附注与法律披露（工程样例占位）",
+      "source_tier": "PRIMARY_FILING",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-business",
+      "claim": "核心业务逻辑可解释，本案例的回报驱动是资产清算而非持续经营。",
+      "source": "工程样例占位",
+      "source_tier": "MANUAL",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-survival",
+      "claim": "现金流与流动性可支撑清算窗口期内的运营。",
+      "source": "工程样例占位",
+      "source_tier": "MANUAL",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-mispricing",
+      "claim": "当前市值相对清算回收值存在可量化折价。",
+      "source": "工程样例占位",
+      "source_tier": "MODEL",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-capture",
+      "claim": "普通股在清算优先级中的位置已核实，无优先股/关联方稀释普通股回收的安排。",
+      "source": "工程样例占位",
+      "source_tier": "MANUAL",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    },
+    {
+      "evidence_id": "liq-price",
+      "claim": "熊市/基准/牛市赔率已用同一时点数据核验。",
+      "source": "工程样例占位",
+      "source_tier": "MODEL",
+      "status": "VERIFIED",
+      "as_of": "2026-07-20",
+      "verified_at": "2026-07-21",
+      "expires_at": "2026-10-31"
+    }
+  ],
+  "gates": [
+    {
+      "name": "BUSINESS_TRUTH",
+      "status": "PASS",
+      "reason": "核心业务逻辑可解释。",
+      "evidence_ids": ["liq-business"]
+    },
+    {
+      "name": "SURVIVAL",
+      "status": "PASS",
+      "reason": "清算窗口期内现金流可支撑。",
+      "evidence_ids": ["liq-survival"]
+    },
+    {
+      "name": "MISPRICING",
+      "status": "PASS",
+      "reason": "市值相对清算回收值存在可量化折价。",
+      "evidence_ids": ["liq-mispricing"]
+    },
+    {
+      "name": "VALUE_CAPTURE",
+      "status": "PASS",
+      "reason": "普通股清算优先级已核实，无稀释安排。",
+      "evidence_ids": ["liq-capture"]
+    },
+    {
+      "name": "PRICE_ODDS",
+      "status": "PASS",
+      "reason": "赔率已用同一时点数据核验。",
+      "evidence_ids": ["liq-price"]
+    }
+  ],
+  "monitor_rules": [
+    {
+      "rule_id": "netnetco-hidden-liability-markup",
+      "gate": "LIQUIDATION",
+      "metric": "hidden_liabilities_markup_pct",
+      "operator": "GT",
+      "threshold": 0.15,
+      "threshold_high": null,
+      "consecutive_periods": 1,
+      "action": "REVIEW"
+    },
+    {
+      "rule_id": "netnetco-realization-delay",
+      "gate": "LIQUIDATION",
+      "metric": "months_past_expected_realization",
+      "operator": "GT",
+      "threshold": 6,
+      "threshold_high": null,
+      "consecutive_periods": 1,
+      "action": "DOWNGRADE"
+    }
+  ]
+}

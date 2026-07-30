@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://energrex.local/schemas/mispricing-contract-v2.4.json",
+  "title": "ENERGREX Mispricing Discovery Contract v2.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "ticker",
+    "primary_path",
+    "style_lineage",
+    "quick_reject",
+    "payer_economics",
+    "thesis",
+    "evidence",
+    "gates",
+    "monitor_rules"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"primary_path": {"const": "LIQUIDATION_AND_ASSET_ARBITRAGE"}}
+      },
+      "then": {
+        "required": ["liquidation_value"]
+      }
+    }
+  ],
+  "properties": {
+    "schema_version": {"const": "2.4"},
+    "ticker": {"type": "string", "minLength": 1},
+    "primary_path": {"$ref": "#/$defs/opportunityPath"},
+    "style_lineage": {
+      "enum": [
+        "GRAHAM_LIQUIDATION",
+        "SPECIAL_SITUATION_ARBITRAGE",
+        "QUALITY_AT_REASONABLE_PRICE",
+        "GREAT_BUSINESS_TEMPORARY_TROUBLE",
+        "CONTROL_CAPITAL_ALLOCATION",
+        "BUYBACK_COMPOUNDING"
+      ]
+    },
+    "secondary_paths": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/opportunityPath"}
+    },
+    "quick_reject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "business_explainable_150_words",
+        "payer_identified",
+        "price_setter_identified",
+        "core_cash_flow_verifiable",
+        "liquidity_runway_36m",
+        "forced_refinancing_risk",
+        "forced_dilution_risk",
+        "common_equity_capture_verifiable",
+        "thesis_beyond_famous_holder_or_short_interest",
+        "source_quality_sufficient"
+      ],
+      "properties": {
+        "business_explainable_150_words": {"type": ["boolean", "null"]},
+        "payer_identified": {"type": ["boolean", "null"]},
+        "price_setter_identified": {"type": ["boolean", "null"]},
+        "core_cash_flow_verifiable": {"type": ["boolean", "null"]},
+        "liquidity_runway_36m": {"type": ["boolean", "null"]},
+        "forced_refinancing_risk": {"type": ["boolean", "null"]},
+        "forced_dilution_risk": {"type": ["boolean", "null"]},
+        "common_equity_capture_verifiable": {"type": ["boolean", "null"]},
+        "asset_title_and_transferability_verifiable": {"type": ["boolean", "null"]},
+        "liquidation_hidden_liabilities_estimable": {"type": ["boolean", "null"]},
+        "thesis_beyond_famous_holder_or_short_interest": {"type": ["boolean", "null"]},
+        "source_quality_sufficient": {"type": ["boolean", "null"]},
+        "option_catalyst_before_expiry_with_buffer": {"type": ["boolean", "null"]},
+        "evidence_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "payer_economics": {
+      "type": "object",
+      "required": ["end_user", "economic_payers", "price_setter", "leverage_support_assessment"],
+      "properties": {
+        "end_user": {"type": "string", "minLength": 1},
+        "economic_payers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "price_setter": {"type": "string", "minLength": 1},
+        "leverage_support_assessment": {"type": "string", "minLength": 1}
+      }
+    },
+    "liquidation_value": {"$ref": "#/$defs/liquidationValue"},
+    "thesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["market_believes", "variant_view", "because", "falsifiable_by"],
+      "properties": {
+        "market_believes": {"type": "string", "minLength": 1},
+        "variant_view": {"type": "string", "minLength": 1},
+        "because": {"type": "string", "minLength": 1},
+        "falsifiable_by": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_id",
+          "claim",
+          "source",
+          "source_tier",
+          "status",
+          "as_of",
+          "verified_at"
+        ],
+        "properties": {
+          "evidence_id": {"type": "string", "minLength": 1},
+          "claim": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "source_tier": {
+            "enum": [
+              "PRIMARY_FILING",
+              "REGULATOR",
+              "BROKER",
+              "MARKET_DATA",
+              "MODEL",
+              "SECONDARY",
+              "MANUAL"
+            ]
+          },
+          "status": {"enum": ["VERIFIED", "PENDING", "CONFLICTED"]},
+          "as_of": {"type": "string", "format": "date"},
+          "verified_at": {"type": "string", "format": "date"},
+          "expires_at": {
+            "oneOf": [
+              {"type": "string", "format": "date"},
+              {"type": "null"}
+            ]
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "reason", "evidence_ids"],
+        "properties": {
+          "name": {"$ref": "#/$defs/gateName"},
+          "status": {"enum": ["PASS", "NEEDS_EVIDENCE", "FAIL"]},
+          "reason": {"type": "string", "minLength": 1},
+          "evidence_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "monitor_rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "gate",
+          "metric",
+          "operator",
+          "threshold",
+          "consecutive_periods",
+          "action"
+        ],
+        "properties": {
+          "rule_id": {"type": "string", "minLength": 1},
+          "gate": {"$ref": "#/$defs/gateName"},
+          "metric": {"type": "string", "minLength": 1},
+          "operator": {"enum": ["LT", "LTE", "GT", "GTE", "EQ", "NE", "BETWEEN"]},
+          "threshold": {"type": "number"},
+          "threshold_high": {"type": ["number", "null"]},
+          "consecutive_periods": {"type": "integer", "minimum": 1},
+          "action": {"enum": ["REVIEW", "PAUSE_ADD", "DOWNGRADE", "REDUCE", "EXIT"]}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "opportunityPath": {
+      "enum": [
+        "GREAT_BUSINESS_STUMBLE",
+        "BUYBACK_TIME_MACHINE",
+        "HIDDEN_SCARCE_ASSET",
+        "CAPITAL_ALLOCATION_RERATING",
+        "IMPLIED_EXPECTATIONS_GAP",
+        "LIQUIDATION_AND_ASSET_ARBITRAGE"
+      ]
+    },
+    "gateName": {
+      "enum": [
+        "BUSINESS_TRUTH",
+        "SURVIVAL",
+        "MISPRICING",
+        "VALUE_CAPTURE",
+        "PRICE_ODDS",
+        "LIQUIDATION"
+      ]
+    },
+    "valuedField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "evidence_ids"],
+      "properties": {
+        "value": {"type": "number"},
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "liquidationValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cash_and_equivalents",
+        "marketable_securities_recovery_value",
+        "property_and_equipment_conservative_sale_value",
+        "subsidiaries_and_stakes_value",
+        "hidden_assets_value",
+        "total_debt",
+        "lease_liabilities",
+        "pension_claims",
+        "legal_and_regulatory_claims",
+        "preferred_equity",
+        "minority_interest",
+        "tax_cost",
+        "transaction_and_wind_down_cost",
+        "cash_burn_until_realization",
+        "current_market_cap",
+        "liquidation_timeline_months",
+        "liquidation_gate"
+      ],
+      "properties": {
+        "cash_and_equivalents": {"$ref": "#/$defs/valuedField"},
+        "marketable_securities_recovery_value": {"$ref": "#/$defs/valuedField"},
+        "receivables_recovery_value": {"$ref": "#/$defs/valuedField"},
+        "receivables_gross": {"$ref": "#/$defs/valuedField"},
+        "receivables_recovery_rate": {"$ref": "#/$defs/valuedField"},
+        "inventory_recovery_value": {"$ref": "#/$defs/valuedField"},
+        "inventory_gross": {"$ref": "#/$defs/valuedField"},
+        "inventory_recovery_rate": {"$ref": "#/$defs/valuedField"},
+        "property_and_equipment_conservative_sale_value": {"$ref": "#/$defs/valuedField"},
+        "subsidiaries_and_stakes_value": {"$ref": "#/$defs/valuedField"},
+        "hidden_assets_value": {"$ref": "#/$defs/valuedField"},
+        "total_debt": {"$ref": "#/$defs/valuedField"},
+        "lease_liabilities": {"$ref": "#/$defs/valuedField"},
+        "pension_claims": {"$ref": "#/$defs/valuedField"},
+        "legal_and_regulatory_claims": {"$ref": "#/$defs/valuedField"},
+        "preferred_equity": {"$ref": "#/$defs/valuedField"},
+        "minority_interest": {"$ref": "#/$defs/valuedField"},
+        "tax_cost": {"$ref": "#/$defs/valuedField"},
+        "transaction_and_wind_down_cost": {"$ref": "#/$defs/valuedField"},
+        "cash_burn_until_realization": {"$ref": "#/$defs/valuedField"},
+        "current_market_cap": {"type": "number", "exclusiveMinimum": 0},
+        "liquidation_timeline_months": {"type": "integer", "exclusiveMinimum": 0},
+        "liquidation_gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title_verified": {"type": ["boolean", "null"]},
+            "recovery_rates_supported": {"type": ["boolean", "null"]},
+            "hidden_liabilities_bounded": {"type": ["boolean", "null"]},
+            "cash_burn_bounded": {"type": ["boolean", "null"]},
+            "common_equity_priority_clear": {"type": ["boolean", "null"]},
+            "catalyst_or_control_path_present": {"type": ["boolean", "null"]},
+            "annualized_return_above_hurdle": {"type": ["boolean", "null"]}
+          }
+        }
+      }
+    }
+  }
+}

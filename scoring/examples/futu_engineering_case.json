@@ -1,0 +1,147 @@
+{
+  "schema_version": "2.4",
+  "ticker": "FUTU",
+  "primary_path": "GREAT_BUSINESS_STUMBLE",
+  "secondary_paths": ["IMPLIED_EXPECTATIONS_GAP"],
+  "style_lineage": "GREAT_BUSINESS_TEMPORARY_TROUBLE",
+  "quick_reject": {
+    "business_explainable_150_words": true,
+    "payer_identified": true,
+    "price_setter_identified": true,
+    "core_cash_flow_verifiable": null,
+    "liquidity_runway_36m": null,
+    "forced_refinancing_risk": null,
+    "forced_dilution_risk": null,
+    "common_equity_capture_verifiable": null,
+    "thesis_beyond_famous_holder_or_short_interest": true,
+    "source_quality_sufficient": null,
+    "evidence_ids": []
+  },
+  "payer_economics": {
+    "end_user": "个人及部分机构投资者",
+    "economic_payers": [
+      "交易客户",
+      "融资融券客户",
+      "财富管理客户",
+      "基金与金融机构"
+    ],
+    "price_setter": "平台、市场竞争、利率和监管共同影响",
+    "payment_necessity": "LOW_TO_MEDIUM",
+    "payer_concentration": "LOW",
+    "policy_dependency": "HIGH",
+    "revenue_cyclicality": "HIGH",
+    "leverage_support_assessment": "工程假设：不适用刚性付款方的高杠杆推导，必须按券商资本和周期性收入压力测试。"
+  },
+  "thesis": {
+    "market_believes": "监管事件可能永久削弱增长与估值。",
+    "variant_view": "核心经营可能仍在增长，监管影响需要拆分为一次性损失与持续性限制。",
+    "because": "这是待验证的工程假设，必须用最新公司披露、监管文件和估值模型重新核验。",
+    "falsifiable_by": "监管扩散至主要市场、客户资产持续净流出，或正常化盈利显著恶化。"
+  },
+  "evidence": [
+    {
+      "evidence_id": "futu-business-pending",
+      "claim": "数字券商收入来源与客户支付逻辑需要用最新年报核验。",
+      "source": "待补最新公司年报",
+      "source_tier": "MANUAL",
+      "status": "PENDING",
+      "as_of": "2026-07-23",
+      "verified_at": "2026-07-23",
+      "expires_at": "2026-08-23"
+    },
+    {
+      "evidence_id": "futu-survival-pending",
+      "claim": "资本与流动性需要按券商口径压力测试。",
+      "source": "待补最新监管资本及资产负债表",
+      "source_tier": "MANUAL",
+      "status": "PENDING",
+      "as_of": "2026-07-23",
+      "verified_at": "2026-07-23",
+      "expires_at": "2026-08-23"
+    },
+    {
+      "evidence_id": "futu-mispricing-pending",
+      "claim": "当前价格隐含的增长与监管损伤程度尚未完成逆向估值。",
+      "source": "待运行 ENERGREX Reverse DCF",
+      "source_tier": "MANUAL",
+      "status": "PENDING",
+      "as_of": "2026-07-23",
+      "verified_at": "2026-07-23",
+      "expires_at": "2026-08-23"
+    },
+    {
+      "evidence_id": "futu-capture-pending",
+      "claim": "回购是否导致稀释股数净下降尚未验证。",
+      "source": "待补最新稀释股数与回购披露",
+      "source_tier": "MANUAL",
+      "status": "PENDING",
+      "as_of": "2026-07-23",
+      "verified_at": "2026-07-23",
+      "expires_at": "2026-08-23"
+    },
+    {
+      "evidence_id": "futu-price-pending",
+      "claim": "熊市、基准与牛市赔率尚未用同一时点价格核验。",
+      "source": "待补当前市场价格与估值情景",
+      "source_tier": "MANUAL",
+      "status": "PENDING",
+      "as_of": "2026-07-23",
+      "verified_at": "2026-07-23",
+      "expires_at": "2026-08-23"
+    }
+  ],
+  "gates": [
+    {
+      "name": "BUSINESS_TRUTH",
+      "status": "PASS",
+      "reason": "业务逻辑初步可解释，但证据未核验。",
+      "evidence_ids": ["futu-business-pending"]
+    },
+    {
+      "name": "SURVIVAL",
+      "status": "PASS",
+      "reason": "尚未完成券商口径压力测试。",
+      "evidence_ids": ["futu-survival-pending"]
+    },
+    {
+      "name": "MISPRICING",
+      "status": "PASS",
+      "reason": "预期差是假设，尚未完成逆向估值。",
+      "evidence_ids": ["futu-mispricing-pending"]
+    },
+    {
+      "name": "VALUE_CAPTURE",
+      "status": "PASS",
+      "reason": "需要验证普通股净回购与治理结构。",
+      "evidence_ids": ["futu-capture-pending"]
+    },
+    {
+      "name": "PRICE_ODDS",
+      "status": "PASS",
+      "reason": "需要用同一时点数据计算正式赔率。",
+      "evidence_ids": ["futu-price-pending"]
+    }
+  ],
+  "monitor_rules": [
+    {
+      "rule_id": "futu-funded-accounts",
+      "gate": "BUSINESS_TRUTH",
+      "metric": "funded_accounts_qoq",
+      "operator": "LT",
+      "threshold": 0,
+      "threshold_high": null,
+      "consecutive_periods": 2,
+      "action": "REVIEW"
+    },
+    {
+      "rule_id": "futu-net-share-count",
+      "gate": "VALUE_CAPTURE",
+      "metric": "diluted_share_change_yoy",
+      "operator": "GTE",
+      "threshold": 0,
+      "threshold_high": null,
+      "consecutive_periods": 1,
+      "action": "DOWNGRADE"
+    }
+  ]
+}
