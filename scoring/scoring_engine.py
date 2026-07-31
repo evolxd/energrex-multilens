@@ -43,6 +43,7 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "INTC": CompanyCategory.AI_CHIP,
     "ARM":  CompanyCategory.AI_CHIP,
     "MU":   CompanyCategory.AI_CHIP,
+    "TSM":  CompanyCategory.AI_CHIP,   # 台积电，此前缺失映射（枚举注释里本就列了TSM）
     "SMCI": CompanyCategory.AI_CHIP,
     "DELL": CompanyCategory.AI_CHIP,
     "VRT":  CompanyCategory.AI_CHIP,
