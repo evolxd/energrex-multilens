@@ -42,18 +42,27 @@ engine. Labels map to valuation-score bands:
 - 60 <= Valuation Score < 75: watch zone
 - Valuation Score < 60: high-price zone
 
-Visual implementation must follow `design_spec.dm` / `DESIGN_SPEC.md` tokens:
+Visual implementation uses the editorial light palette. These values are the
+contract; `price_zone_chart.py` is the reference implementation.
 
-- background: `#0b1f35` / `#102b49`
-- low-price zone: `#3ee8bd`
-- suitable zone: `#56d9ff`
-- watch zone: `#ffd166`
-- high-price zone: `#ff6077`
-- text: `#eef7ff`, muted labels: `#b5c7dc` / `#8ea8c3`
-- borders: `rgba(142,190,235,0.22)`
-- spacing must use the 8pt rhythm where possible
+- page background: `#FAF8F3`, plot area: `#F3F0E8`
+- low-price zone: `#2F4A3C`
+- suitable zone: `#4A6B5C`
+- watch zone: `#A67C3D`
+- high-price zone: `#8B3A2E`
+- score curve and current-price marker: `#1E1E1B`
+- body text: `#4F4A40`, zone and current-price labels: `#1E1E1B`
+- grid lines: `#BEB7A8` at 45% opacity, label-chip border: `#CFC8B8`
+- zone fills are drawn at 13% opacity so the curve stays legible on top
 
-Do not introduce colors outside the design spec merely to distinguish bands.
+An earlier revision of this document specified a dark palette (`#0b1f35`
+background with `#3ee8bd` / `#56d9ff` / `#ffd166` / `#ff6077` bands) and
+pointed at `design_spec.dm` / `DESIGN_SPEC.md` for the tokens. Neither file
+exists, and the report moved to the light editorial theme, so nothing could
+be checked against anything. The values above are what the code actually
+renders, recorded here on 2026-08-02.
+
+Do not introduce colors outside this palette merely to distinguish bands.
 Use opacity, labels, and boundary lines instead.
 
 Chart readability rules:
