@@ -33,17 +33,36 @@ def render_price_zone_svg(report: dict) -> str:
         if _valid_price(row.get("price")) is not None
     ]
     grid_prices = [float(row["price"]) for row in scored] or [current * 0.5, current * 1.5]
-    anchors = [value for value in (current, p60, p75, p80) if value]
+    boundary_lines = [value for value in (p60, p75, p80) if value]
 
-    x_min = max(min(grid_prices), min(anchors) * 0.55)
-    rightmost_line = max(anchors)
-    if rightmost_line > x_min:
-        # The furthest of the three boundaries/current-price lines sits at 85%.
-        x_max = min(max(grid_prices), x_min + (rightmost_line - x_min) / 0.85)
+    if boundary_lines:
+        anchors = [current] + boundary_lines
+        x_min = max(min(grid_prices), min(anchors) * 0.55)
+        rightmost_line = max(anchors)
+        if rightmost_line > x_min:
+            # The furthest of the three boundaries/current-price lines sits at 85%.
+            x_max = min(max(grid_prices), x_min + (rightmost_line - x_min) / 0.85)
+        else:
+            x_max = min(max(grid_prices), rightmost_line * 1.18)
+        if x_max <= x_min:
+            x_min, x_max = min(grid_prices), max(grid_prices)
     else:
-        x_max = min(max(grid_prices), rightmost_line * 1.18)
-    if x_max <= x_min:
-        x_min, x_max = min(grid_prices), max(grid_prices)
+        # No boundary line exists anywhere in the calculation grid (e.g. a
+        # very low PEG that stays "cheap" through 400% of current price).
+        # Neither extreme works here: the full calculation grid wastes most
+        # of the plot on a flat tail, and pinning tightly to current price
+        # hides the curve inside an equally flat sliver. Default to a window
+        # around current price sized the way a boundary-found chart usually
+        # ends up (roughly half to double current price); only fall back to
+        # the full grid if that default window turns out to be flat too.
+        def _score_near(price_target):
+            closest = min(scored, key=lambda row: abs(float(row["price"]) - price_target))
+            return float(closest.get("valuation_score", 0.0))
+
+        x_min = max(min(grid_prices), current * 0.5)
+        x_max = min(max(grid_prices), current * 2.0)
+        if abs(_score_near(x_max) - _score_near(x_min)) < 3.0:
+            x_min, x_max = min(grid_prices), max(grid_prices)
 
     width, height = 1000.0, 250.0
     left, right, top, bottom = 72.0, 982.0, 22.0, 194.0

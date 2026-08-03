@@ -297,8 +297,14 @@ def score_valuation(data: dict, bl: dict) -> AuditDimension:
         dim.entries.append(AuditEntry("PEG", peg, "missing/invalid", 50.0, 0.25, missing=True))
 
     # EV/EBITDA
+    # Note: no `ev_eb > 0` gate. A net-cash position larger than market cap
+    # makes EV (and so EV/EBITDA) negative — that is a real, meaningful
+    # "very cheap" signal, not missing data. Excluding it here used to drop
+    # the term from _weighted_dim's rescale, which made the price-simulated
+    # valuation score jump discontinuously right at the price where EV
+    # crosses zero. normalize_score's clamp already handles negative inputs.
     ev_eb = data.get("ev_ebitda")
-    if ev_eb is not None and ev_eb > 0:
+    if ev_eb is not None:
         cfg = b("ev_ebitda")
         s = normalize_score(ev_eb, cfg["best"], cfg["worst"], cfg["dir"])
         f = f"({cfg['worst']}-{ev_eb:.2f})/({cfg['worst']}-{cfg['best']})*100"
@@ -307,7 +313,14 @@ def score_valuation(data: dict, bl: dict) -> AuditDimension:
         dim.entries.append(AuditEntry("EV/EBITDA", ev_eb, "missing/invalid", 50.0, 0.20, missing=True))
 
     # ERG = EV/Rev ÷ Forward_RevG%  (D: forward metric to smooth noise)
-    ev_rev = data.get("ev_sales") or data.get("ev_rev")
+    # `or` here would treat a legitimately computed 0.0 (EV rounds to zero
+    # right as a net-cash position pushes it through zero) as absent and
+    # fall through to ev_rev, which is usually unset -> spurious "missing".
+    # That flipped ERG's weight in/out of _weighted_dim's rescale and
+    # produced a discontinuity in the simulated valuation-score curve.
+    ev_rev = data.get("ev_sales")
+    if ev_rev is None:
+        ev_rev = data.get("ev_rev")
     fwd_g  = data.get("next_year_revenue_growth_est") or data.get("forward_rev_growth_est") or data.get("revenue_growth_yoy")
     if ev_rev is not None and fwd_g is not None and fwd_g > 0:
         erg = ev_rev / (fwd_g * 100.0)   # FwdRevG as percent integer
