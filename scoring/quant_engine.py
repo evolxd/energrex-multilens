@@ -287,8 +287,15 @@ def score_valuation(data: dict, bl: dict) -> AuditDimension:
     b = lambda k: _b(bl, k)
 
     # PEG
+    # `>= 0`, not `> 0`. For very high growth names (MU at 1368% EPS growth,
+    # AFRM at 3529%) PEG is genuinely of order 1e-4, and the caller rounds it
+    # to three decimals, so it lands on exactly 0.0. Rejecting that flipped
+    # PEG in and out of _weighted_dim's rescale as the simulated price moved,
+    # which is the same defect class as the EV/EBITDA and ERG cases below.
+    # A PEG of zero is the best possible reading, not a missing one; negative
+    # PEG (shrinking earnings) stays excluded because it carries no meaning.
     peg = data.get("peg_ratio")
-    if peg is not None and peg > 0:
+    if peg is not None and peg >= 0:
         cfg = b("peg")
         s = normalize_score(peg, cfg["best"], cfg["worst"], cfg["dir"])
         f = f"({cfg['worst']}-{peg:.4f})/({cfg['worst']}-{cfg['best']})*100"
