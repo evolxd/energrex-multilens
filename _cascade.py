@@ -28,7 +28,11 @@ def _get_am() -> dict:
     if _am is not None and current_mtime == _am_mtime:
         return _am
 
-    src   = _AM_SRC.read_text(encoding="utf-8")
+    # utf-8-sig, not utf-8: a stray BOM at the head of account_monitor.py
+    # makes ast.parse below raise, which silently broke the 同步账户 button
+    # until the BOM was found by hand. The page loader and the spread tests
+    # already read this file BOM-tolerantly, so only this path was exposed.
+    src   = _AM_SRC.read_text(encoding="utf-8-sig")
     lines = src.splitlines()
     # 动态找 st.set_page_config 的行号（1-based）作为截止
     cutoff = next(

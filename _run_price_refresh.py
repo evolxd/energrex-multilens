@@ -57,7 +57,7 @@ sys.modules["streamlit"] = _st
 
 # ── AST 过滤 ─────────────────────────────────────────────
 _UI_LINE = 3933
-src  = (ROOT / "account_monitor.py").read_text(encoding="utf-8")
+src  = (ROOT / "account_monitor.py").read_text(encoding="utf-8-sig")
 tree = ast.parse(src, filename="account_monitor.py")
 filtered = ast.Module(
     body=[n for n in tree.body if getattr(n, "lineno", 0) < _UI_LINE],

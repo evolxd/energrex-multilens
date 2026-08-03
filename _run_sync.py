@@ -59,7 +59,7 @@ _st.sidebar = types.SimpleNamespace(
 sys.modules["streamlit"] = _st
 
 # ── AST 过滤：只执行 account_monitor.py 的函数定义段（st.set_page_config 之前）──
-src  = (ROOT / "account_monitor.py").read_text(encoding="utf-8")
+src  = (ROOT / "account_monitor.py").read_text(encoding="utf-8-sig")
 _UI_LINE = next(
     (i + 1 for i, line in enumerate(src.splitlines()) if "st.set_page_config" in line),
     len(src.splitlines()),
