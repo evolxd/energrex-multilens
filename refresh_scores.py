@@ -43,12 +43,14 @@ _CSV_OUT = _ROOT / "results_validated.csv"
 sys.path.insert(0, str(_SCORE))
 
 from kelly_snapshot_logger import log_snapshot
+from input_verification import trusted_override_value
 
 from yfinance_fetcher import (
     fetch_portfolio_live_parallel, merge_live_into_mock,
     KNOWN_BAD_FIELDS, fetch_prices_only)
 from quant_engine import score_ticker
 from quant_data import QUANT_META, QUANT_AI_EXPOSURE, QUANT_STANDALONE
+from universe import blank_row, is_unscoreable, refresh_targets
 
 try:
     from mock_data import MOCK_STOCKS
@@ -435,9 +437,29 @@ def refresh_all(
     except Exception:
         _user_overrides = {}
 
-    all_tickers = df["ticker"].tolist()
-    targets     = [t for t in (tickers or all_tickers) if t in all_tickers]
+    # The universe is TICKER_CATEGORY, not this file. Taking targets from the
+    # results CSV made it define itself: a ticker was only refreshed if a row
+    # already existed and nothing ever created that row, so eight classified
+    # names sat unscored indefinitely and there was no way to add a ninth.
+    targets  = refresh_targets(df["ticker"].tolist(), tickers)
+    existing = set(df["ticker"])
+    newcomers = [t for t in targets if t not in existing]
+    if newcomers:
+        log(f"  首次纳入 {len(newcomers)} 只（此前无记录）：{newcomers}")
+        df = pd.concat(
+            [df, pd.DataFrame([blank_row(t, df.columns) for t in newcomers])],
+            ignore_index=True,
+        )
     log(f"刷新目标：{len(targets)} 只 → {targets[:8]}{'…' if len(targets)>8 else ''}")
+
+    # A dimension whose every input is missing still scores 50, which is
+    # indistinguishable on screen from a 50 that was genuinely computed. AI
+    # exposure carries 0.20 of the weight and 53 of 87 tickers sit at exactly
+    # 50 -- but nine of those are real. Only the scorer knows which, so it
+    # records the answer here rather than leaving the interface to guess.
+    _PLACEHOLDER_COL = "placeholder_dims_全占位维度"
+    if _PLACEHOLDER_COL not in df.columns:
+        df[_PLACEHOLDER_COL] = ""
 
     # ── Layer 4：并行拉取 yfinance ─────────────────────────
     log("⏳ yfinance 拉取中（并行）…")
@@ -500,16 +522,18 @@ def refresh_all(
         tk_ov = _user_overrides.get(ticker, {})
         if tk_ov:
             applied = []
+            rejected = []
             for field, entry in tk_ov.items():
-                val = entry.get("value") if isinstance(entry, dict) else entry
+                val = trusted_override_value(field, entry)
                 if val is not None:
-                    try:
-                        data[field] = float(val)
-                        applied.append(field)
-                    except (TypeError, ValueError):
-                        pass
+                    data[field] = val
+                    applied.append(field)
+                else:
+                    rejected.append(field)
             if applied and verbose:
                 log(f"  {ticker} override 覆盖 {len(applied)} 个字段: {applied}")
+            if rejected and verbose:
+                log(f"  {ticker} skipped {len(rejected)} untrusted overrides: {rejected}")
 
         # 评分
         try:
@@ -545,6 +569,23 @@ def refresh_all(
             col = score_col_map.get(field)
             if col and col in df.columns:
                 _safe_set(df, row_mask, col, val)
+
+        _placeholder_dims = [
+            d.key for d in result.audit_dims
+            if d.entries and all(e.missing for e in d.entries)
+        ]
+        _safe_set(df, row_mask, _PLACEHOLDER_COL, ",".join(_placeholder_dims))
+
+        # When the business dimensions all defaulted, nothing was fetched and
+        # nothing was on file -- the ticker is delisted, renamed, or wrong.
+        # The engine still returns a number, because every dimension falls
+        # back to 50, and a 40.0 on a dead ticker reads exactly like a real
+        # assessment. Label it instead of letting it sit in the ranking.
+        if is_unscoreable(_placeholder_dims):
+            _rating_col = score_col_map.get("rating")
+            if _rating_col and _rating_col in df.columns:
+                _safe_set(df, row_mask, _rating_col, "⛔ 无数据")
+            log(f"  ⛔ {ticker}: 所有基本面维度均无数据，评分无效（疑似退市或代码错误）")
 
         # ── 写回 raw_ 列（只更新 auto 字段，格式: "value [yf]"）──
         _r = data  # alias
@@ -590,15 +631,9 @@ def refresh_all(
                 _safe_set(df, row_mask, col, fmt_val)
 
         # ── 清除 human_review_required（若用户已核对至少一个字段）──
-        if "human_review_required" in df.columns and tk_ov:
-            _has_verified = any(
-                isinstance(entry, dict) and entry.get("status") == "verified"
-                for entry in tk_ov.values()
-            )
-            if _has_verified:
-                _safe_set(df, row_mask, "human_review_required", "FALSE")
-                if verbose:
-                    log(f"  {ticker} human_review_required → FALSE（用户已核对）")
+        # Only the complete validation pipeline may clear the ticker-level
+        # review flag. One verified field is not evidence that all required
+        # inputs are correct.
 
         if verbose and ok_cnt % 10 == 0:
             log(f"  … {ok_cnt}/{len(targets)}")
@@ -690,12 +725,9 @@ def refresh_prices_only(
         # user_overrides 最高优先级
         tk_ov = _user_overrides.get(ticker, {})
         for field, entry in tk_ov.items():
-            val = entry.get("value") if isinstance(entry, dict) else entry
+            val = trusted_override_value(field, entry)
             if val is not None:
-                try:
-                    data[field] = float(val)
-                except (TypeError, ValueError):
-                    pass
+                data[field] = val
 
         try:
             result = score_ticker(ticker, data)
