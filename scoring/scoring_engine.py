@@ -55,7 +55,9 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "FN":   CompanyCategory.AI_CHIP,
     "COHR": CompanyCategory.AI_CHIP,
     "LITE": CompanyCategory.AI_CHIP,
-    "PSTG": CompanyCategory.AI_CHIP,
+    # Pure Storage rebranded to Everpure and moved from PSTG to P on NYSE in
+    # April 2026. Still independent and trading -- a ticker change, not an exit.
+    "P":    CompanyCategory.AI_CHIP,
     "QCOM": CompanyCategory.AI_CHIP,
     "NXPI": CompanyCategory.AI_CHIP,
     "TXN":  CompanyCategory.AI_CHIP,
@@ -103,7 +105,8 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "ESTC": CompanyCategory.AI_SOFTWARE,
     "VEEV": CompanyCategory.AI_SOFTWARE,
     "TTD":  CompanyCategory.AI_SOFTWARE,
-    "CFLT": CompanyCategory.AI_SOFTWARE,
+    # CFLT removed: IBM completed its $11B all-cash acquisition on 2026-03-17,
+    # last trading day 2026-03-16. The exposure now sits inside IBM, tracked.
     # ── AI芯片（追加）
     "AMBA": CompanyCategory.AI_CHIP,
     # ── 网络安全
@@ -113,7 +116,8 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "ZS":   CompanyCategory.CYBERSECURITY,
     "OKTA": CompanyCategory.CYBERSECURITY,
     "S":    CompanyCategory.CYBERSECURITY,
-    "CYBR": CompanyCategory.CYBERSECURITY,
+    # CYBR removed: Palo Alto Networks completed its $25B acquisition on
+    # 2026-02-11. The exposure now sits inside PANW, tracked above.
     # ── 半导体设备 + 工业AI
     "ONTO": CompanyCategory.SEMI_EQUIP,
     "AMAT": CompanyCategory.SEMI_EQUIP,
