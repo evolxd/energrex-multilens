@@ -152,9 +152,37 @@ def fetch_yfinance_data(ticker: str) -> dict:
             else:
                 bad_fields.append("fcf_margin")
 
-        # ROIC proxy: returnOnEquity (best available from yfinance)
-        _map_field(out, info, "roic", ["returnOnEquity"], bad_fields,
-                   guard=lambda v: -2.0 < v < 5.0)
+        # ROIC = NOPAT / Invested Capital, not returnOnEquity.
+        # ROE (net income / book equity) is contaminated by one-time non-cash
+        # items (impairments, restructuring, escrow charges) that sit well
+        # below operating income -- exactly the kind of noise that made INTC's
+        # ROE read -2.9% on 2026 GAAP charges unrelated to its operating
+        # trajectory.
+        def _num(v):
+            try:
+                f = float(v)
+                return f if f == f else None   # filter NaN
+            except (TypeError, ValueError):
+                return None
+
+        try:
+            fin = t.financials
+            op_inc = None
+            if fin is not None and not fin.empty and "Operating Income" in fin.index:
+                op_inc = _num(fin.loc["Operating Income", fin.columns[0]])
+            total_debt = _num(info.get("totalDebt")) or 0.0
+            total_cash = _num(info.get("totalCash")) or 0.0
+            mcap_for_roic = out.get("market_cap") or _num(info.get("marketCap"))
+            if op_inc is not None and mcap_for_roic:
+                invested_capital = mcap_for_roic + total_debt - total_cash
+                if invested_capital > 0:
+                    roic_val = (op_inc * (1 - 0.21)) / invested_capital
+                    if -2.0 < roic_val < 5.0:
+                        out["roic"] = round(roic_val, 6)
+                    else:
+                        bad_fields.append(f"roic(raw={roic_val:.4g})")
+        except Exception:
+            pass   # 非致命：merge_data 会自动降级到 mock/standalone 的 roic
 
         _map_field(out, info, "beta", ["beta"], bad_fields,
                    guard=lambda v: 0 < v < 10)

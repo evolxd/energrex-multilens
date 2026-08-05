@@ -595,9 +595,30 @@ _EXTENDED_STOCKS_A: dict[str, dict] = {
         "company_name": "Intel Corporation", "current_price": 22.0, "market_cap": 9.3e10,
         "peg_ratio": None, "ev_ebitda": 22.0, "ev_sales": 1.8, "ps_ratio": 1.8,
         "forward_pe": 28.0, "fcf_yield": -0.010,
-        "revenue_growth_yoy": -0.03, "eps_growth_yoy": -0.40, "fcf_growth_yoy": -0.50,
+        "revenue_growth_yoy": -0.03,
+        # eps_growth_yoy: excluded (None), not stale. TTM GAAP EPS is dominated by
+        # two disclosed one-time non-cash charges -- $4.07B Q1'26 restructuring/
+        # Mobileye goodwill impairment, $12.53B Q2'26 CHIPS Act escrow charge --
+        # ~$16.6B combined against a ~$530B market cap. TTM Non-GAAP EPS swung
+        # from -$0.29 (Q3'24-Q2'25) to +$1.09 (Q3'25-Q2'26), i.e. through a
+        # negative base -- not a meaningful YoY %. Also in yfinance_fetcher.py
+        # KNOWN_BAD_FIELDS so the live (GAAP) figure doesn't silently reappear.
+        # Verified 2026-08-05 against Intel's Q1/Q2 2026 earnings releases
+        # (intc.com press releases) and Q2'25/Q3'25/Q4'24/Q3'24 non-GAAP EPS.
+        "eps_growth_yoy": None,
+        # fcf_growth_yoy: excluded (None), was a stale "2026-06-11 initial
+        # estimate" (-50%) never refreshed since. Real FCF this cycle is
+        # genuinely negative and capex-heavy (Q1'26 adjusted FCF -$2.0B, Q2'26
+        # -$8.4B, >$20B FY26 capex guided for foundry buildout) but a clean
+        # TTM-over-TTM YoY %% needs a prior-year comparable this session didn't
+        # verify -- left missing rather than guessed.
+        "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.05, "analyst_revision_30d": -0.02, "arr_growth_yoy": None,
         "gross_margin": 0.40, "fcf_margin": -0.05, "operating_margin": -0.05,
+        # roic: now auto-computed live (NOPAT/InvestedCapital via yfinance_fetcher.
+        # fetch_live) whenever a refresh runs; this is only the offline/mock
+        # fallback. 0.02 pre-dates the fix and was actually an ROE proxy value --
+        # left as a placeholder, not re-verified, since it's no longer load-bearing.
         "roic": 0.02, "debt_to_equity": 0.45, "revenue_predictability_score": 0.30,
         "net_revenue_retention": None,
         "ai_revenue_exposure_pct": 0.18, "ai_profit_exposure_pct": 0.10,
@@ -609,7 +630,7 @@ _EXTENDED_STOCKS_A: dict[str, dict] = {
         "market_expectation_score": 0.35,
         "beta": 1.20, "volatility_30d": 0.35, "max_drawdown_1y": 0.45,
         "valuation_risk": 0.55, "concentration_risk": 0.35, "liquidity_risk": 0.05,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-05: eps_growth_yoy/fcf_growth_yoy excluded as unreliable (see comments); rest still 2026-06-11 initial estimate",
     },
     "ARM": {
         "company_name": "Arm Holdings", "current_price": 145.0, "market_cap": 1.53e11,

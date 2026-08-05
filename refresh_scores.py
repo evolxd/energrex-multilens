@@ -133,6 +133,9 @@ _YFINANCE_UPDATABLE = {
     "peg_ratio", "ev_sales", "forward_pe", "fcf_yield", "fcf_margin",
     "revenue_growth_yoy", "eps_growth_yoy", "gross_margin", "beta",
     "rsi_14", "price_vs_200dma", "max_drawdown_1y",
+    # roic 现在是 NOPAT/InvestedCapital 实时计算值（yfinance_fetcher.fetch_live），
+    # 不再是一次性人工估算 -- 需要每次刷新都用最新值，不能被 mock 锁死。
+    "roic",
     # 基本面分母（季度更新）
     "current_price", "shares_outstanding", "forward_eps",
     "enterprise_value_snap", "price_at_ev_snapshot",
@@ -234,6 +237,11 @@ _PCT_FIELDS = {
     "fcf_yield", "revenue_growth_yoy", "eps_growth_yoy",
     "gross_margin", "fcf_margin", "roic",
     "price_vs_200dma", "max_drawdown_1y",
+    # next_year_revenue_growth_est: quant_audit.py's export_csv writes this
+    # column as "5.0%" (pct=True), but it was missing here, so _csv_baseline
+    # read it straight back as 5.0 instead of 0.05 -- a 100x corruption that
+    # clamped every ticker's NTM-guidance growth input to the scoring ceiling.
+    "next_year_revenue_growth_est",
 }
 
 
@@ -599,6 +607,7 @@ def refresh_all(
             ("eps_growth_yoy",        True),
             ("gross_margin",          True),
             ("fcf_margin",            True),
+            ("roic",                  True),
             ("beta",                  False),
             ("rsi_14",                False),
             ("price_vs_200dma",       True),
@@ -624,6 +633,11 @@ def refresh_all(
             v = _r.get(field)
             if v is not None:
                 raw_updates[field] = _fmt_yf(v, pct=is_pct)
+            elif field in KNOWN_BAD_FIELDS.get(ticker, set()):
+                # Deliberately excluded (e.g. INTC/MRVL eps_growth_yoy) -- write
+                # "n/a" so the raw_ column stops showing a stale pre-exclusion
+                # number that no longer reflects what the scorer actually used.
+                raw_updates[field] = "n/a [--]"
 
         for field, fmt_val in raw_updates.items():
             col = raw_col_map.get(field)

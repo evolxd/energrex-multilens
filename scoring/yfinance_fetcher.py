@@ -34,6 +34,10 @@ KNOWN_BAD_FIELDS: dict[str, set[str]] = {
     "SNOW": {"ev_ebitda"},             # GAAP EBITDA为负，yfinance=-73.6x；保留Non-GAAP 185
     "PLTR": {"revenue_growth_yoy"},    # yfinance误返84.7%；实际Q1 FY25 YoY +39%
     "MRVL": {"eps_growth_yoy"},        # yfinance=-80.4%(GAAP商誉摊销)；保留Non-GAAP 75%
+    "INTC": {"eps_growth_yoy"},        # GAAP TTM EPS 被 2026 两笔一次性非现金冲销
+                                        # 砸穿负基数(Q1 Mobileye减值$40.7亿+Q2 CHIPS
+                                        # 法案托管$125.3亿)，同比%无意义；mock_data
+                                        # 中已设为 None，见该 ticker 的注释与来源
 }
 
 # ─────────────────────────────────────────────
@@ -167,6 +171,20 @@ def fetch_live(ticker: str) -> dict:
                 if v is not None: result["operating_income_ttm"] = v
         except Exception:
             pass   # 非致命：calc_damodaran_report 会自动降级到估算
+
+        # ── ROIC = NOPAT / Invested Capital ─────────────────────────
+        # 之前(quant_audit.py)用 yfinance returnOnEquity 顶替 ROIC——ROE 用净利润
+        # 除以账面权益，一次性非现金冲销（减值/重组/CHIPS法案托管等）会直接砸穿
+        # 净利润，把"一次性会计科目"误读成"经营恶化"（INTC 2026年即是活例：Q1
+        # Mobileye商誉减值+Q2 CHIPS法案托管冲销合计$165亿，把ROE砸到-2.9%，但
+        # 同期Non-GAAP EPS连续两季大幅超预期）。改用营业利润(税后)/投入资本——
+        # 营业利润本身已经在毛利以下、非经营性减值之上，不受这类科目污染。
+        op_inc = result.get("operating_income_ttm")
+        if op_inc is not None and mcap and mcap > 0:
+            invested_capital = mcap + result["net_debt"]
+            if invested_capital > 0:
+                nopat = op_inc * (1 - 0.21)   # 21% 联邦法定税率近似
+                result["roic"] = round(nopat / invested_capital, 5)
 
         # ── yfinance D/E 仅记录参考值，不覆盖 mock（含可转债口径）──
         de_raw = _safe(info.get("debtToEquity"))
