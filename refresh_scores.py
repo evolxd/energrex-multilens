@@ -49,6 +49,7 @@ from yfinance_fetcher import (
     fetch_portfolio_live_parallel, merge_live_into_mock,
     KNOWN_BAD_FIELDS, fetch_prices_only)
 from quant_engine import score_ticker
+from score_split import split_scores
 from quant_data import QUANT_META, QUANT_AI_EXPOSURE, QUANT_STANDALONE
 from universe import blank_row, is_unscoreable, refresh_targets
 
@@ -174,6 +175,16 @@ _PROFILE_CSV_COLS: dict[str, object] = {
     "aibonus_AI加速器": 0.0,
     "aibasis_AI分类依据": "缺少可用AI暴露数据",
     "weighted_基础加权": 0.0,
+}
+
+# company_score: the five business dimensions, renormalised, with neither
+# momentum nor the circuit multiplier applied -- see scoring/score_split.py.
+# circuit_label: which clause fired ("波动" / "杠杆" / "波动 + 杠杆" / ""), so a
+# ticker whose final_score got crushed by the circuit breaker doesn't read
+# identically to one that's just genuinely low quality.
+_SPLIT_CSV_COLS: dict[str, object] = {
+    "company_score_公司质量分(不受熔断影响)": 0.0,
+    "circuit_label_熔断分项": "",
 }
 
 
@@ -424,7 +435,7 @@ def refresh_all(
 
     # 首次运行时自动添加基本面分母列
     _added_cols = []
-    for col, default in {**_FUNDAMENTAL_CSV_COLS, **_PROFILE_CSV_COLS}.items():
+    for col, default in {**_FUNDAMENTAL_CSV_COLS, **_PROFILE_CSV_COLS, **_SPLIT_CSV_COLS}.items():
         if col not in df.columns:
             df[col] = default
             _added_cols.append(col)
@@ -577,6 +588,22 @@ def refresh_all(
             col = score_col_map.get(field)
             if col and col in df.columns:
                 _safe_set(df, row_mask, col, val)
+
+        # ── company_score / circuit_label：熔断不改写这两列 ──────
+        split = split_scores(
+            result.dim_scores,
+            risk_penalty=result.risk_penalty,
+            beta=data.get("beta"),
+            drawdown_abs=data.get("max_drawdown_1y"),
+            de_ratio=data.get("debt_to_equity"),
+            blended=result.final_score,
+        )
+        _company_col = "company_score_公司质量分(不受熔断影响)"
+        _circuit_lbl_col = "circuit_label_熔断分项"
+        if _company_col in df.columns and split.company is not None:
+            _safe_set(df, row_mask, _company_col, round(split.company, 2))
+        if _circuit_lbl_col in df.columns:
+            _safe_set(df, row_mask, _circuit_lbl_col, " + ".join(split.circuit.clauses))
 
         _placeholder_dims = [
             d.key for d in result.audit_dims
@@ -774,6 +801,21 @@ def refresh_prices_only(
             col = score_col_map.get(field)
             if col and col in df.columns:
                 _safe_set(df, row_mask, col, val)
+
+        split = split_scores(
+            result.dim_scores,
+            risk_penalty=result.risk_penalty,
+            beta=data.get("beta"),
+            drawdown_abs=data.get("max_drawdown_1y"),
+            de_ratio=data.get("debt_to_equity"),
+            blended=result.final_score,
+        )
+        _company_col = "company_score_公司质量分(不受熔断影响)"
+        _circuit_lbl_col = "circuit_label_熔断分项"
+        if _company_col in df.columns and split.company is not None:
+            _safe_set(df, row_mask, _company_col, round(split.company, 2))
+        if _circuit_lbl_col in df.columns:
+            _safe_set(df, row_mask, _circuit_lbl_col, " + ".join(split.circuit.clauses))
 
         # 写回实时价格及重算比率
         for field, is_pct in [

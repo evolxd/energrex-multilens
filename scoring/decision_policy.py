@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-# Version 6 adds the valuation-integrity gate and invalidates cached decisions.
-POLICY_VERSION = 6
+# Version 7 adds a distinct circuit-breaker label and invalidates cached decisions.
+POLICY_VERSION = 7
 
 
 SCORE_BANDS = (
@@ -99,8 +99,19 @@ def evaluate_decision(
     forward_pe: float | None = None,
     ev_sales: float | None = None,
     fcf_yield: float | None = None,
+    circuit_label: str = "",
 ) -> Decision:
-    """Apply quality, valuation, and evidence gates to the displayed conclusion."""
+    """Apply quality, valuation, and evidence gates to the displayed conclusion.
+
+    circuit_label: non-empty when the risk circuit breaker fired (e.g. "波动"
+    or "杠杆", see scoring/score_split.py). The breaker already crushed
+    final_score by a flat multiplier before this function ever sees it, so
+    once data validity and valuation-integrity are confirmed fine, a
+    circuit-triggered ticker gets its own label instead of being silently
+    relabeled "⚠️ 高价观察" / "🚫 回避" by the generic score thresholds --
+    those thresholds describe business quality, not "we don't trust this
+    number because volatility/leverage tripped a threshold cliff".
+    """
     final = float(final_score or 0.0)
     valuation = None if valuation_score is None else float(valuation_score)
     band = score_band(final)
@@ -134,6 +145,14 @@ def evaluate_decision(
             "VALUATION_REVIEW",
             False,
             valuation_reason,
+            band,
+        )
+    if circuit_label:
+        return Decision(
+            f"🧾 熔断复核 · {circuit_label}",
+            "CIRCUIT",
+            False,
+            f"风险熔断（{circuit_label}）：综合分已被熔断乘数压低，不代表业务质量判断，需人工复核",
             band,
         )
     if valuation < 60:

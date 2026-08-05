@@ -93,6 +93,20 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+    # company_score: the 5 business dimensions, renormalised, without momentum
+    # or the circuit multiplier (scoring/score_split.py). circuit_label: which
+    # clause fired ("波动" / "杠杆" / "波动 + 杠杆" / ""). A circuit-broken
+    # ticker's final_score is a threshold-cliff readout, not a smooth quality
+    # decline -- company_score is what didn't get multiplied away.
+    _company_col = next((c for c in df.columns if c.startswith("company_score_")), None)
+    df["company_score"] = (
+        pd.to_numeric(df[_company_col], errors="coerce") if _company_col else np.nan
+    )
+    _circuit_lbl_col = next((c for c in df.columns if c.startswith("circuit_label_")), None)
+    df["circuit_label"] = (
+        df[_circuit_lbl_col].fillna("").astype(str) if _circuit_lbl_col else ""
+    )
+
     # validation confidence → grade
     if "validation_confidence" in df.columns:
         df["validation_confidence"] = pd.to_numeric(df["validation_confidence"], errors="coerce").fillna(0)
@@ -133,6 +147,7 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
             forward_pe=_forward_pe.loc[r.name],
             ev_sales=_ev_sales.loc[r.name],
             fcf_yield=_fcf_yield.loc[r.name],
+            circuit_label=r.get("circuit_label") or "",
         )
     _decisions = df.apply(_row_decision, axis=1)
     df["decision"] = [d.label for d in _decisions]
@@ -1282,14 +1297,35 @@ if page == "🏆 排行榜":
             st.markdown(bar_html, unsafe_allow_html=True)
 
         with col_score:
-            st.markdown(
-                f"<div style='text-align:center;padding:6px 0'>"
-                f"<div style='font-size:34px;font-weight:900;color:{fs_col};line-height:1'>{fs:.0f}</div>"
-                f"<div style='font-size:9px;color:#8B9BB4'>/100</div>"
-                f"<div style='font-size:9px;color:#FF4B6E;margin-top:1px'>-{rp:.1f}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+            _circuit_lbl = row.get("circuit_label") or ""
+            _company_sc  = row.get("company_score")
+            # A circuit-triggered row's final_score is a threshold-cliff
+            # readout (×0.75), not a smooth quality decline -- show the
+            # uncrushed 5-dimension company_score alongside it instead of
+            # letting one blended number stand in for both "risk fired" and
+            # "business is bad".
+            if _circuit_lbl and _company_sc is not None and pd.notna(_company_sc):
+                st.markdown(
+                    f"<div style='text-align:center;padding:6px 0'>"
+                    f"<div style='font-size:34px;font-weight:900;color:{fs_col};line-height:1'>{fs:.0f}</div>"
+                    f"<div style='font-size:9px;color:#8B9BB4'>/100 · 已熔断</div>"
+                    f"<div style='font-size:9px;color:#FF4B6E;margin-top:1px'>-{rp:.1f}</div>"
+                    f"<div style='margin-top:5px;padding-top:5px;border-top:1px dashed #2D3F55'>"
+                    f"<span style='font-size:15px;font-weight:700;color:{score_color(_company_sc)}'>{_company_sc:.0f}</span>"
+                    f"<span style='font-size:8px;color:#8B9BB4'>&nbsp;公司质量分</span>"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f"<div style='text-align:center;padding:6px 0'>"
+                    f"<div style='font-size:34px;font-weight:900;color:{fs_col};line-height:1'>{fs:.0f}</div>"
+                    f"<div style='font-size:9px;color:#8B9BB4'>/100</div>"
+                    f"<div style='font-size:9px;color:#FF4B6E;margin-top:1px'>-{rp:.1f}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
         st.markdown(
             "<div style='height:1px;background:#0D1822;margin:0'></div>",
