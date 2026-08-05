@@ -555,6 +555,7 @@ _RISK_LIMITS = {
     "stress_hard_stop":      0.15,
     "drawdown_freeze":       0.20,
     "drawdown_de_risk":      0.30,
+    "drawdown_start_date":  "2026-06-01",
 }
 
 
@@ -574,9 +575,10 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     conn = _db()
 
     # ── TWR-based drawdown（排除出入金）──────────────────────────────
+    _dd_start = str(_RISK_LIMITS.get("drawdown_start_date", "2026-06-01"))
     _nav_rows = conn.execute(
         "SELECT DATE(sync_time) AS d, total_equity FROM account_balance "
-        "WHERE account_id=? ORDER BY sync_time", (acct_id,)).fetchall()
+        "WHERE account_id=? AND DATE(sync_time)>=? ORDER BY sync_time", (acct_id, _dd_start)).fetchall()
     _cf_rows_dd = conn.execute(
         "SELECT trade_date, SUM(amount) AS cf FROM transactions "
         "WHERE account_id=? AND type IN ('提款','存款','DEPOSIT','WITHDRAWAL') "
@@ -731,6 +733,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     return {
         "equity":           equity,
         "drawdown":         drawdown,
+        "drawdown_basis":   f"cash_flow_adjusted_since_{_dd_start}",
         "gross_notional":   round(gross, 0),
         "delta_notional":   round(delta_notl, 0),
         "leverage":         round(leverage, 2)      if leverage       is not None else None,
@@ -1986,9 +1989,38 @@ def _generate_and_save_daily_briefing(acct_id: str) -> None:
 # Feature 2: 卖Call实时监控 — 检查所有 Long Call 持仓触发条件
 # ─────────────────────────────────────────────────────────────────
 
+def _uncovered_long_call_symbols(acct_id: str) -> set[str]:
+    """Long calls that no short leg offsets, per the portfolio matcher.
+
+    This alert suggests selling a call against a long call, so it only applies
+    to a long call that is not already covered. Deciding that from
+    `quantity > 0` is impossible: the query cannot see the short leg. Holding
+    PLTR 160C x2 against a 200C and a 210C short is two bull call spreads, and
+    the alert was telling the user to sell calls they had already sold.
+
+    _build_spread_portfolios already does the multi-leg matching, including
+    the multi-leg cover fix in b4fa836. Reusing it keeps one matcher rather
+    than adding a third implementation to drift out of sync -- which is how
+    this discrepancy arose in the first place.
+
+    Deliberately not wrapped in try/except: if the matcher fails, coverage is
+    unknown, and silently returning an empty set would either resurrect the
+    false alert or suppress every real one.
+    """
+    naked: set[str] = set()
+    for port in _build_spread_portfolios(acct_id):
+        if port.get("type") != "Naked Long Call":
+            continue
+        for leg in port.get("legs") or []:
+            sym = str(leg.get("symbol") or "").upper()
+            if sym:
+                naked.add(sym)
+    return naked
+
+
 def _check_sell_call_triggers(acct_id: str) -> list[dict]:
     """
-    扫描所有 Long Call 持仓，检查是否满足「卖出 Covered Call」触发条件：
+    扫描未被覆盖的 Long Call 持仓，检查是否满足「卖出 Covered Call」触发条件：
       A. 盈利 ≥ 50%（总盈亏 / 建仓成本）
       B. DTE ≤ 14（时间价值衰减加速，需决策）
       C. Delta ≥ 0.72（深度价内，可能需转换或平仓）
@@ -1998,6 +2030,8 @@ def _check_sell_call_triggers(acct_id: str) -> list[dict]:
     """
     triggers: list[dict] = []
     today = datetime.date.today()
+
+    uncovered = _uncovered_long_call_symbols(acct_id)
 
     conn = _db()
     rows = conn.execute(
@@ -2016,6 +2050,8 @@ def _check_sell_call_triggers(acct_id: str) -> list[dict]:
         opt_type = mo.group(5)   # C or P
         if opt_type != "C":
             continue             # only Long Calls
+        if sym not in uncovered:
+            continue             # already covered by a short leg -- not a candidate
 
         und    = mo.group(1)
         qty    = int(r["quantity"] or 0)
@@ -4072,6 +4108,7 @@ def _launch_chrome_cdp() -> bool:
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-extensions",
+            _FT_BALANCE_URL,
         ],
         # Windows: 不弹出额外控制台窗口
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -6770,3 +6807,5 @@ _ws = _watch_state()
 if _ws.get("new_data"):
     _ws["new_data"] = False
     st.toast(f"✅ 检测到新文件：{_ws.get('last_file','')}（{_ws.get('last_rows',0)} 行）", icon="📂")
+
+
