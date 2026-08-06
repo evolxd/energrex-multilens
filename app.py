@@ -2,10 +2,10 @@
 AI成长股估值评分系统 — Streamlit Dashboard
 ==========================================
 页面：排行榜 / 单股详情 / 对比 / 评分审计
-数据源：results_validated.csv（84只美股，验证通过）
+数据源：results_validated.csv（股票数量按文件动态统计）
 """
 
-import sys, os, pathlib, datetime, io, subprocess, re, importlib
+import sys, os, pathlib, datetime, io, subprocess, re, importlib, math
 import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scoring"))
@@ -20,11 +20,15 @@ from plotly.subplots import make_subplots
 
 from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, safe_val
 from quant_engine import score_ticker
+from basis_check import basis_conflicts, basis_conflict_reason
+from score_split import split_scores
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
 from investor_lenses import all_investor_lenses
 from price_zone_chart import render_price_zone_svg
+from input_verification import audit_override_entry
+from source_navigator import guide_for_field, should_show_field
 import decision_policy as _decision_policy
-if getattr(_decision_policy, "POLICY_VERSION", 0) < 6:
+if getattr(_decision_policy, "POLICY_VERSION", 0) < 7:
     _decision_policy = importlib.reload(_decision_policy)
 evaluate_decision = _decision_policy.evaluate_decision
 score_band = _decision_policy.score_band
@@ -35,6 +39,18 @@ _ROOT          = pathlib.Path(__file__).parent
 _CSV_VALIDATED = _ROOT / "results_validated.csv"
 _CSV_RAW       = _ROOT / "results.csv"
 OVERRIDES_PATH = _ROOT / "scoring" / "user_overrides.json"
+
+
+def _row_raw_number(row: pd.Series, prefix: str, *, pct: bool = False) -> float | None:
+    """Read a numeric raw_* CSV field such as ``45.98 [yf]`` safely."""
+    column = next((c for c in row.index if str(c).startswith(prefix)), None)
+    if not column:
+        return None
+    match = re.search(r"[-+]?\d*\.?\d+", str(row.get(column, "")))
+    if not match:
+        return None
+    value = float(match.group(0))
+    return value / 100.0 if pct else value
 
 # ── 从 results_validated.csv 加载评分数据 ─────────────────
 
@@ -229,6 +245,30 @@ _CSV_MTIME = (_CSV_VALIDATED if _CSV_VALIDATED.exists() else _CSV_RAW).stat().st
 _csv_data: dict[str, dict] = build_csv_data(df.reset_index().to_json(orient="split"))
 TICKERS = df["ticker"].tolist()
 
+# ── 全頁共用的選股狀態 ───────────────────────────────────
+# 排行榜、單股報告、評分審計與資料核對都必須使用同一個 ticker。
+# 同時寫入網址，重新整理或分享連結也不會退回預設股票。
+_query_ticker = str(st.query_params.get("ticker", "")).upper().strip()
+if _query_ticker in TICKERS:
+    st.session_state["selected_ticker"] = _query_ticker
+elif st.session_state.get("selected_ticker") not in TICKERS:
+    st.session_state["selected_ticker"] = TICKERS[0]
+
+
+def _select_ticker(ticker: str, target_page: str | None = None) -> None:
+    """Callback used by leaderboard links before widgets are rendered."""
+    if ticker not in TICKERS:
+        return
+    st.session_state["selected_ticker"] = ticker
+    st.query_params["ticker"] = ticker
+    if target_page:
+        st.session_state["ai_valuation_subnav"] = target_page
+
+
+def _sync_selected_ticker(widget_key: str) -> None:
+    """Keep a page-local selectbox in sync with the global current ticker."""
+    _select_ticker(str(st.session_state.get(widget_key, "")))
+
 def get_active_stocks() -> dict[str, dict]:
     """Backward-compat accessor: returns per-ticker raw data dict."""
     return _csv_data
@@ -397,6 +437,47 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
 */
 .print-only { display: none; }
 
+.score-dimension-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px 12px;
+    margin: 0 4px 8px;
+    color: #1E1E1B;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    line-height: 1.35;
+}
+.score-dimension-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    font-weight: 700;
+}
+.score-dimension-legend__dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 8px;
+}
+
+/* 单股报告阅读尺度：仅在报告页生效。优先保证可读性，分页由打印规则处理。 */
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:8px"]  { font-size:10px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:9px"]  { font-size:12px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:10px"] { font-size:13px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:11px"] { font-size:14px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:12px"] { font-size:16px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:13px"] { font-size:17px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:14px"] { font-size:18px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:15px"] { font-size:20px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:16px"] { font-size:21px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:20px"] { font-size:26px !important; }
+body:has(.print-report-header) [data-testid="stMain"] [style*="font-size:22px"] { font-size:29px !important; }
+body:has(.print-report-header) [data-testid="stMain"] .stMarkdown p { font-size:20px; line-height:1.7; }
+
 @media print {
     @page { size: A4 portrait; margin: 12mm 10mm; }
 
@@ -457,11 +538,37 @@ div[data-testid="stButton"][data-key="flt_avoid"] > button:hover {
     [data-testid="stPlotlyChart"] {
         zoom: 0.72;
         max-width: 100% !important;
-        overflow: hidden !important;
+        overflow: visible !important;
     }
-    [data-testid="stPlotlyChart"] svg {
-        max-width: 100% !important;
-        overflow: hidden !important;
+    /* 五维图是报告核心：雷达负责结构，横条负责精确比较；右栏稍宽，
+       打印使用独立原生 SVG，避免 Plotly 保留屏幕坐标后被打印栏宽裁切。 */
+    [data-testid="stHorizontalBlock"]:has(.score-screen-anchor) {
+        display: none !important;
+    }
+    .score-print-grid {
+        display: grid !important;
+        grid-template-columns: minmax(0, 44fr) minmax(0, 56fr);
+        gap: 6mm;
+        align-items: start;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    .score-print-panel {
+        min-width: 0;
+    }
+    .score-print-title {
+        margin: 0 0 2mm;
+        color: #1E1E1B;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+    .score-print-svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        overflow: visible !important;
     }
     /* 价格温度带使用原生 SVG viewBox。网页和打印共享同一坐标系，禁止改回
        依赖 beforeprint 重排的 Plotly 图，否则 Chrome 预览可能再次截掉右侧。 */
@@ -691,20 +798,22 @@ def make_radar(row: pd.Series, title: str = "") -> go.Figure:
         row["ai_exposure_score"],
         row["expectation_gap_score"],
     ]
+    colors = ["#2563A6", "#0F9D8A", "#2F7D4A", "#C88918", "#B6536B"]
     fig = go.Figure(go.Scatterpolar(
         r=vals + [vals[0]],
         theta=cats + [cats[0]],
         fill="toself",
-        fillcolor="rgba(47,74,60,0.12)",
-        line=dict(color="#2F4A3C", width=2),
-        marker=dict(size=5, color="#2F4A3C"),
+        fillcolor="rgba(37,99,166,0.14)",
+        line=dict(color="#1E3A5F", width=3),
+        marker=dict(size=7, color=colors + [colors[0]], line=dict(color="#FAF8F3", width=1)),
         hovertemplate="%{theta}: %{r:.1f}<extra></extra>",
     ))
     fig.update_layout(
         polar=dict(
+            domain=dict(x=[0.02, 0.98], y=[0.02, 0.98]),
             radialaxis=dict(visible=True, range=[0, 100],
                             gridcolor="#DAD5C6", tickcolor="#DAD5C6",
-                            tickfont=dict(color="#6B6558", size=10)),
+                            tickfont=dict(color="#6B6558", size=9)),
             angularaxis=dict(gridcolor="#DAD5C6",
                              tickfont=dict(color="#1E1E1B", size=12)),
             bgcolor="#FAF8F3",
@@ -712,8 +821,8 @@ def make_radar(row: pd.Series, title: str = "") -> go.Figure:
         paper_bgcolor="#FAF8F3",
         plot_bgcolor="#FAF8F3",
         showlegend=False,
-        margin=dict(l=28, r=28, t=10, b=10),
-        height=210,
+        margin=dict(l=28, r=28, t=10, b=18),
+        height=260,
     )
     return fig
 
@@ -724,32 +833,150 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
         row["quality_score"],   row["ai_exposure_score"],
         row["expectation_gap_score"],
     ]
-    # 单一强调色的深浅梯度，代替彩虹配色——editorial 风格里颜色不用来区分类别
-    colors = ["#8FA89A","#6E8A79","#4A6B5C","#3A5A4C","#2F4A3C"]
+    colors = ["#2563A6", "#0F9D8A", "#2F7D4A", "#C88918", "#B6536B"]
 
     fig = go.Figure(go.Bar(
         x=values, y=labels,
         orientation="h",
         marker=dict(color=colors, line=dict(width=0)),
         text=[f"{v:.0f}" for v in values],
-        textposition="inside",
-        insidetextanchor="end",
+        textposition="outside",
+        cliponaxis=False,
         textangle=0,
-        textfont=dict(color="#FAF8F3", size=11),
+        textfont=dict(color="#1E1E1B", size=12),
         hovertemplate="%{y}: %{x:.1f}<extra></extra>",
     ))
     fig.add_vline(x=50, line=dict(color="#B8B2A0", width=1, dash="dot"))
     fig.update_layout(
-        xaxis=dict(range=[0, 105], showgrid=False,
-                   zeroline=False, tickfont=dict(color="#6B6558")),
-        yaxis=dict(showgrid=False, tickfont=dict(color="#1E1E1B", size=11)),
+        xaxis=dict(range=[0, 112], showgrid=False,
+                   zeroline=False, tickfont=dict(color="#6B6558", size=11)),
+        yaxis=dict(showgrid=False, autorange="reversed",
+                   tickfont=dict(color="#1E1E1B", size=13)),
         paper_bgcolor="#FAF8F3",
         plot_bgcolor="#FAF8F3",
-        margin=dict(l=14, r=28, t=6, b=8),
-        height=160,
-        bargap=0.28,
+        margin=dict(l=68, r=34, t=10, b=24),
+        height=260,
+        bargap=0.30,
     )
     return fig
+
+
+def render_print_score_visuals(row: pd.Series) -> str:
+    """Render print-stable five-factor charts as native responsive SVG."""
+    labels = ["估值", "成长", "质量", "AI暴露", "预期差"]
+    values = [
+        float(row["valuation_score"]), float(row["growth_score"]),
+        float(row["quality_score"]), float(row["ai_exposure_score"]),
+        float(row["expectation_gap_score"]),
+    ]
+    colors = ["#2563A6", "#0F9D8A", "#2F7D4A", "#C88918", "#B6536B"]
+
+    # Radar: explicit viewBox keeps every axis label inside the printable panel.
+    cx, cy, radius = 155.0, 124.0, 86.0
+    angles = [0.0, -72.0, -144.0, 144.0, 72.0]
+
+    def _point(angle_deg: float, r: float) -> tuple[float, float]:
+        angle = math.radians(angle_deg)
+        return cx + math.cos(angle) * r, cy + math.sin(angle) * r
+
+    def _points(r: float) -> str:
+        return " ".join(f"{x:.1f},{y:.1f}" for x, y in (_point(a, r) for a in angles))
+
+    radar_grid = "".join(
+        f"<polygon points='{_points(radius * level / 100)}' fill='none' "
+        "stroke='#DAD5C6' stroke-width='1'/>"
+        for level in (20, 40, 60, 80, 100)
+    )
+    radar_axes = "".join(
+        f"<line x1='{cx:.1f}' y1='{cy:.1f}' x2='{x:.1f}' y2='{y:.1f}' "
+        "stroke='#DAD5C6' stroke-width='1'/>"
+        for x, y in (_point(a, radius) for a in angles)
+    )
+    score_points = " ".join(
+        f"{x:.1f},{y:.1f}"
+        for x, y in (
+            _point(angle, radius * max(0.0, min(100.0, value)) / 100.0)
+            for angle, value in zip(angles, values)
+        )
+    )
+    radar_markers = "".join(
+        f"<circle cx='{x:.1f}' cy='{y:.1f}' r='4' fill='{color}' "
+        "stroke='#FAF8F3' stroke-width='1.2'/>"
+        for x, y, color in (
+            (*_point(angle, radius * max(0.0, min(100.0, value)) / 100.0), color)
+            for angle, value, color in zip(angles, values, colors)
+        )
+    )
+    radar_labels = []
+    for label, angle in zip(labels, angles):
+        x, y = _point(angle, radius + 18)
+        anchor = "start" if x > cx + 8 else ("end" if x < cx - 8 else "middle")
+        radar_labels.append(
+            f"<text x='{x:.1f}' y='{y + 4:.1f}' text-anchor='{anchor}' "
+            "font-family='Arial, sans-serif' font-size='12' fill='#1E1E1B'>"
+            f"{label}</text>"
+        )
+
+    radar_svg = (
+        "<svg class='score-print-svg' viewBox='0 0 320 248' "
+        "preserveAspectRatio='xMidYMid meet' role='img' aria-label='能力雷达图'>"
+        f"{radar_grid}{radar_axes}"
+        f"<polygon points='{score_points}' fill='#2563A6' fill-opacity='0.14' "
+        "stroke='#1E3A5F' stroke-width='3'/>"
+        f"{radar_markers}{''.join(radar_labels)}"
+        "</svg>"
+    )
+
+    # Bars: all values stay inside the 0-100 plotting area and remain visible.
+    x0, plot_w, top, bar_h, gap = 82.0, 280.0, 22.0, 24.0, 14.0
+    bar_rows = []
+    for idx, (label, value, color) in enumerate(zip(labels, values, colors)):
+        y = top + idx * (bar_h + gap)
+        clipped = max(0.0, min(100.0, value))
+        width = plot_w * clipped / 100.0
+        bar_rows.append(
+            f"<text x='{x0 - 10:.1f}' y='{y + 17:.1f}' text-anchor='end' "
+            "font-family='Arial, sans-serif' font-size='12' fill='#1E1E1B'>"
+            f"{label}</text>"
+            f"<rect x='{x0:.1f}' y='{y:.1f}' width='{width:.1f}' height='{bar_h:.1f}' "
+            f"fill='{color}'/>"
+            f"<text x='{x0 + max(18.0, width - 6):.1f}' y='{y + 17:.1f}' "
+            "text-anchor='end' font-family='Arial, sans-serif' font-size='11' "
+            f"font-weight='700' fill='#FFFFFF'>{value:.0f}</text>"
+        )
+    tick_y = top + 5 * (bar_h + gap) + 3
+    bar_svg = (
+        "<svg class='score-print-svg' viewBox='0 0 400 230' "
+        "preserveAspectRatio='xMidYMid meet' role='img' aria-label='子分详情'>"
+        f"<line x1='{x0 + plot_w / 2:.1f}' y1='{top - 4:.1f}' "
+        f"x2='{x0 + plot_w / 2:.1f}' y2='{tick_y - 12:.1f}' "
+        "stroke='#B8B2A0' stroke-width='1' stroke-dasharray='4 4'/>"
+        f"{''.join(bar_rows)}"
+        f"<text x='{x0:.1f}' y='{tick_y:.1f}' text-anchor='middle' "
+        "font-family='Arial, sans-serif' font-size='10' fill='#6B6558'>0</text>"
+        f"<text x='{x0 + plot_w / 2:.1f}' y='{tick_y:.1f}' text-anchor='middle' "
+        "font-family='Arial, sans-serif' font-size='10' fill='#6B6558'>50</text>"
+        f"<text x='{x0 + plot_w:.1f}' y='{tick_y:.1f}' text-anchor='middle' "
+        "font-family='Arial, sans-serif' font-size='10' fill='#6B6558'>100</text>"
+        "</svg>"
+    )
+
+    legend_html = "".join(
+        "<span class='score-dimension-legend__item'>"
+        f"<i class='score-dimension-legend__dot' style='background:{color}'></i>"
+        f"{label} {value:.0f}</span>"
+        for label, value, color in zip(labels, values, colors)
+    )
+    return (
+        "<div class='print-only score-print-grid'>"
+        "<section class='score-print-panel'>"
+        "<div class='score-print-title'>能力雷达图</div>"
+        f"{radar_svg}</section>"
+        "<section class='score-print-panel'>"
+        "<div class='score-print-title'>子分详情</div>"
+        f"{bar_svg}<div class='score-dimension-legend'>{legend_html}</div>"
+        "</section></div>"
+    )
 
 
 def _quant_rating(score: float, circuit: bool = False) -> str:
@@ -799,11 +1026,14 @@ def _simulate_price_score(ticker: str, base_data: dict, price: float) -> dict | 
     elif price_ratio and sim.get("peg_ratio"):
         sim["peg_ratio"] = round(sim["peg_ratio"] * price_ratio, 3)
 
-    if ev and ev > 0:
-        if ebitda and ebitda > 0:
-            sim["ev_ebitda"] = round(ev / ebitda, 2)
-        if revenue and revenue > 0:
-            sim["ev_sales"] = round(ev / revenue, 2)
+    if ev is not None:
+        # Recompute (or clear) on every simulated price, even when a large
+        # net-cash position pushes EV negative at low simulated prices.
+        # Freezing these at their current-price value (the previous
+        # behavior) made the curve jump discontinuously right at the price
+        # where EV crosses zero.
+        sim["ev_ebitda"] = round(ev / ebitda, 2) if ebitda and ebitda > 0 else None
+        sim["ev_sales"] = round(ev / revenue, 2) if revenue and revenue > 0 else None
 
     if market_cap and market_cap > 0:
         if fcf is not None:
@@ -868,9 +1098,27 @@ def _price_sensitivity_report(ticker: str, base_data: dict, current_score: float
 
     for label, threshold in thresholds:
         eligible = [x for x in scored if x["valuation_score"] >= threshold]
-        boundary[label] = max((x["price"] for x in eligible), default=None)
+        if not eligible or len(eligible) == len(scored):
+            # Either the threshold is never met, or it is met across the
+            # entire simulated grid (e.g. a very low PEG that stays "cheap"
+            # even at 400% of current price). Neither case has a genuine
+            # interior crossing point within the tested range, so per the
+            # price-boundary standard we must not invent the grid edge as
+            # a price — report unavailable instead.
+            boundary[label] = None
+        else:
+            boundary[label] = max(x["price"] for x in eligible)
 
     current_sim = next((x for x in rows if abs(x["shock"]) < 1e-9), rows[len(rows) // 2])
+
+    # PRICE_BOUNDARY_STANDARD.md: if a boundary cannot be calculated, show the
+    # reason. Do not invent a price. Recomputing the price-driven ratios at the
+    # current price must reproduce what the row already carries; when it does
+    # not, the raw fields are not on the same basis as the price.
+    _conflicts = basis_conflicts(base_data, current_sim)
+    if _conflicts:
+        return {"available": False, "reason": basis_conflict_reason(_conflicts)}
+
     down_10 = next((x for x in rows if abs(x["shock"] + 0.10) < 1e-9), None)
     up_10 = next((x for x in rows if abs(x["shock"] - 0.10) < 1e-9), None)
     if down_10 and up_10:
@@ -1051,6 +1299,14 @@ _sb.render_nav(subnav_render_fn=_render_ai_valuation_subnav)
 page = _subnav["page"]
 _sb.render_status()
 
+_validated_count = int(
+    df.get("validation_status", pd.Series(index=df.index, dtype="object"))
+    .astype(str)
+    .str.upper()
+    .eq("PASS")
+    .sum()
+)
+
 with st.sidebar:
     # CSV source info（这页的数据状态，不是导航，放导航下面单独一块）
     _csv_file = _CSV_VALIDATED if _CSV_VALIDATED.exists() else _CSV_RAW
@@ -1064,7 +1320,7 @@ with st.sidebar:
         f"<span style='color:#4FC3F7;font-size:12px'>📄 {_csv_file.name} · {_csv_age}</span>",
         unsafe_allow_html=True)
     st.markdown(
-        f"<span style='color:#8B9BB4;font-size:11px'>{len(df)} 只美股 · 84/84 验证通过</span>",
+        f"<span style='color:#8B9BB4;font-size:11px'>{len(df)} 只美股 · {_validated_count}/{len(df)} 验证通过</span>",
         unsafe_allow_html=True)
     st.divider()
 
@@ -1084,7 +1340,7 @@ with st.sidebar:
 
     # 极速价格刷新
     if st.button("⚡ 极速价格刷新（~5秒）", use_container_width=True,
-                 help="只拉实时股价，从存储基本面重算 PE/EV/PEG，约5秒完成84只"):
+                 help=f"只拉实时股价，从存储基本面重算 PE/EV/PEG，约5秒完成{len(df)}只"):
         import refresh_scores as _rs_sb
         with st.spinner("⚡ 拉取实时价格并重算评分…"):
             try:
@@ -1107,11 +1363,11 @@ with st.sidebar:
             except Exception as _e:
                 st.error(f"全量刷新失败：{_e}")
 
-    st.markdown("""
+    st.markdown(f"""
 <div style='color:#8B9BB4;font-size:11px;line-height:1.8'>
 数据来源<br>
 📄 results_validated.csv<br>
-84只美股 · 全部验证通过<br>
+{len(df)}只美股 · {_validated_count}/{len(df)} 验证通过<br>
 含验证置信度 &amp; 人工核查标记
 </div>
 """, unsafe_allow_html=True)
@@ -1221,9 +1477,35 @@ if page == "🏆 排行榜":
     _total_filtered = len(df_view)
     _show_n = top_n if top_n < _total_filtered else _total_filtered
     _suffix = f"（前 {_show_n} / 共 {_total_filtered} 只）" if _show_n < _total_filtered else f"（共 {_total_filtered} 只）"
-    st.markdown(f"#### 综合评分排名 {_suffix}")
+    # The sort is two-level -- decision_actionable first, then final_score --
+    # so a lower-scoring actionable name legitimately outranks a higher one.
+    # The old heading said only "综合评分排名", which made that read as a
+    # broken sort. Naming both keys, and drawing a line where the first group
+    # ends, makes the rule visible instead of surprising.
+    st.markdown(f"#### 排名：可执行优先 · 组内按综合分 {_suffix}")
 
-    for _, row in df_view.head(_show_n).iterrows():
+    _shown = df_view.head(_show_n)
+    _actionable_shown = int(_shown["decision_actionable"].sum()) if "decision_actionable" in _shown.columns else 0
+    if 0 < _actionable_shown < len(_shown):
+        st.caption(
+            f"前 {_actionable_shown} 只为决策层判定「可执行」，优先列出；其余按综合分降序。"
+            "两组内部各自按综合分排序。"
+        )
+
+    _prev_actionable = None
+    for _, row in _shown.iterrows():
+        _is_actionable = bool(row.get("decision_actionable", False))
+        if _prev_actionable is True and _is_actionable is False:
+            st.markdown(
+                "<div style='display:flex;align-items:center;gap:8px;margin:10px 0 6px'>"
+                "<div style='flex:1;height:1px;background:#2D3F55'></div>"
+                "<span style='font-size:10px;color:#8B9BB4;white-space:nowrap'>"
+                "以下为非「可执行」标的，按综合分降序</span>"
+                "<div style='flex:1;height:1px;background:#2D3F55'></div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        _prev_actionable = _is_actionable
         rank    = int(row.name)
         r_color = rating_color(row["rating"])
         fs      = row["final_score"]
@@ -1265,6 +1547,14 @@ if page == "🏆 排行榜":
                 f"</div>",
                 unsafe_allow_html=True,
             )
+            st.button(
+                f"查看 {row['ticker']} 报告 →",
+                key=f"rank_open_report_{row['ticker']}",
+                on_click=_select_ticker,
+                args=(row["ticker"], "🔍 单股详情"),
+                use_container_width=True,
+                help="打开该股票的报告；之后进入数据编辑时会保持同一只股票。",
+            )
 
         with col_bars:
             bar_html = "<div style='padding:7px 0'>"
@@ -1282,7 +1572,53 @@ if page == "🏆 排行榜":
             st.markdown(bar_html, unsafe_allow_html=True)
 
         with col_score:
+            # Company / momentum / risk are shown side by side rather than
+            # multiplied together. The blended score stays as a small
+            # reference so the snapshot history keeps its meaning, but it can
+            # no longer sit alone unexplained: MU read 52.7 against a company
+            # score of 78.2 with nothing on screen accounting for the gap.
+            _split = split_scores(
+                {
+                    "valuation": row.get("valuation_score"),
+                    "growth": row.get("growth_score"),
+                    "quality": row.get("quality_score"),
+                    "ai_exposure": row.get("ai_exposure_score"),
+                    "expectation_gap": row.get("expectation_gap_score"),
+                    "momentum": row.get("momentum_score"),
+                },
+                risk_penalty=rp,
+                beta=_row_raw_number(row, "raw_beta"),
+                drawdown_abs=_row_raw_number(row, "raw_max_dd", pct=True),
+                de_ratio=_row_raw_number(row, "raw_de_ratio"),
+                blended=fs,
+            )
+            _co = _split.company
+            # score_color, not _ed_score_color: the latter is nested inside the
+            # detail-page block further down and does not exist here.
+            _co_col = score_color(_co) if _co is not None else "#8B9BB4"
+            _circuit_html = (
+                f"<div style='font-size:9px;color:#FFB347;margin-top:2px;"
+                f"border:1px solid #FFB34744;background:#FFB34715;"
+                f"border-radius:3px;padding:1px 3px' title='{_split.circuit.detail}'>"
+                f"⚡ {_split.circuit.label}</div>"
+                if _split.circuit.triggered else ""
+            )
             st.markdown(
+                f"<div style='text-align:center;padding:6px 0'>"
+                f"<div style='font-size:30px;font-weight:900;color:{_co_col};line-height:1'>"
+                f"{_co:.0f}</div>"
+                f"<div style='font-size:9px;color:#8B9BB4'>公司分</div>"
+                f"<div style='font-size:9px;color:#8B9BB4;margin-top:3px'>"
+                f"动量 <span style='color:#56D9FF'>{_split.momentum:.0f}</span>"
+                f" · 风险 <span style='color:#FF8C42'>{_split.risk:.0f}</span></div>"
+                f"{_circuit_html}"
+                f"<div style='font-size:9px;color:#5B6B80;margin-top:3px;"
+                f"border-top:1px solid #1E2D3D;padding-top:2px'>"
+                f"综合 <span style='color:{fs_col}'>{fs:.0f}</span>"
+                f" · 扣分 -{rp:.1f}</div>"
+                f"</div>"
+                if _co is not None and _split.momentum is not None and _split.risk is not None
+                else
                 f"<div style='text-align:center;padding:6px 0'>"
                 f"<div style='font-size:34px;font-weight:900;color:{fs_col};line-height:1'>{fs:.0f}</div>"
                 f"<div style='font-size:9px;color:#8B9BB4'>/100</div>"
@@ -1313,13 +1649,22 @@ if page == "🏆 排行榜":
                             unsafe_allow_html=True)
                 for _, r in grp.iterrows():
                     c = score_color(r["final_score"])
-                    st.markdown(
-                        f"<div style='display:flex;justify-content:space-between;"
-                        f"margin-bottom:4px;font-size:13px'>"
-                        f"<span style='color:#E2E8F0'>{r['ticker']}</span>"
-                        f"<span style='color:{c};font-weight:600'>"
-                        f"{r['final_score']:.1f}</span></div>",
-                        unsafe_allow_html=True)
+                    _cat_ticker, _cat_score = st.columns([3, 1])
+                    with _cat_ticker:
+                        st.button(
+                            r["ticker"],
+                            key=f"category_open_report_{cat}_{r['ticker']}",
+                            on_click=_select_ticker,
+                            args=(r["ticker"], "🔍 单股详情"),
+                            use_container_width=True,
+                            help=f"查看 {r['ticker']} 的单股报告",
+                        )
+                    with _cat_score:
+                        st.markdown(
+                            f"<div style='padding-top:7px;text-align:right;color:{c};"
+                            f"font-weight:600;font-size:13px'>{r['final_score']:.1f}</div>",
+                            unsafe_allow_html=True,
+                        )
 
 
 # ══════════════════════════════════════════════════════════
@@ -1360,7 +1705,7 @@ elif page == "🔍 单股详情":
     # 问题，之前几次验证都是用它测的，所以"看起来修好了"），@media print 生效
     # 时 Plotly 内部保留的还是屏幕阶段算出的旧宽度，SVG 不会自动重新排布，
     # 导致图表比外层容器窄，右侧留白。CSS 的 width:100% 只能撑大 SVG 容器本身，
-    # 撑不动 Plotly 内部的坐标系统，必须显式调用 Plotly.Plots.resize() 才行。
+    # 撑不动 Plotly 内部的坐标系统，必须按打印后的 host 宽度显式 relayout。
     # st.markdown 插入的 <script> 标签浏览器不会执行（innerHTML 插入的脚本天生
     # 是"死"的），必须用 components.html（跑在 iframe 里）+ 穿透 window.parent
     # 去操作父文档里真正的图表和 Plotly 实例。
@@ -1373,7 +1718,13 @@ elif page == "🔍 单股详情":
 
             function resizeAllPlots() {
                 w.document.querySelectorAll('.js-plotly-plot').forEach(function(gd) {
-                    try { w.Plotly.Plots.resize(gd); } catch (e) {}
+                    try {
+                        var host = gd.closest('[data-testid="stPlotlyChart"]') || gd.parentElement;
+                        var width = Math.floor(host.getBoundingClientRect().width);
+                        if (width > 0) {
+                            w.Plotly.relayout(gd, {width: width, autosize: false});
+                        }
+                    } catch (e) {}
                 });
             }
 
@@ -1436,10 +1787,16 @@ elif page == "🔍 单股详情":
     st.markdown("<div class='screen-only'><h2 style='margin:0;font-family:Georgia,serif;color:#1E1E1B'>单股详情</h2></div>",
                 unsafe_allow_html=True)
 
+    _selected = st.session_state.get("selected_ticker", TICKERS[0])
+    if _selected in TICKERS and st.session_state.get("detail_ticker") != _selected:
+        st.session_state["detail_ticker"] = _selected
     ticker = st.selectbox(
         "选择股票",
         df["ticker"].tolist(),
         format_func=lambda t: f"{t}  —  {_ed_plain(df[df['ticker']==t]['rating'].values[0])}",
+        key="detail_ticker",
+        on_change=_sync_selected_ticker,
+        args=("detail_ticker",),
     )
 
     row  = df[df["ticker"] == ticker].iloc[0]
@@ -1478,9 +1835,11 @@ elif page == "🔍 单股详情":
         _val_conf,
         human_review_required=_hr_needed,
         validation_status=_val_status,
-        forward_pe=data.get("forward_pe"),
-        ev_sales=data.get("ev_sales"),
-        fcf_yield=data.get("fcf_yield"),
+        # CSV holds the latest normalized values used by the global refresh.
+        # It is the decision source of truth, ahead of any stale detail cache.
+        forward_pe=_row_raw_number(row, "raw_forward_pe") or data.get("forward_pe"),
+        ev_sales=_row_raw_number(row, "raw_ev_sales") or data.get("ev_sales"),
+        fcf_yield=_row_raw_number(row, "raw_fcf_yield", pct=True) or data.get("fcf_yield"),
     )
     _rating_plain = _ed_plain(_decision.label)
     r_color = _ed_rating_color(_decision.label)
@@ -1506,7 +1865,7 @@ elif page == "🔍 单股详情":
     _company = row.get("company", ticker)
     _report_date = datetime.datetime.now().strftime("%Y-%m-%d")
     st.markdown(
-        f"<div class='print-only' style='margin-bottom:18px'>"
+        f"<div class='print-only print-report-header' style='margin-bottom:18px'>"
         # 品牌带
         f"<div style='display:flex;justify-content:space-between;align-items:center;"
         f"border-bottom:1px solid {_ED_INK};padding-bottom:8px;margin-bottom:14px'>"
@@ -1588,7 +1947,7 @@ elif page == "🔍 单股详情":
 
     with h3:
         rp = row["risk_penalty"]
-        rs = float(row.get("weighted_score", row["raw_score"] - _ai_bonus) or 0)
+        rs = float(row.get("weighted_score", row["raw_score"]) or 0)
         st.markdown(
             f"<div style='padding:0 0 0 20px;border-left:1px solid {_ED_HAIR}'>"
             f"<div style='color:{_ED_MUTED};font-size:11px;"
@@ -1597,10 +1956,6 @@ elif page == "🔍 单股详情":
             f"margin-bottom:6px'>"
             f"<span style='color:{_ED_MUTED};font-size:12px'>加权合计</span>"
             f"<span style='color:{_ED_INK};font-weight:600'>{rs:.1f}</span></div>"
-            f"<div style='display:flex;justify-content:space-between;"
-            f"margin-bottom:6px'>"
-            f"<span style='color:{_ED_ACCENT_LIGHT};font-size:12px'>AI加速器</span>"
-            f"<span style='color:{_ED_ACCENT_LIGHT};font-weight:600'>+{_ai_bonus:.2f}</span></div>"
             f"<div style='display:flex;justify-content:space-between;"
             f"margin-bottom:6px'>"
             f"<span style='color:{_ED_DANGER};font-size:12px'>风险扣分</span>"
@@ -1620,19 +1975,6 @@ elif page == "🔍 单股详情":
             f"</div>",
             unsafe_allow_html=True)
 
-    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div style='background:#F3F0E8;border:1px solid {_ED_HAIR};"
-        f"border-left:3px solid {_ED_ACCENT_LIGHT};border-radius:8px;"
-        f"padding:9px 12px;margin:0 0 12px;color:{_ED_INK};font-size:11px;line-height:1.55'>"
-        f"<strong>AI角色分类：{_ai_profile}</strong> · 暴露基础 {_ai_exposure_text} · "
-        f"原始AI信号 {_ai_raw_score:.1f} · AI加速器 +{_ai_bonus:.2f}<br>"
-        f"{_profile_weights_text}<br>"
-        f"<span style='color:{_ED_MUTED}'>判断基础：{_ai_basis}。AI赋能型和传统优质型采用中性AI基线，"
-        f"只有已识别的AI贡献提供正向加分。</span></div>",
-        unsafe_allow_html=True,
-    )
-
     # ── 半凯利建议仓位 ───────────────────────────────────
     _kp     = suggested_position_pct(fs) if _decision.actionable else None
     _kmeta  = kelly_meta()
@@ -1648,8 +1990,7 @@ elif page == "🔍 单股详情":
                 f"回测生成于 {_kmeta.get('generated_at','—')} · {_kmeta.get('method','')}"
             )
             _ed_alert(_kmeta.get("caveat", ""), "warning")
-    elif _kp is None:
-        st.caption(f"半凯利建议仓位：暂不显示。{_decision.reason}")
+    # No placeholder when no version-matched, actionable Kelly estimate exists.
 
     # ── 价格温度带 ─────────────────────────────────
     st.markdown("#### 价格温度带")
@@ -1668,21 +2009,6 @@ elif page == "🔍 单股详情":
 
         def _disc(v):
             return f"{(v / _cur_px - 1) * 100:+.1f}%" if v else "—"
-
-        st.markdown(
-            "<div style='background:#F3F0E8;"
-            "border:1px solid #DAD5C6;border-left:3px solid #2F4A3C;"
-            "border-radius:12px;padding:10px 14px;margin:2px 0 12px 0;"
-            "color:#2A2A26;font-size:12px;line-height:1.6'>"
-            "<span style='color:#1E1E1B;font-weight:800'>价格温度带：</span>"
-            "用同一套估值评分引擎，在不同假设价格下重算估值倍数和 Valuation Score。"
-            "<span style='color:#2F4A3C;font-weight:700'>低价区</span>代表估值分≥80，"
-            "<span style='color:#4A6B5C;font-weight:700'>合适区</span>代表75-80，"
-            "<span style='color:#A67C3D;font-weight:700'>观察区</span>代表60-75，"
-            "<span style='color:#8B3A2E;font-weight:700'>高价区</span>代表<60。"
-            "</div>",
-            unsafe_allow_html=True,
-        )
 
         b1, b2, b3, b4, b5 = st.columns(5)
         _cards = [
@@ -1707,43 +2033,32 @@ elif page == "🔍 单股详情":
                     unsafe_allow_html=True,
                 )
 
-        st.markdown(
-            "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 8px 0'>"
-            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
-            "padding:6px 10px;background:#EFEBDF;color:#2F4A3C;font-size:12px;font-weight:800'>"
-            "低价区 80-100</span>"
-            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
-            "padding:6px 10px;background:#EFEBDF;color:#4A6B5C;font-size:12px;font-weight:800'>"
-            "合适区 75-80</span>"
-            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
-            "padding:6px 10px;background:#EFEBDF;color:#A67C3D;font-size:12px;font-weight:800'>"
-            "观察区 60-75</span>"
-            "<span style='border:1px solid #DAD5C6;border-radius:8px;"
-            "padding:6px 10px;background:#EFEBDF;color:#8B3A2E;font-size:12px;font-weight:800'>"
-            "高价区 <60</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
         st.markdown(render_price_zone_svg(_ps), unsafe_allow_html=True)
         st.markdown(
-            "<div style='background:#F3F0E8;"
-            "border:1px solid #DAD5C6;border-left:3px solid #4A6B5C;"
-            "border-radius:12px;padding:12px 16px;margin:8px 0 12px 0;"
-            "color:#2A2A26;font-size:12px;line-height:1.65'>"
-            "<span style='color:#1E1E1B;font-weight:700'>温度带来源：</span>"
-            "价格区间不是主观猜测，而是在当前基本面假设不变的前提下，逐档改变股价，"
-            "重新计算 Forward PE、PEG、EV/Sales、EV/EBITDA、FCF Yield，并调用同一套评分引擎得到 Valuation Score。"
-            "<br><span style='color:#A67C3D;font-weight:700'>模型局限：</span>"
-            "它衡量的是“价格变化对估值评分的机械影响”，不是对未来股价的预测；"
-            "若未来增长、利润率、利率、股本、财报口径或市场风险偏好变化，区间会随之失效或需要重算。"
+            "<div style='color:#6B6558;font-size:11px;line-height:1.6;margin:6px 0 12px'>"
+            "价格情景模拟，非股价预测：非价格基本面保持不变，逐档改变股价后重算 "
+            "Forward PE、PEG、EV/Sales、EV/EBITDA、FCF Yield，再由同一套评分引擎得出估值分。"
+            "增长、利润率、利率、股本、财报口径或市场风险偏好变化后，区间失效或需重算；"
             "当前边界未声明为已回测验证胜率。"
             "</div>",
             unsafe_allow_html=True,
         )
 
+        # Price-shock sensitivity table, required by PRICE_BOUNDARY_STANDARD.md.
+        # An earlier layout pass dropped the rendering while
+        # _price_sensitivity_report kept computing the numbers, so the report
+        # silently stopped meeting the standard and the work was thrown away.
+        def _ratio_cell(value, suffix: str = "") -> str:
+            # ev_sales and forward_pe are legitimately None when the
+            # denominator is unavailable at a simulated price.
+            return "—" if value is None else f"{value:,.1f}{suffix}"
+
         _sens = _ps.get("sensitivity_10pct")
-        _sens_label = "不足" if _sens is not None and _sens < 0.20 else "中等" if _sens is not None and _sens < 0.55 else "较高"
+        _sens_label = (
+            "不足" if _sens is not None and _sens < 0.20
+            else "中等" if _sens is not None and _sens < 0.55
+            else "较高"
+        )
         _sens_text = (
             f"价格每变动 10%，估值分约变动 {_sens:.1f} 分，价格敏感度：{_sens_label}。"
             if _sens is not None else
@@ -1758,18 +2073,19 @@ elif page == "🔍 单股详情":
             _score_col = score_color(_r["final_score"])
             _rows_html += (
                 f"<tr>"
-                f"<td>{_shock:+.0%}</td>"
-                f"<td>${_r['price']:,.2f}</td>"
-                f"<td style='color:{_score_col};font-weight:700'>{_r['final_score']:.1f}</td>"
-                f"<td>{_ed_plain(score_band(_r['final_score']))}</td>"
-                f"<td>{_r['valuation_score']:.1f}</td>"
-                f"<td>{_r['forward_pe']:.1f}x</td>"
-                f"<td>{_r['ev_sales']:.1f}x</td>"
+                f"<td style='padding:6px 10px'>{_shock:+.0%}</td>"
+                f"<td style='padding:6px 10px'>${_r['price']:,.2f}</td>"
+                f"<td style='padding:6px 10px;color:{_score_col};font-weight:700'>"
+                f"{_r['final_score']:.1f}</td>"
+                f"<td style='padding:6px 10px'>{_ed_plain(score_band(_r['final_score']))}</td>"
+                f"<td style='padding:6px 10px'>{_r['valuation_score']:.1f}</td>"
+                f"<td style='padding:6px 10px'>{_ratio_cell(_r.get('forward_pe'), 'x')}</td>"
+                f"<td style='padding:6px 10px'>{_ratio_cell(_r.get('ev_sales'), 'x')}</td>"
                 f"</tr>"
             )
         st.markdown(
             f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
-            f"border-radius:12px;margin-top:10px;overflow:hidden'>"
+            f"border-radius:12px;margin-bottom:12px;overflow:hidden'>"
             f"<div style='padding:9px 12px;color:#2A2A26;font-size:11px;"
             f"border-bottom:1px solid #DAD5C6'>{_sens_text} "
             f"边界价基于当前基本面不变、仅价格驱动估值比率重算；不是自动交易指令。</div>"
@@ -1787,28 +2103,45 @@ elif page == "🔍 单股详情":
         )
 
     # ── 雷达 + 子分条形 ─────────────────────────────────
+    # 左侧展示五维结构，右侧提供精确读数；打印时右栏稍宽，为条末数值留空间。
     rc1, rc2 = st.columns([1, 1])
     with rc1:
+        st.markdown(
+            "<div class='score-visual-anchor score-screen-anchor'></div>",
+            unsafe_allow_html=True,
+        )
         st.markdown("#### 能力雷达图")
-        st.plotly_chart(make_radar(row), use_container_width=True)
+        st.plotly_chart(
+            make_radar(row),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
+        )
     with rc2:
         st.markdown("#### 子分详情")
-        st.plotly_chart(make_score_bar_chart(row), use_container_width=True)
-
-        # 权重说明
-        w = WEIGHT_CONFIG[cat]
-        weight_html = (
-            f"<div style='background:#F3F0E8;border:1px solid #DAD5C6;"
-            f"border-radius:6px;padding:10px 12px;font-size:11px;"
-            f"color:#6B6558;line-height:2'>"
-            f"<span style='color:#2F4A3C'>估值×{w.valuation:.0%}</span> · "
-            f"<span style='color:#2F4A3C'>成长×{w.growth:.0%}</span> · "
-            f"<span style='color:#4A6B5C'>质量×{w.quality:.0%}</span> · "
-            f"<span style='color:#A67C3D'>AI暴露×{w.ai_exposure:.0%}</span> · "
-            f"<span style='color:#8B3A2E'>预期差×{w.expectation_gap:.0%}</span>"
-            f"</div>"
+        st.plotly_chart(
+            make_score_bar_chart(row),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
         )
-        st.markdown(weight_html, unsafe_allow_html=True)
+        _dimension_scores = [
+            ("估值", row["valuation_score"], "#2563A6"),
+            ("成长", row["growth_score"], "#0F9D8A"),
+            ("质量", row["quality_score"], "#2F7D4A"),
+            ("AI暴露", row["ai_exposure_score"], "#C88918"),
+            ("预期差", row["expectation_gap_score"], "#B6536B"),
+        ]
+        _score_legend_html = "".join(
+            "<span class='score-dimension-legend__item'>"
+            f"<i class='score-dimension-legend__dot' style='background:{color}'></i>"
+            f"{label} {float(value):.0f}</span>"
+            for label, value, color in _dimension_scores
+        )
+        st.markdown(
+            f"<div class='score-dimension-legend'>{_score_legend_html}</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(render_print_score_visuals(row), unsafe_allow_html=True)
 
     st.divider()
 
@@ -1966,6 +2299,8 @@ elif page == "🔍 单股详情":
     def _ed_render_summary(text: str, level: str):
         lead, _, rest = text.partition("** — ")
         lead = lead.lstrip("*")
+        sentences = [s for s in re.split(r"(?<=[。！？])", rest) if s.strip()]
+        rest = "".join(sentences[:2])
         c = _ed_summary_color(level)
         st.markdown(
             f"<div style='border-top:1px solid {_ED_HAIR};padding:12px 0'>"
@@ -1978,7 +2313,6 @@ elif page == "🔍 单股详情":
     _grow_level = "success" if row["growth_score"] >= 75 else ("warning" if row["growth_score"] >= 50 else "error")
     _ed_render_summary(grow_text, _grow_level)
     _ed_render_summary(qual_text, "info")
-    _ed_render_summary(ai_text, "info")
     _risk_level = "error" if row["risk_penalty"] >= 10 else ("warning" if row["risk_penalty"] >= 6 else "success")
     _ed_render_summary(risk_text, _risk_level)
 
@@ -2157,16 +2491,6 @@ elif page == "🔍 单股详情":
                 f"ROIC × 再投资率</div>"
                 f"</div>", unsafe_allow_html=True)
 
-    st.markdown(
-        "<div style='background:#F3F0E8;border:1px solid #DAD5C6;border-left:3px solid #2F4A3C;"
-        "border-radius:4px;padding:10px 14px;font-size:11px;color:#6B6558;margin-top:8px'>"
-        "<b style='color:#2F4A3C'>游戏类型说明</b>：ENERGREX 使用<b>定价游戏</b>（EV倍数比较），"
-        "非 DCF 内在价值计算。Damodaran 分析为补充视角，"
-        "用于检验市场隐含叙事是否与基本面叙事一致。"
-        "市场隐含 CAGR 基于「成熟期 EV/Sales 回归」假设，仅供参考。"
-        "</div>",
-        unsafe_allow_html=True)
-
     # ── 白话解读：上面这堆数字到底什么意思 ─────────────────────
     if _excess_pct >= 5:
         _excess_text = (
@@ -2286,9 +2610,8 @@ elif page == "🔍 单股详情":
     st.markdown(
         f"<div class='print-only report-print-footer' style='margin-top:18px;padding-top:10px;"
         f"border-top:1px solid #DAD5C6;font-size:9px;color:#6B6558;line-height:1.6'>"
-        f"本报告由 ENERGREX AI 估值评分系统于 {_report_date} 自动生成，"
-        f"评分与「框架镜头分析」均为规则化模型输出，不构成投资建议；"
-        f"相关人物姓名仅用于说明公开思想框架来源，非本人观点、授权或背书。请自行核查数据来源与口径。"
+        f"ENERGREX 自动生成 · {_report_date} · 规则化研究输出，非投资建议。"
+        f"框架名称仅说明公开研究方法，非本人观点、授权或背书。"
         f" · {ticker} · {_company}"
         f"</div>",
         unsafe_allow_html=True)
@@ -2521,7 +2844,13 @@ elif page == "🔬 评分审计":
         "</div>",
         unsafe_allow_html=True)
 
-    audit_ticker = st.selectbox("选择股票", df["ticker"].tolist(), key="audit_sel")
+    _selected = st.session_state.get("selected_ticker", TICKERS[0])
+    if _selected in TICKERS and st.session_state.get("audit_sel") != _selected:
+        st.session_state["audit_sel"] = _selected
+    audit_ticker = st.selectbox(
+        "选择股票", df["ticker"].tolist(), key="audit_sel",
+        on_change=_sync_selected_ticker, args=("audit_sel",),
+    )
     row  = df[df["ticker"] == audit_ticker].iloc[0]
     data = get_active_stocks()[audit_ticker]
     cat  = get_category(audit_ticker)
@@ -2896,7 +3225,12 @@ elif page == "📝 数据编辑":
         if field in _na_fields:
             return "not_applicable"
         meta = _ov_meta(existing, field)
-        if meta.get("status") == "verified":
+        # 旧版记录曾允许只保存“已核对日期”而没有来源。保留其历史痕迹，
+        # 但不能把它当作可追溯的有效证据。
+        if (meta.get("status") == "verified" and meta.get("verified_at")
+                and not str(meta.get("source") or "").strip()):
+            return "legacy_verified"
+        if meta.get("status") == "verified" and audit_override_entry(field, meta).trusted:
             return "verified_user"
         if default_status == "optional":
             return "optional"
@@ -2937,7 +3271,9 @@ elif page == "📝 数据编辑":
             ("毛利率",             "gross_margin",       "%.4f",  0.0,  1.0, 0.001, "GAAP产品毛利率",                   "auto",      "yfinance",  "financials"),
             ("运营利润率",         "operating_margin",   "%.4f", -0.5,  1.0, 0.001, "⚠️ 需Non-GAAP，yfinance=GAAP",   "pending",   "财报",      "sec"),
             ("FCF Margin",         "fcf_margin",         "%.4f", -0.5,  1.0, 0.001, "FCF/Revenue（TTM）",               "auto",      "yfinance",  "financials"),
-            ("ROIC",               "roic",               "%.4f",  0.0,  2.0, 0.001, "Non-GAAP NOPAT / 投入资本",       "pending",   "财报",      "sec"),
+            # ROIC 可以为负（例如 NOPAT 为负的周期）；限制为非负会让
+            # 已导入的合法负值直接触发 StreamlitValueBelowMinError。
+            ("ROIC",               "roic",               "%.4f", -1.0,  2.0, 0.001, "Non-GAAP NOPAT / 投入资本",       "pending",   "财报",      "sec"),
             ("D/E（含可转债）",    "debt_to_equity",     "%.3f",  0.0, 30.0, 0.001, "⚠️ yfinance不含converts，必须手动","pending",   "财报",      "sec"),
             ("NRR 净收入留存率",   "net_revenue_retention","%.3f",0.5,  2.0, 0.001, "SaaS/安全公司财报直接披露",        "pending",   "财报",      "sec"),
             ("ARR 增长 YoY",       "arr_growth_yoy",     "%.4f", -0.5,  3.0, 0.001, "订阅收入增长",                    "pending",   "财报",      "financials"),
@@ -2970,7 +3306,13 @@ elif page == "📝 数据编辑":
     }
 
     # ── 股票选择器 ───────────────────────────────────────
-    ed_ticker = st.selectbox("选择股票", TICKERS, key="edit_ticker")
+    _selected = st.session_state.get("selected_ticker", TICKERS[0])
+    if _selected in TICKERS and st.session_state.get("edit_ticker") != _selected:
+        st.session_state["edit_ticker"] = _selected
+    ed_ticker = st.selectbox(
+        "选择股票", TICKERS, key="edit_ticker",
+        on_change=_sync_selected_ticker, args=("edit_ticker",),
+    )
     active    = get_active_stocks().get(ed_ticker, {})
     existing  = st.session_state.user_overrides.get(ed_ticker, {})
 
@@ -2979,8 +3321,14 @@ elif page == "📝 数据编辑":
 
     # ── 顶部状态仪表盘 ───────────────────────────────────
     _n_verified_user = sum(
-        1 for v in existing.values()
-        if _ov_entry(v).get("status") == "verified"
+        1 for field, value in existing.items()
+        if audit_override_entry(field, _ov_entry(value)).trusted
+    )
+    _n_legacy_verified = sum(
+        1 for value in existing.values()
+        if (_ov_entry(value).get("status") == "verified"
+            and _ov_entry(value).get("verified_at")
+            and not str(_ov_entry(value).get("source") or "").strip())
     )
     _n_verified_auto = sum(
         1 for grp in _FG.values()
@@ -2997,38 +3345,116 @@ elif page == "📝 数据编辑":
         default="—",
     ) or "—"
 
-    _db1, _db2, _db3, _db4 = st.columns(4)
+    _db1, _db2, _db3, _db4, _db5 = st.columns(5)
     _db1.metric("✅ 用户已核对", _n_verified_user)
     _db2.metric("✅ yfinance验证", _n_verified_auto,
                 help="上次运行 cross_validate_data.py 结果" if _has_rpt else "尚无验证报告，请运行 cross_validate_data.py")
-    _db3.metric("🟡 待审核", _n_pending)
-    _db4.metric("📅 最近核对", _last_verified)
+    _db3.metric("🗂 历史待补来源", _n_legacy_verified,
+                help="曾核对并保存日期，但旧记录没有来源；不会被当作可信证据。")
+    _db4.metric("🟡 待审核", _n_pending)
+    _db5.metric("📅 最近核对", _last_verified)
+
+    if _n_legacy_verified:
+        st.warning(
+            f"{ed_ticker} 有 {_n_legacy_verified} 个历史核对记录缺少来源。"
+            "它们仍会显示核对日期；只需补填来源后保存，不需要重新查数。"
+        )
+
+    # 不把已经做过的核对藏起来。这里是该股票完整、跨刷新保留的核对档案。
+    _field_labels = {
+        field: label
+        for group in _FG.values()
+        for label, field, *_ in group
+    }
+    _history_rows = []
+    for _history_field, _history_raw in existing.items():
+        _history_entry = _ov_entry(_history_raw)
+        if _history_entry.get("status") != "verified":
+            continue
+        _history_trusted = audit_override_entry(_history_field, _history_entry).trusted
+        _history_rows.append({
+            "字段": _field_labels.get(_history_field, _history_field),
+            "状态": "✅ 可追溯已核对" if _history_trusted else "🗂 历史已核对（待补来源）",
+            "核对日期": _history_entry.get("verified_at") or "—",
+            "来源": _history_entry.get("source") or "缺少来源：仅补来源即可",
+        })
+    if _history_rows:
+        with st.expander(f"🧾 已保存的核对痕迹（{len(_history_rows)} 条）", expanded=False):
+            st.caption("这是已保存到本机的纪录；刷新页面或切换股票后仍会保留。")
+            st.dataframe(
+                pd.DataFrame(_history_rows),
+                hide_index=True,
+                use_container_width=True,
+            )
 
     if not _has_rpt:
         st.info("提示：运行 `python cross_validate_data.py` 生成验证报告，可自动标绿 yfinance 已验证字段。")
+
+    st.markdown("### 核验待办清单")
+    st.caption(
+        "系统已经通过的项目默认隐藏。你只处理黄色待核验项；每个项目都会告诉你去哪找、搜什么。"
+    )
+    _queue_view = st.radio(
+        "显示范围",
+        ["只看待核验", "待核验 + 可选", "全部字段"],
+        horizontal=True,
+        key="edit_queue_view",
+    )
     st.divider()
 
-    # ── 全局来源说明 ─────────────────────────────────────
-    _source_note = st.text_input(
-        "来源说明（勾选「已核对」并保存后附加到所有确认字段）",
-        placeholder="例：Q1FY2027财报 Non-GAAP  /  Yahoo Finance 2026-06-15",
-        key="edit_source_note",
-    )
-
     # ── 字段编辑区 ───────────────────────────────────────
+    # 放大“已核对”复选框约 2.5 倍，并将实际点击目标扩至 44px。
+    # 此样式只在数据编辑页渲染；该页的 checkbox 即核对控件。
+    st.markdown(
+        """
+        <style>
+        [data-testid="stCheckbox"] > label {
+            min-width: 44px !important;
+            min-height: 44px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer !important;
+        }
+        [data-testid="stCheckbox"] input[type="checkbox"] {
+            transform: scale(2.5) !important;
+            transform-origin: center !important;
+            cursor: pointer !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     new_values: dict    = {}   # field → new numeric value
     confirm_chk: dict   = {}   # field → bool
 
     for _grp_name, _grp_fields in _FG.items():
+        _visible_fields = []
+        for _field_row in _grp_fields:
+            _row_status = _field_eff_status(
+                _field_row[1], _field_row[7], existing, ed_ticker
+            )
+            if should_show_field(_row_status, _queue_view):
+                _visible_fields.append(_field_row)
+        if not _visible_fields:
+            continue
+
         # 统计组内 pending 数
         _g_pend = sum(
             1 for _, fld, *_, ds, _, _ in _grp_fields
             if _field_eff_status(fld, ds, existing, ed_ticker) == "pending"
         )
+        _g_legacy = sum(
+            1 for _, fld, *_, ds, _, _ in _grp_fields
+            if _field_eff_status(fld, ds, existing, ed_ticker) == "legacy_verified"
+        )
         _exp_title = (
             f"{_grp_name}  —  🟡 {_g_pend} 个待审核"
             if _g_pend else
+            (f"{_grp_name}  —  🗂 {_g_legacy} 个历史核对待补来源"
+             if _g_legacy else
             f"{_grp_name}  —  ✅ 全部已验证"
+            )
         )
 
         with st.expander(_exp_title, expanded=(_g_pend > 0)):
@@ -3052,10 +3478,13 @@ elif page == "📝 数据编辑":
                 "<div style='height:1px;background:#1E2D3D;margin:2px 0 6px'></div>",
                 unsafe_allow_html=True)
 
-            for _row in _grp_fields:
+            for _row in _visible_fields:
                 label, field, fmt, vmin, vmax, step, helptext, dstat, src_label, url_type = _row
                 fstat  = _field_eff_status(field, dstat, existing, ed_ticker)
-                icon, color, _ = _ST[fstat]
+                if fstat == "legacy_verified":
+                    icon, color, _ = ("🗂", "#F59E0B", "历史已核对（待补来源）")
+                else:
+                    icon, color, _ = _ST[fstat]
 
                 # ── 不适用字段：灰色单行展示，不渲染输入框 ──────
                 if fstat == "not_applicable":
@@ -3080,6 +3509,10 @@ elif page == "📝 数据编辑":
                 def_v   = float(ov_val) if ov_val is not None else (
                           float(cur_val) if cur_val is not None else
                           (0.0 if field.startswith("sa_") else float((vmin + vmax) / 2)))
+                # 外部导入数据偶尔会超出编辑器的经验范围。扩大本次控件范围
+                # 以完整展示原值，而不是让一个字段中断整个核对页面。
+                _input_min = min(float(vmin), def_v)
+                _input_max = max(float(vmax), def_v)
 
                 _rc = st.columns([0.4, 2.8, 1.0, 1.4, 1.4, 1.0])
 
@@ -3100,6 +3533,9 @@ elif page == "📝 数据编辑":
                     _extra = (f"<div style='font-size:9px;color:#00D4AA'>"
                               f"核对于 {meta['verified_at']}"
                               f"{' · '+meta['source'] if meta.get('source') else ''}</div>")
+                elif fstat == "legacy_verified":
+                    _extra = (f"<div style='font-size:9px;color:#F59E0B'>"
+                              f"历史核对：{meta.get('verified_at')} · 缺少来源（无需重查，仅补来源）</div>")
                 elif fstat == "verified_auto":
                     _extra = "<div style='font-size:9px;color:#00D4AA'>yfinance 自动验证</div>"
                 else:
@@ -3129,14 +3565,14 @@ elif page == "📝 数据编辑":
                     val = st.number_input(
                         label, label_visibility="collapsed",
                         value=def_v,
-                        min_value=float(vmin), max_value=float(vmax), step=float(step),
+                        min_value=_input_min, max_value=_input_max, step=float(step),
                         key=f"edit_{ed_ticker}_{field}",
                         format=fmt,
                     )
                     new_values[field] = val
 
                 # [4] 核对链接（pending/optional 字段显示）
-                if fstat in ("pending", "optional") and url_type:
+                if fstat in ("pending", "legacy_verified", "optional") and url_type:
                     _link = _review_url(url_type, ed_ticker)
                     _rc[4].markdown(
                         f"<div style='padding:8px 0'>"
@@ -3151,10 +3587,28 @@ elif page == "📝 数据编辑":
                         f"<div style='padding:9px 0;font-size:10px;color:#00D4AA'>核对完毕</div>",
                         unsafe_allow_html=True)
 
+                if fstat in ("pending", "legacy_verified", "optional"):
+                    _guide = guide_for_field(field, ed_ticker, label)
+                    with st.expander(f"📍 怎么找到「{label}」", expanded=False):
+                        _sg1, _sg2 = st.columns([1.25, 2.75])
+                        _sg1.markdown(f"**优先来源**\n\n{_guide.source}")
+                        _sg2.markdown(f"**打开后看这里**\n\n{_guide.location}")
+                        st.markdown("**复制下面这句话搜索：**")
+                        st.code(_guide.search_query, language=None)
+                        st.link_button(
+                            "打开建议来源 / 搜索",
+                            _guide.source_url,
+                            use_container_width=True,
+                        )
+                        st.caption(_guide.action)
+
                 # [5] 已核对复选框（pending 字段）或 状态注释
                 with _rc[5]:
-                    if fstat == "pending":
-                        _already = meta.get("status") == "verified"
+                    if fstat in ("pending", "legacy_verified"):
+                        # 历史记录已经做过数值核对；预先勾选后只须补填来源，
+                        # 不需要再重复找同一个数字。
+                        _already = (audit_override_entry(field, meta).trusted
+                                    or fstat == "legacy_verified")
                         confirm_chk[field] = st.checkbox(
                             "chk", value=_already,
                             key=f"chk_{ed_ticker}_{field}",
@@ -3172,6 +3626,16 @@ elif page == "📝 数据编辑":
     st.divider()
 
     # ── 操作按钮 ─────────────────────────────────────────
+    _checked_count = sum(1 for checked in confirm_chk.values() if checked)
+    _source_note = st.text_input(
+        "核对来源（必填：会附加到本次所有勾选的「已核对」字段）",
+        placeholder="例：Yahoo Finance Key Statistics，2026-07-14；或 公司 Q1FY2027 财报，第 12 页",
+        key="edit_source_note",
+        help="可填来源名称、报告期/页面或链接。未勾选字段时无需填写。",
+    )
+    if _checked_count and not _source_note.strip():
+        st.warning(f"已勾选 {_checked_count} 个字段。要保存为「已核对」，请先在这里填一个可追溯来源。")
+
     _bc1, _bc2, _bc3 = st.columns([3.0, 2.2, 2.6])
 
     with _bc1:
@@ -3180,6 +3644,29 @@ elif page == "📝 数据编辑":
             all_ov  = dict(st.session_state.user_overrides)
             tk_data = dict(all_ov.get(ed_ticker, {}))
             changed = 0
+
+            # A checkbox is not proof. Every newly verified field must carry
+            # a traceable source and a valid verification date before save.
+            _verification_errors = []
+            for field, is_checked in confirm_chk.items():
+                if not is_checked:
+                    continue
+                old_meta = _ov_meta(tk_data, field)
+                candidate = {
+                    "value": new_values.get(field),
+                    "status": "verified",
+                    "verified_at": _today,
+                    "source": _source_note.strip() or old_meta.get("source", ""),
+                }
+                check = audit_override_entry(field, candidate)
+                _verification_errors.extend(check.issues)
+            if _verification_errors:
+                st.error(
+                    "无法保存：请在上方「核对来源」填写来源后再保存。"
+                    + " 例如：Yahoo Finance Key Statistics，2026-07-14。\n\n"
+                    + "需补充来源的字段：" + "；".join(_verification_errors)
+                )
+                st.stop()
 
             for field, val in new_values.items():
                 old_meta    = _ov_meta(tk_data, field)
@@ -3194,11 +3681,15 @@ elif page == "📝 数据编辑":
 
                 was_verified   = old_meta.get("status") == "verified"
                 status_changed = is_checked != was_verified
+                source_changed = (
+                    is_checked and bool(_source_note.strip())
+                    and _source_note.strip() != str(old_meta.get("source") or "")
+                )
 
                 if field.startswith("sa_") and not in_overrides and not is_checked and float(val) <= 0:
                     continue
 
-                if not val_changed and not status_changed:
+                if not val_changed and not status_changed and not source_changed:
                     continue
                 if not in_overrides and not val_changed and not is_checked:
                     continue
