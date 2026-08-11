@@ -1,0 +1,33 @@
+{
+  "python.analysis.extraPaths": ["./scoring"],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.autoImportCompletions": true,
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  "files.encoding": "utf8",
+  "files.eol": "\n",
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "**/__pycache__": true,
+    "data/score_snapshots.csv": true,
+    "results_validated.csv": true,
+    "results.csv": true
+  },
+  "files.associations": {
+    "*.md": "markdown"
+  },
+
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.rulers": [100]
+  },
+
+  "editor.formatOnSave": false
+}

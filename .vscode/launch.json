@@ -1,0 +1,56 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🏠 Debug: Streamlit Dashboard",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "home.py", "--server.port", "8502"],
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "📊 Debug: refresh_scores.py（提示输入代码，留空=全部）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/refresh_scores.py",
+      "args": ["${input:ticker}"],
+      "justMyCode": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🔬 Debug: quant_audit.py 单只审计",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/quant_audit.py",
+      "args": ["${input:ticker}"],
+      "justMyCode": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🧪 Debug: 当前测试文件",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-v", "-s"],
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "🐍 Debug: 当前 Python 文件",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "justMyCode": true,
+      "console": "integratedTerminal"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "ticker",
+      "type": "promptString",
+      "description": "股票代码（如 NVDA），留空 = 全部"
+    }
+  ]
+}
