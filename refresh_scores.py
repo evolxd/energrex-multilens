@@ -318,7 +318,22 @@ def _recompute_valuation_ratios(data: dict, ticker: str = "") -> dict:
         data["forward_pe"] = round(fpe, 2)
         if eps_g and eps_g > 0:
             # PEG = Forward PE / (eps growth %)；避免除以0
-            data["peg_ratio"] = round(fpe / (eps_g * 100), 3)
+            #
+            # eps_growth_yoy 分母封顶在 60%：PEG 是给"正常"成长股设计的比率
+            # （Lynch 原始定义最适用~10-40%区间），增速超过这个量级后 PEG 只会
+            # 被越除越小、趋近于0，不再是有意义的"便宜/贵"信号——不管这个高增速
+            # 本身是真实业务爆发（如 NVDA/PLTR，大概率真实）还是 GAAP 一次性科目
+            # 噪音（WDAY 已实测核实偏差10倍：系统内 PEG=0.055，真实0.55-0.63；
+            # CDNS/ADSK 同类可疑但未逐一核实），PEG 公式在这个区间都已经失效。
+            # 用统一上限封顶分母，而不必逐票核实"这个高增长是不是真的"——那不
+            # 是这一步该做的判断。封顶动作记入 _bad_fields，写回 CSV 可见。
+            _PEG_GROWTH_CAP = 0.60
+            capped_eps_g = min(eps_g, _PEG_GROWTH_CAP)
+            data["peg_ratio"] = round(fpe / (capped_eps_g * 100), 3)
+            if eps_g > _PEG_GROWTH_CAP:
+                data.setdefault("_bad_fields", []).append(
+                    f"peg_ratio(eps_growth={eps_g*100:.0f}%>{_PEG_GROWTH_CAP*100:.0f}%封顶)"
+                )
 
     # ── EV 类比率 ─────────────────────────────────────────
     if ev and ev > 0:
@@ -480,6 +495,14 @@ def refresh_all(
     if _PLACEHOLDER_COL not in df.columns:
         df[_PLACEHOLDER_COL] = ""
 
+    # bad_fields_剔除字段：历史上只有 quant_audit.py 的独立审计流程会写这一列
+    # （不同的坏字段判定逻辑），常规 refresh_all() 从来没写过，导致这一列对
+    # 走这条主链路刷新的股票永远是过期/无关的旧值。用 score_ticker() 真正算出
+    # 的 result.bad_fields（含上面 PEG 封顶记录）在这里补上。
+    _BAD_FIELDS_COL = "bad_fields_剔除字段"
+    if _BAD_FIELDS_COL not in df.columns:
+        df[_BAD_FIELDS_COL] = ""
+
     # ── Layer 4：并行拉取 yfinance ─────────────────────────
     log("⏳ yfinance 拉取中（并行）…")
     live_bulk = fetch_portfolio_live_parallel(targets, max_workers=workers)
@@ -610,6 +633,7 @@ def refresh_all(
             if d.entries and all(e.missing for e in d.entries)
         ]
         _safe_set(df, row_mask, _PLACEHOLDER_COL, ",".join(_placeholder_dims))
+        _safe_set(df, row_mask, _BAD_FIELDS_COL, "; ".join(result.bad_fields))
 
         # When the business dimensions all defaulted, nothing was fetched and
         # nothing was on file -- the ticker is delisted, renamed, or wrong.
@@ -816,6 +840,10 @@ def refresh_prices_only(
             _safe_set(df, row_mask, _company_col, round(split.company, 2))
         if _circuit_lbl_col in df.columns:
             _safe_set(df, row_mask, _circuit_lbl_col, " + ".join(split.circuit.clauses))
+
+        _bad_fields_col = "bad_fields_剔除字段"
+        if _bad_fields_col in df.columns:
+            _safe_set(df, row_mask, _bad_fields_col, "; ".join(result.bad_fields))
 
         # 写回实时价格及重算比率
         for field, is_pct in [
