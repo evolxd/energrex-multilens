@@ -1146,6 +1146,11 @@ df_view = df_view[df_view["final_score"] >= min_score]
 # 页面 1：排行榜
 # ══════════════════════════════════════════════════════════
 if page == "🏆 排行榜":
+    def _goto_ticker_detail(t: str):
+        """排行榜每行的"查看详情"按钮：跳到单股详情页，并预选中这只票。"""
+        st.session_state["ai_valuation_subnav"] = "🔍 单股详情"
+        st.session_state["detail_ticker_select"] = t
+
     # ── 顶部汇总指标（可点击筛选）────────────────────────
     total      = len(df_view)
     strong_buy = (df_view["rating"] == "⭐ 重点候选").sum()
@@ -1279,6 +1284,11 @@ if page == "🏆 排行榜":
                 f"{_kp_html}"
                 f"</div>",
                 unsafe_allow_html=True,
+            )
+            st.button(
+                "查看详情 →", key=f"goto_detail_{row['ticker']}_{rank}",
+                on_click=_goto_ticker_detail, args=(row["ticker"],),
+                use_container_width=True,
             )
 
         with col_bars:
@@ -1476,6 +1486,7 @@ elif page == "🔍 单股详情":
         "选择股票",
         df["ticker"].tolist(),
         format_func=lambda t: f"{t}  —  {_ed_plain(df[df['ticker']==t]['rating'].values[0])}",
+        key="detail_ticker_select",
     )
 
     row  = df[df["ticker"] == ticker].iloc[0]
