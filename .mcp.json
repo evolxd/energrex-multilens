@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "energrex-valuation": {
+      "command": "python",
+      "args": ["scoring/mcp_server.py"]
+    }
+  }
+}

@@ -60,6 +60,15 @@
       "command": "python",
       "args": ["cross_validate_data.py"],
       "problemMatcher": []
+    },
+    {
+      "label": "🔌 MCP Server：手动启动（调试用，正常由 Claude Code 通过 .mcp.json 自动拉起）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scoring/mcp_server.py"],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
     }
   ]
 }
