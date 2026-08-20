@@ -1819,8 +1819,13 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "_data_vintage": "2026-06-11 initial estimate",
     },
     "RXRX": {
-        "company_name": "Recursion Pharmaceuticals", "current_price": 5.0, "market_cap": 1.5e9,
-        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 8.0, "ps_ratio": 8.0,
+        # 2026-08-18 web核实：股价$3.09，流通股540,889,504股（WallStreetZen/
+        # stockanalysis.com），TTM营收$65.73M。市值=股价×股数；EV=市值-现金
+        # （现金~$550M、debt minimal，未查到精确negative net debt数字，用
+        # ~$550M估算，见 https://www.tipranks.com/stocks/rxrx/financials）。
+        # ev_sales/ps_ratio 已按上述真实数字重算，不是照旧值改价格。
+        "company_name": "Recursion Pharmaceuticals", "current_price": 3.09, "market_cap": 1.671e9,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 17.06, "ps_ratio": 25.42,
         "forward_pe": None, "fcf_yield": -0.20,
         "revenue_growth_yoy": 0.20, "eps_growth_yoy": None, "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.30, "analyst_revision_30d": -0.02, "arr_growth_yoy": None,
@@ -1836,11 +1841,15 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "market_expectation_score": 0.45,
         "beta": 2.80, "volatility_30d": 0.85, "max_drawdown_1y": 0.75,
         "valuation_risk": 0.90, "concentration_risk": 0.60, "liquidity_risk": 0.20,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-18 price/ev_sales/ps_ratio/market_cap verified via web_search; all other fields still 2026-06-11 initial estimate, unverified this pass",
     },
     "SDGR": {
-        "company_name": "Schrodinger", "current_price": 24.0, "market_cap": 1.8e9,
-        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 9.0, "ps_ratio": 9.0,
+        # 2026-08-18 web核实：股价$17.67，流通股74,720,724股（stockanalysis.com
+        # 反推自动一致），TTM营收$250M（companiesmarketcap.com，另一来源$257M，
+        # 取较保守口径）。现金$406.4M（2026Q1数字，Q2未查到更新值）、debt=$0
+        # （gurufocus: cash-to-debt比率confirmed无债务）。EV=市值-现金。
+        "company_name": "Schrodinger", "current_price": 17.67, "market_cap": 1.3204e9,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 3.66, "ps_ratio": 5.28,
         "forward_pe": None, "fcf_yield": -0.15,
         "revenue_growth_yoy": 0.15, "eps_growth_yoy": None, "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.18, "analyst_revision_30d": 0.00, "arr_growth_yoy": None,
@@ -1856,11 +1865,16 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "market_expectation_score": 0.45,
         "beta": 2.20, "volatility_30d": 0.65, "max_drawdown_1y": 0.60,
         "valuation_risk": 0.88, "concentration_risk": 0.55, "liquidity_risk": 0.18,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-18 price/ev_sales/ps_ratio/market_cap verified via web_search; all other fields still 2026-06-11 initial estimate, unverified this pass",
     },
     "TEM": {
-        "company_name": "Tempus AI", "current_price": 48.0, "market_cap": 5.5e9,
-        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 9.5, "ps_ratio": 9.5,
+        # 2026-08-19 web核实：股价$55.69，流通股180.43M（stockanalysis.com），
+        # TTM营收取$1.36B-$1.432B两个来源的中间值$1.40B（未查到单一权威数字，
+        # 精度打了折扣）。现金+有价证券$820.7M，可转债净额$1,172.8M
+        # （2026Q2 10-Q，stocktitan.net）——TEM跟RXRX/SDGR不同，是净负债
+        # 不是净现金，net_debt=+$352.1M。EV=市值+净负债。
+        "company_name": "Tempus AI", "current_price": 55.69, "market_cap": 10.05e9,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 7.43, "ps_ratio": 7.18,
         "forward_pe": None, "fcf_yield": -0.08,
         "revenue_growth_yoy": 0.30, "eps_growth_yoy": None, "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.28, "analyst_revision_30d": 0.02, "arr_growth_yoy": None,
@@ -1876,7 +1890,7 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "market_expectation_score": 0.55,
         "beta": 2.50, "volatility_30d": 0.75, "max_drawdown_1y": 0.65,
         "valuation_risk": 0.85, "concentration_risk": 0.55, "liquidity_risk": 0.15,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-19 price/ev_sales/ps_ratio/market_cap verified via web_search (TTM revenue had a $1.36B-$1.432B source spread, used $1.40B midpoint); all other fields still 2026-06-11 initial estimate, unverified this pass",
     },
     "U": {
         "company_name": "Unity Software", "current_price": 24.0, "market_cap": 7.5e9,

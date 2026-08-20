@@ -46,6 +46,20 @@ except ImportError:
 
 # ─────────────────────────────────────────────────────────────────────
 # A. Sector-Specific Baselines
+#
+# Known gap (2026-08-19): only three categories exist. RXRX/SDGR/TEM
+# (AI-drug-discovery / AI-diagnostics names) get force-fit into "SaaS"
+# for lack of a Biotech option -- SaaS's fcf_margin worst anchor (-10%)
+# unfairly punishes clinical-stage cash burn that's industry-normal, not
+# a quality signal. Tried to source real Biotech margin-distribution
+# anchors from Damodaran's NYU Stern industry data (this system already
+# leans on his framework elsewhere) to add a fourth category properly;
+# blocked by network egress in that attempt and couldn't get verified
+# percentile numbers, not just single-company anecdotes. Left unfixed
+# rather than fabricate anchors -- see scoring/quant_data.py's comment
+# on the RXRX/SDGR/TEM QUANT_STANDALONE entries for the full writeup,
+# including why even a real Biotech category might not be granular
+# enough for these three specifically.
 # ─────────────────────────────────────────────────────────────────────
 SECTOR_BASELINES: dict[str, dict[str, dict]] = {
     "Hardware": {

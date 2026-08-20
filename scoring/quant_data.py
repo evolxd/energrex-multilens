@@ -231,6 +231,20 @@ QUANT_AI_EXPOSURE: dict[str, dict] = {
         "ai_order_backlog_exposure":        0.75,   # 汽车/餐饮语音AI多年合同
         "software_ai_platform_exposure_pct": 0.90,  # 纯语音AI平台
     },
+    # 已知分类错配，未解决（2026-08-19 核实过）：RXRX/SDGR/TEM 是 AI+生物科技
+    # 交叉标的，SECTOR_BASELINES（quant_engine.py）只有 Hardware/SaaS/
+    # Cybersecurity 三个选项，没有 Biotech，只能"就近取用"选了 SaaS——SaaS
+    # 基准的 fcf_margin worst锚点是-10%，但临床期生物科技烧钱到-80%是行业
+    # 常态，不代表比SaaS同业差，这会系统性压低这三只票的quality维度分。
+    # 尝试过给 SECTOR_BASELINES 新增 Biotech 类目、用 Damodaran NYU Stern
+    # 的行业分布数据定 best/worst 锚点（这套系统别处已经在用 Damodaran
+    # 框架，方法论上是对的路），但这次会话里 pages.stern.nyu.edu 被网络出口
+    # 代理挡住，搜索引擎摘要也只给单家公司数字、给不出真正的行业分布分位数，
+    # 没能拿到能交代来源的锚点数字。宁可维持现状（错配但诚实），也不要编数字
+    # 包装成"已解决"。而且即便日后拿到数据，RXRX/SDGR/TEM 本身也不是同质
+    # 的一组——RXRX 是临床期AI药物发现平台，SDGR 收入大头其实是软件授权
+    # （更接近SaaS），TEM 有$14亿 TTM营收的商业化诊断业务——单一 Biotech
+    # 分类未必对这三只票都合适，需要更细的拆分，不是简单加一类就能解决。
     "RXRX": {
         "sector_tag":                        "SaaS",
         "ai_order_backlog_exposure":        0.65,   # NVDA战略合作+RecursionOS平台
