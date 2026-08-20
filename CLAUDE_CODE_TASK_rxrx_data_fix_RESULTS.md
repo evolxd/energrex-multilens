@@ -86,3 +86,33 @@ GOOGL / IBM / META（塞进 Hardware）、MSFT / NFLX / ORCL（塞进 SaaS）。
 按任务文档要求，**只诊断列清单，没有现在就动手改**——11个的修复很机械
 （照抄现成的先例模式加一行），但涉及11只票的分数会跟着变，值得单独确认
 后再动手，不该顺手夹带。
+
+## 后续（用户确认后）：10/11 已修，LUNR 特意留了下来
+
+用户看完清单后要求一并修复。逐一加 `sector_tag` 时发现 **LUNR 不能照抄
+其余10个的做法**——它在 `quant_data.py` 里已经有一条更早、更具体的判断
+（"航天，无封装暴露"，`capex_rev=0.08`），明确把它归为 Hardware，是
+有理由的既有决定，不是遗漏。这跟 `scoring_engine.py` 的 AI_SOFTWARE
+分类冲突，是个真实的判断分歧（登月器物理上确实是硬件；但对方可能是按
+数据/软件服务收入占比归类），**不属于"漏设置默认值"这类能无脑照抄的
+情况**，没有覆盖，原样保留 Hardware，冲突写进了代码注释里等人来定。
+
+其余 10 个（ACN/AFRM/EXLS/NTNX/S/TTD/TYL/U/VEEV/ZM）已改为正确分类
+（S 是 Cybersecurity，其余是 SaaS），跑分验证：
+
+```
+ACN    sector_tag=SaaS           final_score= 51.63
+AFRM   sector_tag=SaaS           final_score= 38.61
+EXLS   sector_tag=SaaS           final_score= 56.38
+NTNX   sector_tag=SaaS           final_score= 62.83
+S      sector_tag=Cybersecurity  final_score= 40.00
+TTD    sector_tag=SaaS           final_score= 40.00
+TYL    sector_tag=SaaS           final_score= 45.61
+U      sector_tag=SaaS           final_score= 33.82
+VEEV   sector_tag=SaaS           final_score= 40.00
+ZM     sector_tag=SaaS           final_score= 53.53
+```
+
+只补了 `sector_tag` 一个字段，`ai_order_backlog_exposure`/
+`software_ai_platform_exposure_pct` 这类 AI暴露细分字段没有一并编造，
+沿用先例模式但不假装核实过没查过的数据。255测试全过。

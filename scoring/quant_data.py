@@ -261,6 +261,31 @@ QUANT_AI_EXPOSURE: dict[str, dict] = {
         "software_ai_platform_exposure_pct": 0.85,  # AI健康数据平台核心
     },
 
+    # ── 2026-08-19 全库 sector_tag 交叉审计确认的错配（不是主观判断，是拿
+    # quant_engine.py 实际解析出的 sector_tag 去跟 scoring_engine.py 自己的
+    # TICKER_CATEGORY 分类核对，两边打架的地方——这11个原本都因为没有显式
+    # 设置 sector_tag，默认落进了 Hardware，但 scoring_engine.py 早就把它们
+    # 归类为 AI软件/SaaS 或网络安全）。只补 sector_tag 这一个字段——
+    # ai_order_backlog_exposure / software_ai_platform_exposure_pct 这类
+    # AI暴露细分字段没有一并编造，缺了就让它按"missing"处理，不假装核实过。
+    # LUNR 特意不放进这批：交叉审计标它跟 scoring_engine.py 的 AI_SOFTWARE
+    # 分类冲突，但下面第 299 行左右已经有一条更早、更具体的判断——"航天，
+    # 无封装暴露"，capex_rev=0.08——明确把它当 Hardware 处理，理由写得清楚，
+    # 不是疏漏。这两边谁对，是个真实的判断分歧（Intuitive Machines 造实体
+    # 登月器，物理意义上确实是硬件；但 scoring_engine 那边可能是按它的数据/
+    # 软件服务收入占比来归类），不是"漏设置默认值"这种可以无脑跟着改的情况，
+    # 留给人决定，这里不覆盖。
+    "ACN": {"sector_tag": "SaaS"},   # Accenture，IT咨询/专业服务，非硬件资本结构
+    "AFRM": {"sector_tag": "SaaS"},  # Affirm，金融科技/BNPL贷款，非硬件
+    "EXLS": {"sector_tag": "SaaS"}, # ExlService，BPO/数据分析服务，非硬件
+    "NTNX": {"sector_tag": "SaaS"}, # Nutanix，超融合基础设施软件，非物理硬件
+    "S":    {"sector_tag": "Cybersecurity"},  # SentinelOne，网络安全，不是Hardware/SaaS
+    "TTD":  {"sector_tag": "SaaS"},  # The Trade Desk，程序化广告SaaS平台
+    "TYL":  {"sector_tag": "SaaS"}, # Tyler Technologies，政府软件SaaS
+    "U":    {"sector_tag": "SaaS"},  # Unity Software，游戏引擎软件平台
+    "VEEV": {"sector_tag": "SaaS"}, # Veeva Systems，生命科学云软件CRM
+    "ZM":   {"sector_tag": "SaaS"},  # Zoom，视频会议SaaS，典型SaaS却被默认成了硬件
+
     # ── Hardware: advanced_packaging_exposure_pct 补全 ───────────────
     "VRT": {
         "advanced_packaging_exposure_pct":  0.05,   # 电源/散热基础设施，非封装
