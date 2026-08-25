@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://energrex.local/schemas/mispricing-contract-v2.5.json",
-  "title": "ENERGREX Mispricing Discovery Contract v2.5",
+  "$id": "https://energrex.local/schemas/mispricing-contract-v2.6.json",
+  "title": "ENERGREX Mispricing Discovery Contract v2.6",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,7 +16,8 @@
     "gates",
     "monitor_rules",
     "value_capture",
-    "survival_gate"
+    "survival_gate",
+    "conviction_protocol"
   ],
   "allOf": [
     {
@@ -29,7 +30,7 @@
     }
   ],
   "properties": {
-    "schema_version": {"const": "2.5"},
+    "schema_version": {"const": "2.6"},
     "ticker": {"type": "string", "minLength": 1},
     "primary_path": {"$ref": "#/$defs/opportunityPath"},
     "style_lineage": {
@@ -196,10 +197,15 @@
           "threshold": {"type": "number"},
           "threshold_high": {"type": ["number", "null"]},
           "consecutive_periods": {"type": "integer", "minimum": 1},
-          "action": {"enum": ["REVIEW", "PAUSE_ADD", "DOWNGRADE", "REDUCE", "EXIT"]}
+          "action": {"enum": ["REVIEW", "PAUSE_ADD", "DOWNGRADE", "REDUCE", "EXIT"]},
+          "warning_threshold": {"type": ["number", "null"]},
+          "action_on_warning": {
+            "enum": ["REVIEW", "PAUSE_ADD", "DOWNGRADE", "REDUCE", "EXIT", null]
+          }
         }
       }
-    }
+    },
+    "conviction_protocol": {"$ref": "#/$defs/convictionProtocol"}
   },
   "$defs": {
     "opportunityPath": {
@@ -353,6 +359,86 @@
         "catalyst_delay_survivable": {"type": ["boolean", "null"]},
         "status": {"enum": ["PASS", "NEEDS_EVIDENCE", "FAIL"]},
         "failure_reason": {"type": "string"}
+      }
+    },
+    "convictionProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thesis_core_facts",
+        "allowed_price_drawdown_range",
+        "allowed_market_opposition",
+        "fact_change_thresholds",
+        "mandatory_exit_triggers",
+        "add_on_weakness_conditions",
+        "prohibited_average_down_conditions",
+        "capital_structure_stop",
+        "liquidity_stop",
+        "position_limit",
+        "portfolio_loss_budget",
+        "evidence_owner",
+        "next_validation_date"
+      ],
+      "properties": {
+        "thesis_core_facts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "allowed_price_drawdown_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min_pct", "max_pct"],
+          "properties": {
+            "min_pct": {"type": "number", "maximum": 0},
+            "max_pct": {"type": "number", "maximum": 0}
+          }
+        },
+        "allowed_market_opposition": {"type": "string", "minLength": 1},
+        "fact_change_thresholds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["monitor_rule_id", "baseline", "source", "check_frequency"],
+            "properties": {
+              "monitor_rule_id": {"type": "string", "minLength": 1},
+              "baseline": {"type": "number"},
+              "source": {"type": "string", "minLength": 1},
+              "check_frequency": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "mandatory_exit_triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "add_on_weakness_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "prohibited_average_down_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "capital_structure_stop": {"type": "string", "minLength": 1},
+        "liquidity_stop": {"type": "string", "minLength": 1},
+        "position_limit": {"$ref": "#/$defs/valuedField"},
+        "portfolio_loss_budget": {"$ref": "#/$defs/valuedField"},
+        "option_expiry_constraint": {"type": ["string", "null"]},
+        "expected_realization_window": {"type": "string"},
+        "maximum_waiting_period": {"type": "string"},
+        "interim_milestones": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "action_if_delayed": {"type": "string"},
+        "evidence_owner": {"type": "string", "minLength": 1},
+        "next_validation_date": {"type": "string", "format": "date"}
       }
     }
   }

@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.5",
+  "schema_version": "2.6",
   "ticker": "NETNETCO",
   "primary_path": "LIQUIDATION_AND_ASSET_ARBITRAGE",
   "secondary_paths": [],
@@ -217,6 +217,85 @@
       "threshold_high": null,
       "consecutive_periods": 1,
       "action": "DOWNGRADE"
+    },
+    {
+      "rule_id": "netnetco-liquidity-runway",
+      "gate": "SURVIVAL",
+      "metric": "liquidity_runway_months",
+      "operator": "LT",
+      "threshold": 8,
+      "threshold_high": null,
+      "consecutive_periods": 1,
+      "action": "EXIT",
+      "warning_threshold": 14,
+      "action_on_warning": "REVIEW"
+    },
+    {
+      "rule_id": "netnetco-interest-coverage",
+      "gate": "SURVIVAL",
+      "metric": "interest_coverage",
+      "operator": "LT",
+      "threshold": 1.5,
+      "threshold_high": null,
+      "consecutive_periods": 1,
+      "action": "REDUCE"
     }
-  ]
+  ],
+  "conviction_protocol": {
+    "thesis_core_facts": [
+      "隐藏负债与账面外索赔是否被充分估算",
+      "清算/出售路径是否仍在推进而未被阻断",
+      "资产回收速度是否符合清算时间表"
+    ],
+    "allowed_price_drawdown_range": {"min_pct": -25, "max_pct": 0},
+    "allowed_market_opposition": "仅市值波动但清算路径、资产回收测算与股东表决进度未变化，视为价格反对，不构成退出理由。",
+    "fact_change_thresholds": [
+      {
+        "monitor_rule_id": "netnetco-hidden-liability-markup",
+        "baseline": 0.0,
+        "source": "季度资产负债表附注与法律披露",
+        "check_frequency": "季度"
+      },
+      {
+        "monitor_rule_id": "netnetco-realization-delay",
+        "baseline": 0,
+        "source": "清算/出售进度公告",
+        "check_frequency": "季度"
+      },
+      {
+        "monitor_rule_id": "netnetco-liquidity-runway",
+        "baseline": 24,
+        "source": "季度现金流与流动性披露",
+        "check_frequency": "季度"
+      }
+    ],
+    "mandatory_exit_triggers": [
+      "清算或出售路径被法律、监管或股东表决阻断",
+      "隐藏负债超出预估导致普通股回收值跌破安全边际",
+      "流动性运行月数跌破 netnetco-liquidity-runway 的失败阈值",
+      "出现数据可信度崩溃或资产权属争议"
+    ],
+    "add_on_weakness_conditions": [
+      "下跌主要来自价格或市场情绪，清算测算未恶化",
+      "生存门与价值捕获门仍为 PASS",
+      "新价格较原假设进一步改善年化回报",
+      "加仓后不突破单股与组合损失预算"
+    ],
+    "prohibited_average_down_conditions": [
+      "禁止仅因已经亏损而加仓",
+      "禁止以摊低成本为理由加仓",
+      "禁止以长期一定会回来为理由加仓"
+    ],
+    "capital_structure_stop": "netnetco-interest-coverage",
+    "liquidity_stop": "netnetco-liquidity-runway",
+    "position_limit": {"value": 5, "evidence_ids": ["liq-claims"]},
+    "portfolio_loss_budget": {"value": 2, "evidence_ids": ["liq-claims"]},
+    "option_expiry_constraint": null,
+    "expected_realization_window": "18-24个月",
+    "maximum_waiting_period": "30个月",
+    "interim_milestones": ["股东清算表决通过", "首批资产出售完成"],
+    "action_if_delayed": "超过最长等待期后重新评估资产回收测算与年化回报是否仍高于机会成本。",
+    "evidence_owner": "工程样例占位",
+    "next_validation_date": "2026-10-20"
+  }
 }

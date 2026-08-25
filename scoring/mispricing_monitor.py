@@ -38,6 +38,7 @@ class TriggerResult:
     observed_values: tuple[float, ...]
     reason: str
     action: str
+    severity: str = "FAIL"
 
 
 def _finite(value: object, field: str) -> float:
@@ -75,6 +76,43 @@ def compare(
     return threshold <= value <= threshold_high
 
 
+_TWO_TIER_OPERATORS = {Operator.LT, Operator.LTE, Operator.GT, Operator.GTE}
+
+
+def validate_warning_tier(
+    rule_id: str,
+    operator: Operator,
+    threshold: float,
+    warning_threshold: float | None,
+    action_on_warning: str | None,
+) -> None:
+    """A warning tier must be a strictly milder version of the same test.
+
+    Both fields are paired (declare both or neither), restricted to the
+    four directional operators (BETWEEN/EQ/NE have no well-defined "milder"
+    side), and the warning threshold must sit on the side of the fail
+    threshold that triggers first as the metric degrades.
+    """
+    if (warning_threshold is None) != (not action_on_warning):
+        raise ValueError(
+            f"{rule_id}: warning_threshold and action_on_warning must be declared together"
+        )
+    if warning_threshold is None:
+        return
+    if operator not in _TWO_TIER_OPERATORS:
+        raise ValueError(
+            f"{rule_id}: warning_threshold is only valid with LT, LTE, GT, or GTE"
+        )
+    if operator in (Operator.LT, Operator.LTE) and warning_threshold <= threshold:
+        raise ValueError(
+            f"{rule_id}: warning_threshold must be greater than threshold for {operator.value}"
+        )
+    if operator in (Operator.GT, Operator.GTE) and warning_threshold >= threshold:
+        raise ValueError(
+            f"{rule_id}: warning_threshold must be less than threshold for {operator.value}"
+        )
+
+
 def evaluate_rule(
     rule: Mapping[str, object],
     metric_history: Mapping[str, Sequence[float]],
@@ -94,6 +132,15 @@ def evaluate_rule(
         if rule.get("threshold_high") is not None
         else None
     )
+    warning_threshold = (
+        _finite(rule.get("warning_threshold"), f"{rule_id}.warning_threshold")
+        if rule.get("warning_threshold") is not None
+        else None
+    )
+    action_on_warning = (
+        str(rule.get("action_on_warning") or "").strip().upper() or None
+    )
+    validate_warning_tier(rule_id, operator, threshold, warning_threshold, action_on_warning)
     consecutive_periods = int(rule.get("consecutive_periods") or 1)
     if consecutive_periods < 1:
         raise ValueError("consecutive_periods must be >= 1")
@@ -109,18 +156,36 @@ def evaluate_rule(
             action,
         )
     window = values[-consecutive_periods:]
-    triggered = all(
+    fail_triggered = all(
         compare(value, operator, threshold, threshold_high) for value in window
     )
+    if fail_triggered:
+        return TriggerResult(
+            rule_id,
+            True,
+            window,
+            f"{metric} met {operator.value} for {consecutive_periods} period(s)",
+            action,
+            "FAIL",
+        )
+    if warning_threshold is not None:
+        warning_triggered = all(
+            compare(value, operator, warning_threshold) for value in window
+        )
+        if warning_triggered:
+            return TriggerResult(
+                rule_id,
+                True,
+                window,
+                f"{metric} met {operator.value} warning threshold for {consecutive_periods} period(s)",
+                action_on_warning,
+                "WARNING",
+            )
     return TriggerResult(
         rule_id,
-        triggered,
+        False,
         window,
-        (
-            f"{metric} met {operator.value} for {consecutive_periods} period(s)"
-            if triggered
-            else f"{metric} did not meet {operator.value} for required periods"
-        ),
+        f"{metric} did not meet {operator.value} for required periods",
         action,
     )
 

@@ -11,8 +11,11 @@ from scoring.mispricing_adapters import build_valuation_request
 from scoring.mispricing_engine import ResearchDecision, as_dict, evaluate_mispricing_case
 from scoring.mispricing_monitor import (
     CaseState,
+    evaluate_rule,
     evaluate_rules,
     route_case_state,
+    validate_warning_tier,
+    Operator,
 )
 from scoring.mispricing_store import append_snapshot, read_chain, verify_chain
 
@@ -42,7 +45,7 @@ def valid_case():
             }
         )
     return {
-        "schema_version": "2.5",
+        "schema_version": "2.6",
         "ticker": "FUTU",
         "primary_path": "GREAT_BUSINESS_STUMBLE",
         "secondary_paths": ["IMPLIED_EXPECTATIONS_GAP"],
@@ -98,7 +101,38 @@ def valid_case():
                 "consecutive_periods": 1,
                 "action": "DOWNGRADE",
             },
+            {
+                "rule_id": "runway-decline",
+                "gate": "SURVIVAL",
+                "metric": "liquidity_runway_months",
+                "operator": "LT",
+                "threshold": 12,
+                "consecutive_periods": 1,
+                "action": "EXIT",
+            },
         ],
+        "conviction_protocol": {
+            "thesis_core_facts": ["funded accounts keep growing", "net share count keeps falling"],
+            "allowed_price_drawdown_range": {"min_pct": -30, "max_pct": 0},
+            "allowed_market_opposition": "price alone moves without funded accounts or share count deteriorating",
+            "fact_change_thresholds": [
+                {
+                    "monitor_rule_id": "accounts-decline",
+                    "baseline": 0.02,
+                    "source": "quarterly filing",
+                    "check_frequency": "quarterly",
+                },
+            ],
+            "mandatory_exit_triggers": ["fraud or data integrity collapse"],
+            "add_on_weakness_conditions": ["core facts unchanged and survival/value-capture gates still PASS"],
+            "prohibited_average_down_conditions": ["averaging down solely because it is already down"],
+            "capital_structure_stop": "runway-decline",
+            "liquidity_stop": "runway-decline",
+            "position_limit": {"value": 8, "evidence_ids": ["e4"]},
+            "portfolio_loss_budget": {"value": 3, "evidence_ids": ["e4"]},
+            "evidence_owner": "test-owner",
+            "next_validation_date": "2026-10-23",
+        },
         "value_capture": {
             "gross_business_and_asset_value": _valued(8000, ["e4"]),
             "net_debt": _valued(-1500, ["e4"]),
@@ -218,7 +252,7 @@ class MispricingEngineTests(unittest.TestCase):
         decision = evaluate_mispricing_case(valid_case(), today=TODAY)
         self.assertEqual(decision.decision, ResearchDecision.DEEP_RESEARCH_P0)
         self.assertEqual(decision.confidence.value, "HIGH")
-        self.assertEqual(as_dict(decision)["engine_version"], "2.5")
+        self.assertEqual(as_dict(decision)["engine_version"], "2.6")
 
     def test_expired_evidence_reopens_gate(self):
         case = valid_case()
@@ -420,6 +454,174 @@ class ValueCaptureAndSurvivalGateTests(unittest.TestCase):
         )
         self.assertEqual(computed, vc["common_equity_value_available"]["value"])
         self.assertEqual(computed, 370)
+
+
+class TwoTierMonitorThresholdTests(unittest.TestCase):
+    """Item 3: a monitor rule may declare a warning_threshold/action_on_warning
+    pair, softer than its threshold/action fail tier, so a thesis assumption
+    that is merely drifting (e.g. REVIEW) is distinguishable from one that has
+    actually broken (e.g. EXIT) instead of only having a single all-or-nothing
+    trigger."""
+
+    def _rule(self, **overrides):
+        rule = {
+            "rule_id": "runway-decline",
+            "gate": "SURVIVAL",
+            "metric": "liquidity_runway_months",
+            "operator": "LT",
+            "threshold": 6,
+            "consecutive_periods": 1,
+            "action": "EXIT",
+        }
+        rule.update(overrides)
+        return rule
+
+    def test_warning_tier_fires_before_fail_tier(self):
+        rule = self._rule(warning_threshold=12, action_on_warning="REVIEW")
+        result = evaluate_rule(rule, {"liquidity_runway_months": [9]})
+        self.assertTrue(result.triggered)
+        self.assertEqual(result.severity, "WARNING")
+        self.assertEqual(result.action, "REVIEW")
+
+    def test_fail_tier_takes_priority_over_warning(self):
+        rule = self._rule(warning_threshold=12, action_on_warning="REVIEW")
+        result = evaluate_rule(rule, {"liquidity_runway_months": [3]})
+        self.assertTrue(result.triggered)
+        self.assertEqual(result.severity, "FAIL")
+        self.assertEqual(result.action, "EXIT")
+
+    def test_neither_tier_triggers(self):
+        rule = self._rule(warning_threshold=12, action_on_warning="REVIEW")
+        result = evaluate_rule(rule, {"liquidity_runway_months": [18]})
+        self.assertFalse(result.triggered)
+
+    def test_single_tier_rule_is_unaffected(self):
+        """Pre-existing rules with no warning tier keep working exactly as
+        before: no warning_threshold key at all."""
+        rule = self._rule()
+        result = evaluate_rule(rule, {"liquidity_runway_months": [3]})
+        self.assertTrue(result.triggered)
+        self.assertEqual(result.severity, "FAIL")
+        self.assertEqual(result.action, "EXIT")
+
+    def test_warning_threshold_and_action_must_be_paired(self):
+        with self.assertRaisesRegex(ValueError, "declared together"):
+            evaluate_rule(
+                self._rule(warning_threshold=12),
+                {"liquidity_runway_months": [9]},
+            )
+        with self.assertRaisesRegex(ValueError, "declared together"):
+            evaluate_rule(
+                self._rule(action_on_warning="REVIEW"),
+                {"liquidity_runway_months": [9]},
+            )
+
+    def test_warning_threshold_must_be_on_the_milder_side(self):
+        with self.assertRaisesRegex(ValueError, "greater than threshold"):
+            evaluate_rule(
+                self._rule(warning_threshold=3, action_on_warning="REVIEW"),
+                {"liquidity_runway_months": [9]},
+            )
+
+    def test_warning_tier_rejected_for_between_operator(self):
+        with self.assertRaisesRegex(ValueError, "only valid with"):
+            validate_warning_tier("r1", Operator.BETWEEN, 0, 5, "REVIEW")
+
+    def test_schema_accepts_a_two_tier_rule(self):
+        case = valid_case()
+        case["monitor_rules"][0]["warning_threshold"] = 0.05
+        case["monitor_rules"][0]["action_on_warning"] = "REVIEW"
+        errors = list(jsonschema.Draft202012Validator(_SCHEMA).iter_errors(case))
+        self.assertEqual(errors, [])
+
+    def test_engine_round_trips_warning_tier_and_routes_by_severity(self):
+        case = valid_case()
+        case["monitor_rules"][0]["threshold"] = -0.10
+        case["monitor_rules"][0]["action"] = "EXIT"
+        case["monitor_rules"][0]["warning_threshold"] = 0.0
+        case["monitor_rules"][0]["action_on_warning"] = "REVIEW"
+        case["monitor_rules"][0]["consecutive_periods"] = 1
+        decision = evaluate_mispricing_case(case, today=TODAY)
+        rules = as_dict(decision)["monitor_rules"]
+        self.assertEqual(rules[0]["warning_threshold"], 0.0)
+        self.assertEqual(rules[0]["action_on_warning"], "REVIEW")
+
+        warning_results = evaluate_rules(rules, {"funded_accounts_qoq": [-0.02]})
+        self.assertEqual(warning_results[0].severity, "WARNING")
+        self.assertEqual(
+            route_case_state(warning_results[:1]), CaseState.REVIEW_REQUIRED
+        )
+
+        fail_results = evaluate_rules(rules, {"funded_accounts_qoq": [-0.20]})
+        self.assertEqual(fail_results[0].severity, "FAIL")
+        self.assertEqual(route_case_state(fail_results[:1]), CaseState.EXIT)
+
+    def test_engine_rejects_unpaired_warning_field(self):
+        case = valid_case()
+        case["monitor_rules"][0]["warning_threshold"] = 0.05
+        with self.assertRaisesRegex(ValueError, "declared together"):
+            evaluate_mispricing_case(case, today=TODAY)
+
+
+class ConvictionProtocolTests(unittest.TestCase):
+    """Item 2: a pre-committed, written-at-thesis-creation falsification
+    protocol (MISPRICING_ENGINE_STANDARD section 8's conviction_protocol).
+    It does not score -- it directly drives hold/add/reduce/exit -- but its
+    capital_structure_stop, liquidity_stop, and fact_change_thresholds must
+    each reference a monitor rule that actually exists in this case, so the
+    written commitment is enforced by the same executable rule it claims to
+    be governed by, not a second, unmonitored promise."""
+
+    def test_schema_rejects_a_case_missing_conviction_protocol(self):
+        case = valid_case()
+        del case["conviction_protocol"]
+        errors = list(jsonschema.Draft202012Validator(_SCHEMA).iter_errors(case))
+        self.assertTrue(
+            any("conviction_protocol" in str(e.message) for e in errors),
+            "removing conviction_protocol should fail validation, not pass silently",
+        )
+
+    def test_engine_accepts_and_round_trips_conviction_protocol(self):
+        decision = evaluate_mispricing_case(valid_case(), today=TODAY)
+        protocol = as_dict(decision)["conviction_protocol"]
+        self.assertEqual(protocol["capital_structure_stop"], "runway-decline")
+        self.assertEqual(protocol["liquidity_stop"], "runway-decline")
+        self.assertEqual(protocol["position_limit"]["value"], 8)
+
+    def test_capital_structure_stop_must_reference_an_existing_rule(self):
+        case = valid_case()
+        case["conviction_protocol"]["capital_structure_stop"] = "no-such-rule"
+        with self.assertRaisesRegex(ValueError, "unknown monitor rule_id"):
+            evaluate_mispricing_case(case, today=TODAY)
+
+    def test_capital_structure_stop_must_reference_a_survival_gated_rule(self):
+        case = valid_case()
+        case["conviction_protocol"]["capital_structure_stop"] = "accounts-decline"
+        with self.assertRaisesRegex(ValueError, "SURVIVAL-gated"):
+            evaluate_mispricing_case(case, today=TODAY)
+
+    def test_fact_change_threshold_must_reference_an_existing_rule(self):
+        case = valid_case()
+        case["conviction_protocol"]["fact_change_thresholds"][0]["monitor_rule_id"] = "ghost-rule"
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            evaluate_mispricing_case(case, today=TODAY)
+
+    def test_drawdown_range_min_must_not_exceed_max(self):
+        case = valid_case()
+        case["conviction_protocol"]["allowed_price_drawdown_range"] = {
+            "min_pct": -5,
+            "max_pct": -20,
+        }
+        with self.assertRaisesRegex(ValueError, "min_pct.*max_pct"):
+            evaluate_mispricing_case(case, today=TODAY)
+
+    def test_schema_accepts_the_example_cases_conviction_protocol(self):
+        for name in ("futu_engineering_case.json", "liquidation_engineering_case.json"):
+            path = Path(__file__).parents[1] / "scoring" / "examples" / name
+            case = json.loads(path.read_text(encoding="utf-8"))
+            self.assertIn("conviction_protocol", case)
+            decision = evaluate_mispricing_case(case, today=TODAY)
+            self.assertIsNotNone(as_dict(decision)["conviction_protocol"])
 
 
 if __name__ == "__main__":

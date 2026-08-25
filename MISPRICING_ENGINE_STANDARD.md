@@ -1,4 +1,4 @@
-# ENERGREX Mispricing Discovery Engine Standard v2.5
+# ENERGREX Mispricing Discovery Engine Standard v2.6
 
 ## Purpose
 
@@ -44,6 +44,12 @@ maintenance obligations, and tax/transaction cost); `survival_gate` states
 the liquidity runway, near-term debt maturities, interest coverage, and
 bear-case cash burn a SURVIVAL PASS is supposed to be true of. Both use the
 same `{value, evidence_ids}` field convention as `liquidation_value`.
+
+As of V2.6, every case must also declare `conviction_protocol` (see
+"Principle adherence and falsification protocol" below) -- a pre-committed,
+written-at-thesis-creation record of what price weakness is tolerable, what
+fact changes force an exit, and what capital-structure, liquidity, position,
+and portfolio limits govern this specific thesis. It does not score.
 
 ## Quick reject
 
@@ -162,10 +168,66 @@ The engine never emits `BUY`.
 At least one rule must test a non-price assumption. A price alert alone is not
 a closed thesis.
 
+A rule may optionally declare a second, milder tier: `warning_threshold` +
+`action_on_warning`, alongside the required `threshold` + `action` (the fail
+tier). Both warning fields must be declared together or not at all, are only
+valid with `LT`/`LTE`/`GT`/`GTE` (`BETWEEN`/`EQ`/`NE` have no well-defined
+milder side), and `warning_threshold` must sit on the side of `threshold`
+that the metric crosses first as it degrades (greater for `LT`/`LTE`, lesser
+for `GT`/`GTE`). The fail tier is checked first; if it does not trigger, the
+warning tier is checked against the same observation window. This lets a
+thesis distinguish "drifting, worth a REVIEW" from "broken, EXIT" on a single
+metric instead of forcing every rule into one all-or-nothing trigger.
+
 V2.4 routes monitoring results through a case state machine. Price-only
 opposition results in `HOLD` unless a pre-authorized add condition exists.
 Fact, capital-structure, liquidity, portfolio or option-limit failures can
 force review, freeze adds, revaluation, reduction or exit.
+
+## Principle adherence and falsification protocol
+
+`conviction_protocol` does not score. It is written once, at thesis creation,
+and read thereafter -- so that a real drawdown gets mechanically routed
+against a standing decision instead of re-litigated from scratch under
+pressure. It exists because price opposition and fact opposition require
+different responses (see "Executable monitoring"): the protocol is where the
+case commits, in writing and before the market disagrees, to which is which
+for this specific thesis.
+
+```text
+thesis_core_facts + allowed_price_drawdown_range + allowed_market_opposition
++ fact_change_thresholds + mandatory_exit_triggers + add_on_weakness_conditions
++ prohibited_average_down_conditions + capital_structure_stop + liquidity_stop
++ position_limit + portfolio_loss_budget + evidence_owner + next_validation_date
+```
+
+`allowed_price_drawdown_range` states a tolerable band, not an automatic add
+signal -- a drawdown inside the band still requires re-verifying core facts,
+valuation, and portfolio risk before doing anything.
+
+`fact_change_thresholds`, `capital_structure_stop`, and `liquidity_stop` each
+reference a `rule_id` that must already exist in the case's own
+`monitor_rules` (`capital_structure_stop` and `liquidity_stop` specifically
+must reference a `SURVIVAL`-gated rule). This is deliberate: the protocol
+does not define a second, parallel threshold system. The commitment is
+enforced by the same executable rule it is written against, honoring the
+"pre-purchase KPIs, thresholds, and Kill Thesis must use the same data as
+post-purchase monitoring" principle -- a promise with no monitor rule behind
+it is not a protocol, it is a note.
+
+`mandatory_exit_triggers`, `add_on_weakness_conditions`, and
+`prohibited_average_down_conditions` are free-text, because not every kill
+condition reduces to a metric threshold (fraud, a blocked liquidation path,
+data-integrity collapse). Averaging down is allowed only when every
+`add_on_weakness_condition` holds; "already down," "averaging the cost
+basis," and "it always comes back" are exactly the justifications this field
+exists to block.
+
+`position_limit` and `portfolio_loss_budget` use the same `{value,
+evidence_ids}` convention as `value_capture`/`survival_gate`. They state the
+position-sizing and loss-budget ceiling this specific thesis was underwritten
+against; they do not replace `scoring/position_limits.py`, which governs
+actual sizing decisions and its own asymmetric tightening/loosening rules.
 
 ## Immutable history
 

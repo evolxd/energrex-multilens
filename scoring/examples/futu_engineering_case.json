@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.5",
+  "schema_version": "2.6",
   "ticker": "FUTU",
   "primary_path": "GREAT_BUSINESS_STUMBLE",
   "secondary_paths": ["IMPLIED_EXPECTATIONS_GAP"],
@@ -164,6 +164,85 @@
       "threshold_high": null,
       "consecutive_periods": 1,
       "action": "DOWNGRADE"
+    },
+    {
+      "rule_id": "futu-liquidity-runway",
+      "gate": "SURVIVAL",
+      "metric": "liquidity_runway_months",
+      "operator": "LT",
+      "threshold": 12,
+      "threshold_high": null,
+      "consecutive_periods": 1,
+      "action": "EXIT",
+      "warning_threshold": 24,
+      "action_on_warning": "REVIEW"
+    },
+    {
+      "rule_id": "futu-interest-coverage",
+      "gate": "SURVIVAL",
+      "metric": "interest_coverage",
+      "operator": "LT",
+      "threshold": 2,
+      "threshold_high": null,
+      "consecutive_periods": 2,
+      "action": "REDUCE"
     }
-  ]
+  ],
+  "conviction_protocol": {
+    "thesis_core_facts": [
+      "客户资产净流入与开户数是否持续增长",
+      "回购是否带来稀释后股数净下降",
+      "监管影响是否已止住扩散"
+    ],
+    "allowed_price_drawdown_range": {"min_pct": -35, "max_pct": 0},
+    "allowed_market_opposition": "仅股价下跌但开户数、净流入、稀释股数等核心事实未恶化，视为价格反对，不构成退出理由，需重新核验核心事实后再决定是否维持。",
+    "fact_change_thresholds": [
+      {
+        "monitor_rule_id": "futu-funded-accounts",
+        "baseline": 0.02,
+        "source": "季度财报开户数披露",
+        "check_frequency": "季度"
+      },
+      {
+        "monitor_rule_id": "futu-net-share-count",
+        "baseline": -0.02,
+        "source": "季度财报稀释股数披露",
+        "check_frequency": "季度"
+      },
+      {
+        "monitor_rule_id": "futu-liquidity-runway",
+        "baseline": 36,
+        "source": "季度资本与流动性披露",
+        "check_frequency": "季度"
+      }
+    ],
+    "mandatory_exit_triggers": [
+      "监管处罚扩散至主要经营市场",
+      "客户资产连续两季净流出",
+      "流动性运行月数跌破 futu-liquidity-runway 的失败阈值",
+      "出现数据可信度崩溃或财务造假迹象"
+    ],
+    "add_on_weakness_conditions": [
+      "下跌主要来自价格或市场情绪，核心事实未恶化",
+      "生存门与价值捕获门仍为 PASS",
+      "新价格较原假设进一步改善赔率",
+      "加仓后不突破单股与组合损失预算"
+    ],
+    "prohibited_average_down_conditions": [
+      "禁止仅因已经亏损而加仓",
+      "禁止以摊低成本为理由加仓",
+      "禁止以长期一定会回来为理由加仓"
+    ],
+    "capital_structure_stop": "futu-interest-coverage",
+    "liquidity_stop": "futu-liquidity-runway",
+    "position_limit": {"value": 8, "evidence_ids": ["futu-capture-pending"]},
+    "portfolio_loss_budget": {"value": 3, "evidence_ids": ["futu-capture-pending"]},
+    "option_expiry_constraint": null,
+    "expected_realization_window": "12-24个月",
+    "maximum_waiting_period": "24个月",
+    "interim_milestones": ["下一季度开户数企稳", "监管影响范围明朗化"],
+    "action_if_delayed": "超过最长等待期后重新评估赔率与机会成本，决定继续持有或换仓。",
+    "evidence_owner": "工程样例占位",
+    "next_validation_date": "2026-10-23"
+  }
 }
