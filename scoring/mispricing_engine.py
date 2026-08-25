@@ -23,7 +23,14 @@ from scoring.mispricing_special_situations import (
 )
 
 
-ENGINE_VERSION = "2.4"
+# V2.5: requires value_capture and survival_gate on every case. The
+# adapters that build the downstream valuation request always read
+# case.get("value_capture")/case.get("survival_gate"), but the schema never
+# declared either field, so every case fed them an empty dict silently --
+# the SURVIVAL and VALUE_CAPTURE gates were asserted PASS/FAIL by the case
+# author with no structured numbers backing the claim. See
+# mispricing_adapters.build_valuation_request().
+ENGINE_VERSION = "2.5"
 
 
 class OpportunityPath(str, Enum):

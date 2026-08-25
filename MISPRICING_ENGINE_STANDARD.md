@@ -1,4 +1,4 @@
-# ENERGREX Mispricing Discovery Engine Standard v2.4
+# ENERGREX Mispricing Discovery Engine Standard v2.5
 
 ## Purpose
 
@@ -30,6 +30,20 @@ Secondary paths add context but never add points.
 
 Every case also declares one `style_lineage`. Style lineage explains the
 economic source of return and never changes a score.
+
+As of V2.5, every case must also declare `value_capture` and `survival_gate`
+-- structured, evidence-backed numbers behind the VALUE_CAPTURE and SURVIVAL
+gates, not just a hand-asserted PASS/FAIL. Before V2.5 the schema never
+declared either field, so `mispricing_adapters.build_valuation_request()` --
+which has always read `case.get("value_capture")` and
+`case.get("survival_gate")` -- silently received `{}` for every case that
+ever existed; the two gates were judgment calls with no numbers behind them.
+`value_capture` states a common-equity waterfall (gross value minus net debt,
+preferred claims, minority interest, lease/pension/legal obligations,
+maintenance obligations, and tax/transaction cost); `survival_gate` states
+the liquidity runway, near-term debt maturities, interest coverage, and
+bear-case cash burn a SURVIVAL PASS is supposed to be true of. Both use the
+same `{value, evidence_ids}` field convention as `liquidation_value`.
 
 ## Quick reject
 
@@ -116,6 +130,13 @@ A case's `gates` array always declares the first five. `LIQUIDATION` is never
 part of that array — the engine computes and appends it, so a non-liquidation
 case has five gates and a liquidation case has six.
 
+Hand-declared does not mean unstructured. As of V2.5, `SURVIVAL` and
+`VALUE_CAPTURE` must each cite the matching `survival_gate` /
+`value_capture` object (Core contract above); the engine still does not
+derive the gate's PASS/FAIL from those numbers the way it derives
+`LIQUIDATION`, but the numbers now exist and reach the downstream valuation
+request, which they did not before.
+
 ```text
 Hard failure -> REJECT_P3
 Missing evidence -> WATCH_P2
@@ -162,7 +183,7 @@ Any historical edit breaks verification and blocks future appends.
 No mispricing case leaves existing coverage unchanged. A present case may
 remove action eligibility but may never upgrade a base ENERGREX decision.
 
-## V2.4 downstream adapters
+## V2.5 downstream adapters
 
 `scoring/mispricing_adapters.py` enforces the hand-off boundary:
 
@@ -175,6 +196,14 @@ remove action eligibility but may never upgrade a base ENERGREX decision.
 - a price WAIT may enter defined-risk option review only after catalyst timing,
   maximum loss, break-even, upside cap, liquidity and portfolio limits pass;
 - missing evidence, hard-gate failure or missing formal valuation blocks options.
+
+`build_valuation_request()` forwards `case["survival_gate"]` as
+`capital_structure` and `case["value_capture"]` as `value_capture_waterfall`.
+Before V2.5 these were always `{}` (see Core contract above); a formal
+valuation built on this request could not actually stress-test capital
+structure or check that common equity captures the value the thesis claims,
+even though the interface always looked like it was passing that data
+through.
 
 `apply_v23_case_gate` preserves the existing Final Score and score band. It
 only removes action eligibility when the V2.3 mispricing, formal valuation or

@@ -1,9 +1,13 @@
 import copy
 import datetime as dt
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
+import jsonschema
+
+from scoring.mispricing_adapters import build_valuation_request
 from scoring.mispricing_engine import ResearchDecision, as_dict, evaluate_mispricing_case
 from scoring.mispricing_monitor import (
     CaseState,
@@ -11,6 +15,9 @@ from scoring.mispricing_monitor import (
     route_case_state,
 )
 from scoring.mispricing_store import append_snapshot, read_chain, verify_chain
+
+_SCHEMA_PATH = Path(__file__).parents[1] / "scoring" / "mispricing_contract.schema.json"
+_SCHEMA = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 TODAY = dt.date(2026, 7, 23)
@@ -35,7 +42,7 @@ def valid_case():
             }
         )
     return {
-        "schema_version": "2.4",
+        "schema_version": "2.5",
         "ticker": "FUTU",
         "primary_path": "GREAT_BUSINESS_STUMBLE",
         "secondary_paths": ["IMPLIED_EXPECTATIONS_GAP"],
@@ -92,6 +99,28 @@ def valid_case():
                 "action": "DOWNGRADE",
             },
         ],
+        "value_capture": {
+            "gross_business_and_asset_value": _valued(8000, ["e4"]),
+            "net_debt": _valued(-1500, ["e4"]),
+            "preferred_claims": _valued(0, ["e4"]),
+            "minority_interest": _valued(0, ["e4"]),
+            "lease_pension_legal_obligations": _valued(50, ["e4"]),
+            "maintenance_obligations": _valued(0, ["e4"]),
+            "tax_and_transaction_cost": _valued(100, ["e4"]),
+            "common_equity_value_available": _valued(9350, ["e4"]),
+            "realization_mechanisms": ["net buyback compounding"],
+            "governance_or_control_path": "Management continues executing buybacks.",
+        },
+        "survival_gate": {
+            "liquidity_runway_months": _valued(36, ["e2"]),
+            "debt_due_12m": _valued(200, ["e2"]),
+            "debt_due_36m": _valued(600, ["e2"]),
+            "interest_coverage": _valued(8.0, ["e2"]),
+            "bear_case_cash_burn": _valued(150, ["e2"]),
+            "catalyst_delay_survivable": True,
+            "status": "PASS",
+            "failure_reason": "",
+        },
     }
 
 
@@ -189,7 +218,7 @@ class MispricingEngineTests(unittest.TestCase):
         decision = evaluate_mispricing_case(valid_case(), today=TODAY)
         self.assertEqual(decision.decision, ResearchDecision.DEEP_RESEARCH_P0)
         self.assertEqual(decision.confidence.value, "HIGH")
-        self.assertEqual(as_dict(decision)["engine_version"], "2.4")
+        self.assertEqual(as_dict(decision)["engine_version"], "2.5")
 
     def test_expired_evidence_reopens_gate(self):
         case = valid_case()
@@ -328,6 +357,69 @@ class MispricingEngineTests(unittest.TestCase):
             tampered = copy.deepcopy(records)
             tampered[0]["payload"]["ticker"] = "ALTERED"
             self.assertFalse(verify_chain(tampered)[0])
+
+
+class ValueCaptureAndSurvivalGateTests(unittest.TestCase):
+    """V2.5: mispricing_adapters.build_valuation_request has always read
+    case.get("value_capture") / case.get("survival_gate"), but the schema
+    never declared either field, so every case fed it an empty dict and the
+    SURVIVAL / VALUE_CAPTURE gates were asserted PASS/FAIL with no
+    structured numbers behind the claim. These pin the fix at both layers:
+    the schema now requires the fields, and the adapter now actually
+    receives what it has been asking for."""
+
+    def test_schema_rejects_a_case_missing_value_capture_or_survival_gate(self):
+        case = valid_case()
+        del case["value_capture"]
+        errors = list(jsonschema.Draft202012Validator(_SCHEMA).iter_errors(case))
+        self.assertTrue(
+            any("value_capture" in str(e.message) for e in errors),
+            "removing value_capture should fail validation, not pass silently",
+        )
+
+    def test_schema_accepts_the_example_cases(self):
+        for name in ("futu_engineering_case.json", "liquidation_engineering_case.json"):
+            path = Path(__file__).parents[1] / "scoring" / "examples" / name
+            case = json.loads(path.read_text(encoding="utf-8"))
+            errors = list(jsonschema.Draft202012Validator(_SCHEMA).iter_errors(case))
+            self.assertEqual(errors, [], f"{name}: {[e.message for e in errors]}")
+
+    def test_adapter_no_longer_receives_an_empty_dict(self):
+        """The bug in one assertion: before this fix, both sides of this
+        equality were {} for every case that had ever existed."""
+        request = build_valuation_request(valid_case())
+        self.assertNotEqual(request["capital_structure"], {})
+        self.assertNotEqual(request["value_capture_waterfall"], {})
+
+    def test_adapter_forwards_the_declared_survival_and_capture_values(self):
+        request = build_valuation_request(valid_case())
+        self.assertEqual(
+            request["capital_structure"]["liquidity_runway_months"]["value"], 36
+        )
+        self.assertEqual(
+            request["value_capture_waterfall"]["common_equity_value_available"]["value"],
+            9350,
+        )
+
+    def test_liquidation_case_value_capture_matches_its_own_liquidation_waterfall(self):
+        """The two example cases compute the same $370 recovery through two
+        independent paths (calculate_liquidation_value's itemized waterfall,
+        and value_capture's coarser one) as a cross-check that the example
+        data is not just schema-valid but internally consistent."""
+        path = Path(__file__).parents[1] / "scoring" / "examples" / "liquidation_engineering_case.json"
+        case = json.loads(path.read_text(encoding="utf-8"))
+        vc = case["value_capture"]
+        computed = (
+            vc["gross_business_and_asset_value"]["value"]
+            - vc["net_debt"]["value"]
+            - vc["preferred_claims"]["value"]
+            - vc["minority_interest"]["value"]
+            - vc["lease_pension_legal_obligations"]["value"]
+            - vc["maintenance_obligations"]["value"]
+            - vc["tax_and_transaction_cost"]["value"]
+        )
+        self.assertEqual(computed, vc["common_equity_value_available"]["value"])
+        self.assertEqual(computed, 370)
 
 
 if __name__ == "__main__":

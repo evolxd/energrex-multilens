@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://energrex.local/schemas/mispricing-contract-v2.4.json",
-  "title": "ENERGREX Mispricing Discovery Contract v2.4",
+  "$id": "https://energrex.local/schemas/mispricing-contract-v2.5.json",
+  "title": "ENERGREX Mispricing Discovery Contract v2.5",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,7 +14,9 @@
     "thesis",
     "evidence",
     "gates",
-    "monitor_rules"
+    "monitor_rules",
+    "value_capture",
+    "survival_gate"
   ],
   "allOf": [
     {
@@ -27,7 +29,7 @@
     }
   ],
   "properties": {
-    "schema_version": {"const": "2.4"},
+    "schema_version": {"const": "2.5"},
     "ticker": {"type": "string", "minLength": 1},
     "primary_path": {"$ref": "#/$defs/opportunityPath"},
     "style_lineage": {
@@ -96,6 +98,8 @@
       }
     },
     "liquidation_value": {"$ref": "#/$defs/liquidationValue"},
+    "value_capture": {"$ref": "#/$defs/valueCapture"},
+    "survival_gate": {"$ref": "#/$defs/survivalGate"},
     "thesis": {
       "type": "object",
       "additionalProperties": false,
@@ -290,6 +294,65 @@
             "annualized_return_above_hurdle": {"type": ["boolean", "null"]}
           }
         }
+      }
+    },
+    "valueCapture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gross_business_and_asset_value",
+        "net_debt",
+        "preferred_claims",
+        "minority_interest",
+        "lease_pension_legal_obligations",
+        "maintenance_obligations",
+        "tax_and_transaction_cost",
+        "common_equity_value_available",
+        "realization_mechanisms",
+        "governance_or_control_path"
+      ],
+      "properties": {
+        "gross_business_and_asset_value": {"$ref": "#/$defs/valuedField"},
+        "net_debt": {"$ref": "#/$defs/valuedField"},
+        "preferred_claims": {"$ref": "#/$defs/valuedField"},
+        "minority_interest": {"$ref": "#/$defs/valuedField"},
+        "lease_pension_legal_obligations": {"$ref": "#/$defs/valuedField"},
+        "maintenance_obligations": {"$ref": "#/$defs/valuedField"},
+        "tax_and_transaction_cost": {"$ref": "#/$defs/valuedField"},
+        "common_equity_value_available": {"$ref": "#/$defs/valuedField"},
+        "realization_mechanisms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "governance_or_control_path": {"type": "string", "minLength": 1}
+      }
+    },
+    "survivalGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "liquidity_runway_months",
+        "debt_due_12m",
+        "debt_due_36m",
+        "interest_coverage",
+        "bear_case_cash_burn",
+        "catalyst_delay_survivable",
+        "status"
+      ],
+      "properties": {
+        "liquidity_runway_months": {"$ref": "#/$defs/valuedField"},
+        "debt_due_12m": {"$ref": "#/$defs/valuedField"},
+        "debt_due_36m": {"$ref": "#/$defs/valuedField"},
+        "interest_coverage": {"$ref": "#/$defs/valuedField"},
+        "bear_case_cash_burn": {"$ref": "#/$defs/valuedField"},
+        "covenant_headroom": {"$ref": "#/$defs/valuedField"},
+        "fixed_rate_share": {"$ref": "#/$defs/valuedField"},
+        "refinancing_dependency": {"type": "string"},
+        "dilution_risk": {"type": "string"},
+        "catalyst_delay_survivable": {"type": ["boolean", "null"]},
+        "status": {"enum": ["PASS", "NEEDS_EVIDENCE", "FAIL"]},
+        "failure_reason": {"type": "string"}
       }
     }
   }

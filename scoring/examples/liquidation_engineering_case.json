@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.4",
+  "schema_version": "2.5",
   "ticker": "NETNETCO",
   "primary_path": "LIQUIDATION_AND_ASSET_ARBITRAGE",
   "secondary_paths": [],
@@ -54,6 +54,28 @@
       "catalyst_or_control_path_present": true,
       "annualized_return_above_hurdle": true
     }
+  },
+  "value_capture": {
+    "gross_business_and_asset_value": {"value": 840, "evidence_ids": ["liq-balance-sheet", "liq-hidden-assets"]},
+    "net_debt": {"value": 250, "evidence_ids": ["liq-balance-sheet"]},
+    "preferred_claims": {"value": 0, "evidence_ids": ["liq-claims"]},
+    "minority_interest": {"value": 15, "evidence_ids": ["liq-claims"]},
+    "lease_pension_legal_obligations": {"value": 115, "evidence_ids": ["liq-claims"]},
+    "maintenance_obligations": {"value": 40, "evidence_ids": ["liq-claims"]},
+    "tax_and_transaction_cost": {"value": 50, "evidence_ids": ["liq-claims"]},
+    "common_equity_value_available": {"value": 370, "evidence_ids": ["liq-balance-sheet", "liq-hidden-assets", "liq-claims"]},
+    "realization_mechanisms": ["资产出售/清算变现", "股东清算表决通过后分配"],
+    "governance_or_control_path": "已公告资产出售和股东清算表决，激进股东拥有足够投票权推动方案。"
+  },
+  "survival_gate": {
+    "liquidity_runway_months": {"value": 24, "evidence_ids": ["liq-survival"]},
+    "debt_due_12m": {"value": 100, "evidence_ids": ["liq-survival"]},
+    "debt_due_36m": {"value": 250, "evidence_ids": ["liq-survival"]},
+    "interest_coverage": {"value": 3.5, "evidence_ids": ["liq-survival"]},
+    "bear_case_cash_burn": {"value": 40, "evidence_ids": ["liq-survival"]},
+    "catalyst_delay_survivable": true,
+    "status": "PASS",
+    "failure_reason": ""
   },
   "thesis": {
     "market_believes": "市场按持续经营给普通股定价，忽略了清算/出售场景下资产回收值明显高于当前市值。",

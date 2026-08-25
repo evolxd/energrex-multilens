@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.4",
+  "schema_version": "2.5",
   "ticker": "FUTU",
   "primary_path": "GREAT_BUSINESS_STUMBLE",
   "secondary_paths": ["IMPLIED_EXPECTATIONS_GAP"],
@@ -31,6 +31,28 @@
     "policy_dependency": "HIGH",
     "revenue_cyclicality": "HIGH",
     "leverage_support_assessment": "工程假设：不适用刚性付款方的高杠杆推导，必须按券商资本和周期性收入压力测试。"
+  },
+  "value_capture": {
+    "gross_business_and_asset_value": {"value": 8000, "evidence_ids": ["futu-capture-pending"]},
+    "net_debt": {"value": -1500, "evidence_ids": ["futu-capture-pending"]},
+    "preferred_claims": {"value": 0, "evidence_ids": ["futu-capture-pending"]},
+    "minority_interest": {"value": 0, "evidence_ids": ["futu-capture-pending"]},
+    "lease_pension_legal_obligations": {"value": 50, "evidence_ids": ["futu-capture-pending"]},
+    "maintenance_obligations": {"value": 0, "evidence_ids": ["futu-capture-pending"]},
+    "tax_and_transaction_cost": {"value": 100, "evidence_ids": ["futu-capture-pending"]},
+    "common_equity_value_available": {"value": 9350, "evidence_ids": ["futu-capture-pending"]},
+    "realization_mechanisms": ["净回购持续压缩股本", "监管影响正常化后估值修复"],
+    "governance_or_control_path": "工程假设：管理层持续执行回购，暂无控制权层面的催化剂，数字待补最新披露。"
+  },
+  "survival_gate": {
+    "liquidity_runway_months": {"value": 36, "evidence_ids": ["futu-survival-pending"]},
+    "debt_due_12m": {"value": 200, "evidence_ids": ["futu-survival-pending"]},
+    "debt_due_36m": {"value": 600, "evidence_ids": ["futu-survival-pending"]},
+    "interest_coverage": {"value": 8.0, "evidence_ids": ["futu-survival-pending"]},
+    "bear_case_cash_burn": {"value": 150, "evidence_ids": ["futu-survival-pending"]},
+    "catalyst_delay_survivable": true,
+    "status": "PASS",
+    "failure_reason": ""
   },
   "thesis": {
     "market_believes": "监管事件可能永久削弱增长与估值。",
