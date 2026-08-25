@@ -595,9 +595,30 @@ _EXTENDED_STOCKS_A: dict[str, dict] = {
         "company_name": "Intel Corporation", "current_price": 22.0, "market_cap": 9.3e10,
         "peg_ratio": None, "ev_ebitda": 22.0, "ev_sales": 1.8, "ps_ratio": 1.8,
         "forward_pe": 28.0, "fcf_yield": -0.010,
-        "revenue_growth_yoy": -0.03, "eps_growth_yoy": -0.40, "fcf_growth_yoy": -0.50,
+        "revenue_growth_yoy": -0.03,
+        # eps_growth_yoy: excluded (None), not stale. TTM GAAP EPS is dominated by
+        # two disclosed one-time non-cash charges -- $4.07B Q1'26 restructuring/
+        # Mobileye goodwill impairment, $12.53B Q2'26 CHIPS Act escrow charge --
+        # ~$16.6B combined against a ~$530B market cap. TTM Non-GAAP EPS swung
+        # from -$0.29 (Q3'24-Q2'25) to +$1.09 (Q3'25-Q2'26), i.e. through a
+        # negative base -- not a meaningful YoY %. Also in yfinance_fetcher.py
+        # KNOWN_BAD_FIELDS so the live (GAAP) figure doesn't silently reappear.
+        # Verified 2026-08-05 against Intel's Q1/Q2 2026 earnings releases
+        # (intc.com press releases) and Q2'25/Q3'25/Q4'24/Q3'24 non-GAAP EPS.
+        "eps_growth_yoy": None,
+        # fcf_growth_yoy: excluded (None), was a stale "2026-06-11 initial
+        # estimate" (-50%) never refreshed since. Real FCF this cycle is
+        # genuinely negative and capex-heavy (Q1'26 adjusted FCF -$2.0B, Q2'26
+        # -$8.4B, >$20B FY26 capex guided for foundry buildout) but a clean
+        # TTM-over-TTM YoY %% needs a prior-year comparable this session didn't
+        # verify -- left missing rather than guessed.
+        "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.05, "analyst_revision_30d": -0.02, "arr_growth_yoy": None,
         "gross_margin": 0.40, "fcf_margin": -0.05, "operating_margin": -0.05,
+        # roic: now auto-computed live (NOPAT/InvestedCapital via yfinance_fetcher.
+        # fetch_live) whenever a refresh runs; this is only the offline/mock
+        # fallback. 0.02 pre-dates the fix and was actually an ROE proxy value --
+        # left as a placeholder, not re-verified, since it's no longer load-bearing.
         "roic": 0.02, "debt_to_equity": 0.45, "revenue_predictability_score": 0.30,
         "net_revenue_retention": None,
         "ai_revenue_exposure_pct": 0.18, "ai_profit_exposure_pct": 0.10,
@@ -609,7 +630,7 @@ _EXTENDED_STOCKS_A: dict[str, dict] = {
         "market_expectation_score": 0.35,
         "beta": 1.20, "volatility_30d": 0.35, "max_drawdown_1y": 0.45,
         "valuation_risk": 0.55, "concentration_risk": 0.35, "liquidity_risk": 0.05,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-05: eps_growth_yoy/fcf_growth_yoy excluded as unreliable (see comments); rest still 2026-06-11 initial estimate",
     },
     "ARM": {
         "company_name": "Arm Holdings", "current_price": 145.0, "market_cap": 1.53e11,
@@ -1798,8 +1819,13 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "_data_vintage": "2026-06-11 initial estimate",
     },
     "RXRX": {
-        "company_name": "Recursion Pharmaceuticals", "current_price": 5.0, "market_cap": 1.5e9,
-        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 8.0, "ps_ratio": 8.0,
+        # 2026-08-18 web核实：股价$3.09，流通股540,889,504股（WallStreetZen/
+        # stockanalysis.com），TTM营收$65.73M。市值=股价×股数；EV=市值-现金
+        # （现金~$550M、debt minimal，未查到精确negative net debt数字，用
+        # ~$550M估算，见 https://www.tipranks.com/stocks/rxrx/financials）。
+        # ev_sales/ps_ratio 已按上述真实数字重算，不是照旧值改价格。
+        "company_name": "Recursion Pharmaceuticals", "current_price": 3.09, "market_cap": 1.671e9,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 17.06, "ps_ratio": 25.42,
         "forward_pe": None, "fcf_yield": -0.20,
         "revenue_growth_yoy": 0.20, "eps_growth_yoy": None, "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.30, "analyst_revision_30d": -0.02, "arr_growth_yoy": None,
@@ -1815,11 +1841,15 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "market_expectation_score": 0.45,
         "beta": 2.80, "volatility_30d": 0.85, "max_drawdown_1y": 0.75,
         "valuation_risk": 0.90, "concentration_risk": 0.60, "liquidity_risk": 0.20,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-18 price/ev_sales/ps_ratio/market_cap verified via web_search; all other fields still 2026-06-11 initial estimate, unverified this pass",
     },
     "SDGR": {
-        "company_name": "Schrodinger", "current_price": 24.0, "market_cap": 1.8e9,
-        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 9.0, "ps_ratio": 9.0,
+        # 2026-08-18 web核实：股价$17.67，流通股74,720,724股（stockanalysis.com
+        # 反推自动一致），TTM营收$250M（companiesmarketcap.com，另一来源$257M，
+        # 取较保守口径）。现金$406.4M（2026Q1数字，Q2未查到更新值）、debt=$0
+        # （gurufocus: cash-to-debt比率confirmed无债务）。EV=市值-现金。
+        "company_name": "Schrodinger", "current_price": 17.67, "market_cap": 1.3204e9,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 3.66, "ps_ratio": 5.28,
         "forward_pe": None, "fcf_yield": -0.15,
         "revenue_growth_yoy": 0.15, "eps_growth_yoy": None, "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.18, "analyst_revision_30d": 0.00, "arr_growth_yoy": None,
@@ -1835,11 +1865,16 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "market_expectation_score": 0.45,
         "beta": 2.20, "volatility_30d": 0.65, "max_drawdown_1y": 0.60,
         "valuation_risk": 0.88, "concentration_risk": 0.55, "liquidity_risk": 0.18,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-18 price/ev_sales/ps_ratio/market_cap verified via web_search; all other fields still 2026-06-11 initial estimate, unverified this pass",
     },
     "TEM": {
-        "company_name": "Tempus AI", "current_price": 48.0, "market_cap": 5.5e9,
-        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 9.5, "ps_ratio": 9.5,
+        # 2026-08-19 web核实：股价$55.69，流通股180.43M（stockanalysis.com），
+        # TTM营收取$1.36B-$1.432B两个来源的中间值$1.40B（未查到单一权威数字，
+        # 精度打了折扣）。现金+有价证券$820.7M，可转债净额$1,172.8M
+        # （2026Q2 10-Q，stocktitan.net）——TEM跟RXRX/SDGR不同，是净负债
+        # 不是净现金，net_debt=+$352.1M。EV=市值+净负债。
+        "company_name": "Tempus AI", "current_price": 55.69, "market_cap": 10.05e9,
+        "peg_ratio": None, "ev_ebitda": None, "ev_sales": 7.43, "ps_ratio": 7.18,
         "forward_pe": None, "fcf_yield": -0.08,
         "revenue_growth_yoy": 0.30, "eps_growth_yoy": None, "fcf_growth_yoy": None,
         "next_year_revenue_growth_est": 0.28, "analyst_revision_30d": 0.02, "arr_growth_yoy": None,
@@ -1855,7 +1890,7 @@ _EXTENDED_STOCKS_B: dict[str, dict] = {
         "market_expectation_score": 0.55,
         "beta": 2.50, "volatility_30d": 0.75, "max_drawdown_1y": 0.65,
         "valuation_risk": 0.85, "concentration_risk": 0.55, "liquidity_risk": 0.15,
-        "_data_vintage": "2026-06-11 initial estimate",
+        "_data_vintage": "2026-08-19 price/ev_sales/ps_ratio/market_cap verified via web_search (TTM revenue had a $1.36B-$1.432B source spread, used $1.40B midpoint); all other fields still 2026-06-11 initial estimate, unverified this pass",
     },
     "U": {
         "company_name": "Unity Software", "current_price": 24.0, "market_cap": 7.5e9,

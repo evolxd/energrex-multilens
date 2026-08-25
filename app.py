@@ -109,6 +109,20 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+    # company_score: the 5 business dimensions, renormalised, without momentum
+    # or the circuit multiplier (scoring/score_split.py). circuit_label: which
+    # clause fired ("波动" / "杠杆" / "波动 + 杠杆" / ""). A circuit-broken
+    # ticker's final_score is a threshold-cliff readout, not a smooth quality
+    # decline -- company_score is what didn't get multiplied away.
+    _company_col = next((c for c in df.columns if c.startswith("company_score_")), None)
+    df["company_score"] = (
+        pd.to_numeric(df[_company_col], errors="coerce") if _company_col else np.nan
+    )
+    _circuit_lbl_col = next((c for c in df.columns if c.startswith("circuit_label_")), None)
+    df["circuit_label"] = (
+        df[_circuit_lbl_col].fillna("").astype(str) if _circuit_lbl_col else ""
+    )
+
     # validation confidence → grade
     if "validation_confidence" in df.columns:
         df["validation_confidence"] = pd.to_numeric(df["validation_confidence"], errors="coerce").fillna(0)
@@ -149,6 +163,7 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
             forward_pe=_forward_pe.loc[r.name],
             ev_sales=_ev_sales.loc[r.name],
             fcf_yield=_fcf_yield.loc[r.name],
+            circuit_label=r.get("circuit_label") or "",
         )
     _decisions = df.apply(_row_decision, axis=1)
     df["decision"] = [d.label for d in _decisions]

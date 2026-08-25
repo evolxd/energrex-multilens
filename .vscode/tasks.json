@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "ticker",
+      "type": "promptString",
+      "description": "股票代码（如 NVDA），留空 = 全部"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "🏠 启动 Dashboard（估值/期权/仓位/误价研究 都在这一个进程里，靠左侧导航切换）",
+      "type": "shell",
+      "command": "python",
+      "args": ["-X", "utf8", "-m", "streamlit", "run", "home.py", "--server.port", "8502"],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "📊 估值：刷新评分（留空=全部93只，输入代码=只刷这一只）",
+      "type": "shell",
+      "command": "python",
+      "args": ["refresh_scores.py", "${input:ticker}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "📊 估值：极速价格刷新（只拉价格重算比率，~5秒）",
+      "type": "shell",
+      "command": "python",
+      "args": ["refresh_scores.py", "--price-only"],
+      "problemMatcher": []
+    },
+    {
+      "label": "🔬 估值：命令行审计单只股票（quant_engine，逐字段公式展开）",
+      "type": "shell",
+      "command": "python",
+      "args": ["quant_audit.py", "${input:ticker}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "🧪 测试：全部（255+ 用例）",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "pytest", "tests/", "-q"],
+      "problemMatcher": [],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "🧪 测试：当前打开的文件",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "pytest", "${file}", "-v"],
+      "problemMatcher": []
+    },
+    {
+      "label": "🩺 数据体检：跨源交叉验证（cross_validate_data.py）",
+      "type": "shell",
+      "command": "python",
+      "args": ["cross_validate_data.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "🔌 MCP Server：手动启动（调试用，正常由 Claude Code 通过 .mcp.json 自动拉起）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scoring/mcp_server.py"],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}

@@ -49,6 +49,7 @@ from yfinance_fetcher import (
     fetch_portfolio_live_parallel, merge_live_into_mock,
     KNOWN_BAD_FIELDS, fetch_prices_only)
 from quant_engine import score_ticker
+from score_split import split_scores
 from quant_data import QUANT_META, QUANT_AI_EXPOSURE, QUANT_STANDALONE
 from universe import blank_row, is_unscoreable, refresh_targets
 
@@ -133,6 +134,9 @@ _YFINANCE_UPDATABLE = {
     "peg_ratio", "ev_sales", "forward_pe", "fcf_yield", "fcf_margin",
     "revenue_growth_yoy", "eps_growth_yoy", "gross_margin", "beta",
     "rsi_14", "price_vs_200dma", "max_drawdown_1y",
+    # roic 现在是 NOPAT/InvestedCapital 实时计算值（yfinance_fetcher.fetch_live），
+    # 不再是一次性人工估算 -- 需要每次刷新都用最新值，不能被 mock 锁死。
+    "roic",
     # 基本面分母（季度更新）
     "current_price", "shares_outstanding", "forward_eps",
     "enterprise_value_snap", "price_at_ev_snapshot",
@@ -171,6 +175,16 @@ _PROFILE_CSV_COLS: dict[str, object] = {
     "aibonus_AI加速器": 0.0,
     "aibasis_AI分类依据": "缺少可用AI暴露数据",
     "weighted_基础加权": 0.0,
+}
+
+# company_score: the five business dimensions, renormalised, with neither
+# momentum nor the circuit multiplier applied -- see scoring/score_split.py.
+# circuit_label: which clause fired ("波动" / "杠杆" / "波动 + 杠杆" / ""), so a
+# ticker whose final_score got crushed by the circuit breaker doesn't read
+# identically to one that's just genuinely low quality.
+_SPLIT_CSV_COLS: dict[str, object] = {
+    "company_score_公司质量分(不受熔断影响)": 0.0,
+    "circuit_label_熔断分项": "",
 }
 
 
@@ -234,6 +248,11 @@ _PCT_FIELDS = {
     "fcf_yield", "revenue_growth_yoy", "eps_growth_yoy",
     "gross_margin", "fcf_margin", "roic",
     "price_vs_200dma", "max_drawdown_1y",
+    # next_year_revenue_growth_est: quant_audit.py's export_csv writes this
+    # column as "5.0%" (pct=True), but it was missing here, so _csv_baseline
+    # read it straight back as 5.0 instead of 0.05 -- a 100x corruption that
+    # clamped every ticker's NTM-guidance growth input to the scoring ceiling.
+    "next_year_revenue_growth_est",
 }
 
 
@@ -299,7 +318,22 @@ def _recompute_valuation_ratios(data: dict, ticker: str = "") -> dict:
         data["forward_pe"] = round(fpe, 2)
         if eps_g and eps_g > 0:
             # PEG = Forward PE / (eps growth %)；避免除以0
-            data["peg_ratio"] = round(fpe / (eps_g * 100), 3)
+            #
+            # eps_growth_yoy 分母封顶在 60%：PEG 是给"正常"成长股设计的比率
+            # （Lynch 原始定义最适用~10-40%区间），增速超过这个量级后 PEG 只会
+            # 被越除越小、趋近于0，不再是有意义的"便宜/贵"信号——不管这个高增速
+            # 本身是真实业务爆发（如 NVDA/PLTR，大概率真实）还是 GAAP 一次性科目
+            # 噪音（WDAY 已实测核实偏差10倍：系统内 PEG=0.055，真实0.55-0.63；
+            # CDNS/ADSK 同类可疑但未逐一核实），PEG 公式在这个区间都已经失效。
+            # 用统一上限封顶分母，而不必逐票核实"这个高增长是不是真的"——那不
+            # 是这一步该做的判断。封顶动作记入 _bad_fields，写回 CSV 可见。
+            _PEG_GROWTH_CAP = 0.60
+            capped_eps_g = min(eps_g, _PEG_GROWTH_CAP)
+            data["peg_ratio"] = round(fpe / (capped_eps_g * 100), 3)
+            if eps_g > _PEG_GROWTH_CAP:
+                data.setdefault("_bad_fields", []).append(
+                    f"peg_ratio(eps_growth={eps_g*100:.0f}%>{_PEG_GROWTH_CAP*100:.0f}%封顶)"
+                )
 
     # ── EV 类比率 ─────────────────────────────────────────
     if ev and ev > 0:
@@ -416,7 +450,7 @@ def refresh_all(
 
     # 首次运行时自动添加基本面分母列
     _added_cols = []
-    for col, default in {**_FUNDAMENTAL_CSV_COLS, **_PROFILE_CSV_COLS}.items():
+    for col, default in {**_FUNDAMENTAL_CSV_COLS, **_PROFILE_CSV_COLS, **_SPLIT_CSV_COLS}.items():
         if col not in df.columns:
             df[col] = default
             _added_cols.append(col)
@@ -460,6 +494,14 @@ def refresh_all(
     _PLACEHOLDER_COL = "placeholder_dims_全占位维度"
     if _PLACEHOLDER_COL not in df.columns:
         df[_PLACEHOLDER_COL] = ""
+
+    # bad_fields_剔除字段：历史上只有 quant_audit.py 的独立审计流程会写这一列
+    # （不同的坏字段判定逻辑），常规 refresh_all() 从来没写过，导致这一列对
+    # 走这条主链路刷新的股票永远是过期/无关的旧值。用 score_ticker() 真正算出
+    # 的 result.bad_fields（含上面 PEG 封顶记录）在这里补上。
+    _BAD_FIELDS_COL = "bad_fields_剔除字段"
+    if _BAD_FIELDS_COL not in df.columns:
+        df[_BAD_FIELDS_COL] = ""
 
     # ── Layer 4：并行拉取 yfinance ─────────────────────────
     log("⏳ yfinance 拉取中（并行）…")
@@ -570,11 +612,28 @@ def refresh_all(
             if col and col in df.columns:
                 _safe_set(df, row_mask, col, val)
 
+        # ── company_score / circuit_label：熔断不改写这两列 ──────
+        split = split_scores(
+            result.dim_scores,
+            risk_penalty=result.risk_penalty,
+            beta=data.get("beta"),
+            drawdown_abs=data.get("max_drawdown_1y"),
+            de_ratio=data.get("debt_to_equity"),
+            blended=result.final_score,
+        )
+        _company_col = "company_score_公司质量分(不受熔断影响)"
+        _circuit_lbl_col = "circuit_label_熔断分项"
+        if _company_col in df.columns and split.company is not None:
+            _safe_set(df, row_mask, _company_col, round(split.company, 2))
+        if _circuit_lbl_col in df.columns:
+            _safe_set(df, row_mask, _circuit_lbl_col, " + ".join(split.circuit.clauses))
+
         _placeholder_dims = [
             d.key for d in result.audit_dims
             if d.entries and all(e.missing for e in d.entries)
         ]
         _safe_set(df, row_mask, _PLACEHOLDER_COL, ",".join(_placeholder_dims))
+        _safe_set(df, row_mask, _BAD_FIELDS_COL, "; ".join(result.bad_fields))
 
         # When the business dimensions all defaulted, nothing was fetched and
         # nothing was on file -- the ticker is delisted, renamed, or wrong.
@@ -599,6 +658,7 @@ def refresh_all(
             ("eps_growth_yoy",        True),
             ("gross_margin",          True),
             ("fcf_margin",            True),
+            ("roic",                  True),
             ("beta",                  False),
             ("rsi_14",                False),
             ("price_vs_200dma",       True),
@@ -624,6 +684,11 @@ def refresh_all(
             v = _r.get(field)
             if v is not None:
                 raw_updates[field] = _fmt_yf(v, pct=is_pct)
+            elif field in KNOWN_BAD_FIELDS.get(ticker, set()):
+                # Deliberately excluded (e.g. INTC/MRVL eps_growth_yoy) -- write
+                # "n/a" so the raw_ column stops showing a stale pre-exclusion
+                # number that no longer reflects what the scorer actually used.
+                raw_updates[field] = "n/a [--]"
 
         for field, fmt_val in raw_updates.items():
             col = raw_col_map.get(field)
@@ -760,6 +825,25 @@ def refresh_prices_only(
             col = score_col_map.get(field)
             if col and col in df.columns:
                 _safe_set(df, row_mask, col, val)
+
+        split = split_scores(
+            result.dim_scores,
+            risk_penalty=result.risk_penalty,
+            beta=data.get("beta"),
+            drawdown_abs=data.get("max_drawdown_1y"),
+            de_ratio=data.get("debt_to_equity"),
+            blended=result.final_score,
+        )
+        _company_col = "company_score_公司质量分(不受熔断影响)"
+        _circuit_lbl_col = "circuit_label_熔断分项"
+        if _company_col in df.columns and split.company is not None:
+            _safe_set(df, row_mask, _company_col, round(split.company, 2))
+        if _circuit_lbl_col in df.columns:
+            _safe_set(df, row_mask, _circuit_lbl_col, " + ".join(split.circuit.clauses))
+
+        _bad_fields_col = "bad_fields_剔除字段"
+        if _bad_fields_col in df.columns:
+            _safe_set(df, row_mask, _bad_fields_col, "; ".join(result.bad_fields))
 
         # 写回实时价格及重算比率
         for field, is_pct in [

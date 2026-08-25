@@ -46,6 +46,20 @@ except ImportError:
 
 # ─────────────────────────────────────────────────────────────────────
 # A. Sector-Specific Baselines
+#
+# Known gap (2026-08-19): only three categories exist. RXRX/SDGR/TEM
+# (AI-drug-discovery / AI-diagnostics names) get force-fit into "SaaS"
+# for lack of a Biotech option -- SaaS's fcf_margin worst anchor (-10%)
+# unfairly punishes clinical-stage cash burn that's industry-normal, not
+# a quality signal. Tried to source real Biotech margin-distribution
+# anchors from Damodaran's NYU Stern industry data (this system already
+# leans on his framework elsewhere) to add a fourth category properly;
+# blocked by network egress in that attempt and couldn't get verified
+# percentile numbers, not just single-company anecdotes. Left unfixed
+# rather than fabricate anchors -- see scoring/quant_data.py's comment
+# on the RXRX/SDGR/TEM QUANT_STANDALONE entries for the full writeup,
+# including why even a real Biotech category might not be granular
+# enough for these three specifically.
 # ─────────────────────────────────────────────────────────────────────
 SECTOR_BASELINES: dict[str, dict[str, dict]] = {
     "Hardware": {
@@ -65,6 +79,7 @@ SECTOR_BASELINES: dict[str, dict[str, dict]] = {
         "fcf_margin":     {"best": 0.30,  "worst": 0.00,  "dir": "positive"},
         "roic":           {"best": 0.25,  "worst": -0.05, "dir": "positive"},  # Damodaran: ROIC-WACC 超额回报
         "de_ratio":       {"best": 0.00,  "worst": 2.50,  "dir": "negative"},
+        "operating_margin":{"best": 0.45, "worst": -0.10, "dir": "positive"},  # Non-GAAP，样本中位数28%
         "capex_rev":      {"best": 0.05,  "worst": 0.25,  "dir": "negative"},
         # ── ④ AI Exposure ────────────────────────────────────────────
         "ai_rev_pct":     {"best": 0.90,  "worst": 0.10,  "dir": "positive"},
@@ -89,6 +104,7 @@ SECTOR_BASELINES: dict[str, dict[str, dict]] = {
         "fcf_margin":     {"best": 0.35,  "worst": -0.10, "dir": "positive"},
         "roic":           {"best": 0.20,  "worst": -0.15, "dir": "positive"},  # Damodaran: ROIC-WACC 超额回报
         "de_ratio":       {"best": 0.00,  "worst": 2.50,  "dir": "negative"},
+        "operating_margin":{"best": 0.35, "worst": -0.40, "dir": "positive"},  # Non-GAAP，样本中位数22%
         "nrr":            {"best": 1.30,  "worst": 1.00,  "dir": "positive"},
         # ── ④ AI Exposure ────────────────────────────────────────────
         "ai_rev_pct":     {"best": 0.80,  "worst": 0.05,  "dir": "positive"},
@@ -113,6 +129,7 @@ SECTOR_BASELINES: dict[str, dict[str, dict]] = {
         "fcf_margin":     {"best": 0.30,  "worst": -0.05, "dir": "positive"},
         "roic":           {"best": 0.15,  "worst": -0.10, "dir": "positive"},  # Damodaran: ROIC-WACC 超额回报
         "de_ratio":       {"best": 0.00,  "worst": 2.50,  "dir": "negative"},
+        "operating_margin":{"best": 0.30, "worst": -0.10, "dir": "positive"},  # Non-GAAP，样本中位数22%
         "nrr":            {"best": 1.20,  "worst": 1.05,  "dir": "positive"},
         # ── ④ AI Exposure ────────────────────────────────────────────
         "ai_rev_pct":     {"best": 0.60,  "worst": 0.05,  "dir": "positive"},
@@ -455,6 +472,19 @@ def score_quality(data: dict, bl: dict, sector: str) -> AuditDimension:
         dim.entries.append(AuditEntry("D/E (w/ converts)", de, f, s, 0.20))
     else:
         dim.entries.append(AuditEntry("D/E (w/ converts)", None, "missing", 50.0, 0.20, missing=True))
+
+    # Operating Margin (Non-GAAP, manually curated -- excludes SBC/amortization/
+    # restructuring). Sits between Gross Margin and FCF Margin: captures real
+    # opex discipline without FCF's capex-timing noise or ROIC-WACC's exposure
+    # to one-time non-operating/non-cash charges below the operating line.
+    om = data.get("operating_margin")
+    if om is not None:
+        cfg = b("operating_margin")
+        s = normalize_score(om, cfg["best"], cfg["worst"], cfg["dir"])
+        f = f"({om*100:.1f}%-{cfg['worst']*100:.0f}%)/({cfg['best']*100:.0f}%-{cfg['worst']*100:.0f}%)*100"
+        dim.entries.append(AuditEntry("Operating Margin (Non-GAAP)", om, f, s, 0.12, note=f"{om*100:.1f}%"))
+    else:
+        dim.entries.append(AuditEntry("Operating Margin (Non-GAAP)", None, "missing", 50.0, 0.12, missing=True))
 
     # Sector-specific quality modifier
     if sector == "Hardware":

@@ -231,6 +231,20 @@ QUANT_AI_EXPOSURE: dict[str, dict] = {
         "ai_order_backlog_exposure":        0.75,   # 汽车/餐饮语音AI多年合同
         "software_ai_platform_exposure_pct": 0.90,  # 纯语音AI平台
     },
+    # 已知分类错配，未解决（2026-08-19 核实过）：RXRX/SDGR/TEM 是 AI+生物科技
+    # 交叉标的，SECTOR_BASELINES（quant_engine.py）只有 Hardware/SaaS/
+    # Cybersecurity 三个选项，没有 Biotech，只能"就近取用"选了 SaaS——SaaS
+    # 基准的 fcf_margin worst锚点是-10%，但临床期生物科技烧钱到-80%是行业
+    # 常态，不代表比SaaS同业差，这会系统性压低这三只票的quality维度分。
+    # 尝试过给 SECTOR_BASELINES 新增 Biotech 类目、用 Damodaran NYU Stern
+    # 的行业分布数据定 best/worst 锚点（这套系统别处已经在用 Damodaran
+    # 框架，方法论上是对的路），但这次会话里 pages.stern.nyu.edu 被网络出口
+    # 代理挡住，搜索引擎摘要也只给单家公司数字、给不出真正的行业分布分位数，
+    # 没能拿到能交代来源的锚点数字。宁可维持现状（错配但诚实），也不要编数字
+    # 包装成"已解决"。而且即便日后拿到数据，RXRX/SDGR/TEM 本身也不是同质
+    # 的一组——RXRX 是临床期AI药物发现平台，SDGR 收入大头其实是软件授权
+    # （更接近SaaS），TEM 有$14亿 TTM营收的商业化诊断业务——单一 Biotech
+    # 分类未必对这三只票都合适，需要更细的拆分，不是简单加一类就能解决。
     "RXRX": {
         "sector_tag":                        "SaaS",
         "ai_order_backlog_exposure":        0.65,   # NVDA战略合作+RecursionOS平台
@@ -246,6 +260,31 @@ QUANT_AI_EXPOSURE: dict[str, dict] = {
         "ai_order_backlog_exposure":        0.70,   # AI健康数据授权合同
         "software_ai_platform_exposure_pct": 0.85,  # AI健康数据平台核心
     },
+
+    # ── 2026-08-19 全库 sector_tag 交叉审计确认的错配（不是主观判断，是拿
+    # quant_engine.py 实际解析出的 sector_tag 去跟 scoring_engine.py 自己的
+    # TICKER_CATEGORY 分类核对，两边打架的地方——这11个原本都因为没有显式
+    # 设置 sector_tag，默认落进了 Hardware，但 scoring_engine.py 早就把它们
+    # 归类为 AI软件/SaaS 或网络安全）。只补 sector_tag 这一个字段——
+    # ai_order_backlog_exposure / software_ai_platform_exposure_pct 这类
+    # AI暴露细分字段没有一并编造，缺了就让它按"missing"处理，不假装核实过。
+    # LUNR 特意不放进这批：交叉审计标它跟 scoring_engine.py 的 AI_SOFTWARE
+    # 分类冲突，但下面第 299 行左右已经有一条更早、更具体的判断——"航天，
+    # 无封装暴露"，capex_rev=0.08——明确把它当 Hardware 处理，理由写得清楚，
+    # 不是疏漏。这两边谁对，是个真实的判断分歧（Intuitive Machines 造实体
+    # 登月器，物理意义上确实是硬件；但 scoring_engine 那边可能是按它的数据/
+    # 软件服务收入占比来归类），不是"漏设置默认值"这种可以无脑跟着改的情况，
+    # 留给人决定，这里不覆盖。
+    "ACN": {"sector_tag": "SaaS"},   # Accenture，IT咨询/专业服务，非硬件资本结构
+    "AFRM": {"sector_tag": "SaaS"},  # Affirm，金融科技/BNPL贷款，非硬件
+    "EXLS": {"sector_tag": "SaaS"}, # ExlService，BPO/数据分析服务，非硬件
+    "NTNX": {"sector_tag": "SaaS"}, # Nutanix，超融合基础设施软件，非物理硬件
+    "S":    {"sector_tag": "Cybersecurity"},  # SentinelOne，网络安全，不是Hardware/SaaS
+    "TTD":  {"sector_tag": "SaaS"},  # The Trade Desk，程序化广告SaaS平台
+    "TYL":  {"sector_tag": "SaaS"}, # Tyler Technologies，政府软件SaaS
+    "U":    {"sector_tag": "SaaS"},  # Unity Software，游戏引擎软件平台
+    "VEEV": {"sector_tag": "SaaS"}, # Veeva Systems，生命科学云软件CRM
+    "ZM":   {"sector_tag": "SaaS"},  # Zoom，视频会议SaaS，典型SaaS却被默认成了硬件
 
     # ── Hardware: advanced_packaging_exposure_pct 补全 ───────────────
     "VRT": {
