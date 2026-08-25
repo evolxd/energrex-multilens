@@ -10,7 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-# Version 7 adds a distinct circuit-breaker label and invalidates cached decisions.
+# Version 7 removes non-core AI accelerators, adds a distinct circuit-breaker
+# label, and invalidates cached decisions/scores.
 POLICY_VERSION = 7
 
 
@@ -166,3 +167,93 @@ def evaluate_decision(
     if final >= 35:
         return Decision("⚠️ 谨慎", "CAUTION", False, "综合质量与风险回报不足", band)
     return Decision("🚫 回避", "AVOID", False, "综合分低于35", band)
+
+
+def apply_mispricing_gate(
+    decision: Decision,
+    mispricing_decision: str | None,
+    *,
+    blocking_reasons: list[str] | tuple[str, ...] = (),
+) -> Decision:
+    """Apply optional mispricing eligibility without changing any score."""
+    status = str(mispricing_decision or "").strip().upper()
+    if not status or status in {"DEEP_RESEARCH_P0", "DEEP_RESEARCH_P1"}:
+        return decision
+
+    reason = "; ".join(str(item) for item in blocking_reasons if str(item).strip())
+    if status == "WAIT_FOR_PRICE":
+        return Decision(
+            "等待价格",
+            "WAIT_FOR_PRICE",
+            False,
+            reason or "误价逻辑可能成立，但当前价格赔率门未通过",
+            decision.score_band,
+        )
+    if status == "WATCH_P2":
+        return Decision(
+            "误价证据待复核",
+            "MISPRICING_REVIEW",
+            False,
+            reason or "误价案例仍缺少有效证据或置信度不足",
+            decision.score_band,
+        )
+    if status == "REJECT_P3":
+        return Decision(
+            "误价逻辑排除",
+            "MISPRICING_REJECT",
+            False,
+            reason or "至少一道误价硬门失败",
+            decision.score_band,
+        )
+    return Decision(
+        "误价状态未知",
+        "MISPRICING_REVIEW",
+        False,
+        f"不支持的误价决策状态: {status}",
+        decision.score_band,
+    )
+
+
+def apply_v23_case_gate(
+    decision: Decision,
+    mispricing_decision: str | None,
+    *,
+    formal_valuation_status: str | None,
+    formal_price_gate: str | None,
+    blocking_reasons: list[str] | tuple[str, ...] = (),
+) -> Decision:
+    """Close the V2.3 decision stack without changing Final Score.
+
+    The legacy valuation score may rank price attractiveness, but a V2.3
+    mispricing case is not actionable until a formal multi-method valuation
+    result has passed the separate valuation contract.
+    """
+    gated = apply_mispricing_gate(
+        decision,
+        mispricing_decision,
+        blocking_reasons=blocking_reasons,
+    )
+    if not str(mispricing_decision or "").strip():
+        return gated
+    if not gated.actionable:
+        return gated
+
+    valuation_status = str(formal_valuation_status or "").strip().upper()
+    if valuation_status != "PASS":
+        return Decision(
+            "正式估值待复核",
+            "FORMAL_VALUATION_REVIEW",
+            False,
+            "V2.3 案例缺少通过数据门和双方法门的统一估值结果",
+            gated.score_band,
+        )
+    price_gate = str(formal_price_gate or "").strip().upper()
+    if price_gate != "PASS":
+        return Decision(
+            "等待价格或评估有限风险表达",
+            "FORMAL_PRICE_WAIT",
+            False,
+            "正式价格门未通过；不得用估值分或期权直接绕过",
+            gated.score_band,
+        )
+    return gated
