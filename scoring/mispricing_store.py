@@ -45,6 +45,24 @@ def verify_chain(records: Iterable[dict[str, Any]]) -> tuple[bool, str]:
     return True, ""
 
 
+def latest_case_for(path: str | Path, ticker: str) -> dict[str, Any] | None:
+    """Most recent snapshot for one ticker, or None if it has no thesis on file.
+
+    The chain is a flat append-only log across all tickers, so "latest for
+    this ticker" means "last record in file order whose payload.ticker
+    matches" -- later snapshots supersede earlier ones for the same ticker,
+    matching how the rest of this store treats an append as a new version
+    rather than an edit in place.
+    """
+    ticker = ticker.strip().upper()
+    match: dict[str, Any] | None = None
+    for record in read_chain(path):
+        payload = record.get("payload") or {}
+        if str(payload.get("ticker") or "").strip().upper() == ticker:
+            match = payload
+    return match
+
+
 def append_snapshot(path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

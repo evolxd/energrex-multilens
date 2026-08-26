@@ -205,6 +205,24 @@
         }
       }
     },
+    "metric_observations": {
+      "type": "object",
+      "description": "Per-metric time series feeding monitor_rules. Optional: a case may have no observations yet. Only entries with status == 'verified' drive a rule's trigger evaluation (see scoring/mispricing_monitor.py split_observations) -- everything else counts toward a pending-review indicator instead, the same trust boundary scoring/input_verification.py enforces for user_overrides.json.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "status"],
+          "properties": {
+            "date": {"type": "string"},
+            "value": {"type": "number"},
+            "status": {"type": "string", "minLength": 1},
+            "source": {"type": "string"}
+          }
+        }
+      }
+    },
     "conviction_protocol": {"$ref": "#/$defs/convictionProtocol"}
   },
   "$defs": {

@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Mapping, Sequence
+from pathlib import Path
+from typing import Any, Iterable, Mapping, Sequence
+
+try:
+    from .mispricing_store import latest_case_for
+except ImportError:  # pragma: no cover - direct import path
+    from mispricing_store import latest_case_for
+
+# Same convention as scoring/input_verification.py: only a "verified" value is
+# trusted to drive a real conclusion. A thesis's metric_observations are
+# hand-entered exactly like user_overrides.json entries, and an unconfirmed
+# number must not be able to trigger EXIT/REDUCE on a real position -- it can
+# only ever raise a "go check this" flag.
+TRUSTED_STATUS = "verified"
 
 
 class Operator(str, Enum):
@@ -195,6 +208,94 @@ def evaluate_rules(
     metric_history: Mapping[str, Sequence[float]],
 ) -> tuple[TriggerResult, ...]:
     return tuple(evaluate_rule(rule, metric_history) for rule in rules)
+
+
+@dataclass(frozen=True)
+class ObservationSet:
+    """A thesis's metric_observations, split by trust.
+
+    verified_history feeds evaluate_rules exactly like a normal
+    metric_history. pending entries never do -- a hand-entered number the
+    user has not confirmed must not be able to trigger REDUCE/EXIT on a real
+    position, only surface as "go check this" (see TRUSTED_STATUS docstring
+    above). pending_by_metric exists so the indicator can name which metric
+    needs attention rather than just a bare count.
+    """
+
+    verified_history: dict[str, list[float]] = field(default_factory=dict)
+    pending_by_metric: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def pending_count(self) -> int:
+        return sum(self.pending_by_metric.values())
+
+
+def split_observations(metric_observations: Mapping[str, Any]) -> ObservationSet:
+    """Partition {metric: [{value, status, ...}, ...]} into trusted vs pending.
+
+    Chronological order within each metric's list is preserved for the
+    verified series, since evaluate_rule's consecutive_periods window reads
+    the *last* N entries -- reordering here would silently change which
+    periods a rule is judging.
+    """
+    verified: dict[str, list[float]] = {}
+    pending: dict[str, int] = {}
+    for metric, entries in (metric_observations or {}).items():
+        if not isinstance(entries, Sequence) or isinstance(entries, (str, bytes)):
+            continue
+        for entry in entries:
+            if not isinstance(entry, Mapping):
+                continue
+            value = entry.get("value")
+            try:
+                numeric = float(value) if value is not None else None
+            except (TypeError, ValueError):
+                numeric = None
+            if numeric is None or not math.isfinite(numeric):
+                continue
+            if str(entry.get("status") or "").strip().lower() == TRUSTED_STATUS:
+                verified.setdefault(metric, []).append(numeric)
+            else:
+                pending[metric] = pending.get(metric, 0) + 1
+    return ObservationSet(verified, pending)
+
+
+def thesis_state_for_ticker(
+    chain_path: str | Path,
+    ticker: str,
+    *,
+    portfolio_or_option_limit_breached: bool = False,
+) -> dict[str, Any] | None:
+    """Current monitoring state for a ticker's latest thesis, or None if it
+    has no case on file.
+
+    Wires three pieces that already exist and work on their own --
+    mispricing_store.latest_case_for, split_observations, evaluate_rules,
+    route_case_state -- so a position screen can ask "is this thesis still
+    holding up" without re-implementing any of the trigger logic.
+    """
+    case = latest_case_for(chain_path, ticker)
+    if case is None:
+        return None
+
+    observations = split_observations(case.get("metric_observations") or {})
+    rules = case.get("monitor_rules") or []
+    trigger_results = evaluate_rules(rules, observations.verified_history)
+    case_state = route_case_state(
+        trigger_results,
+        portfolio_or_option_limit_breached=portfolio_or_option_limit_breached,
+    )
+
+    return {
+        "case_id": case.get("case_id"),
+        "ticker": case.get("ticker"),
+        "primary_path": case.get("opportunity_routing", {}).get("primary_path"),
+        "case_state": case_state.value,
+        "triggered_rules": [r for r in trigger_results if r.triggered],
+        "pending_observation_count": observations.pending_count,
+        "pending_by_metric": dict(observations.pending_by_metric),
+        "next_validation_date": case.get("decision", {}).get("next_review_date"),
+    }
 
 
 def route_case_state(

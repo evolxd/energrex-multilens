@@ -16,6 +16,7 @@ ROOT = pathlib.Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from _sidebar import render  # noqa: E402
+from scoring.mispricing_monitor import thesis_state_for_ticker  # noqa: E402
 from scoring.mispricing_store import append_snapshot, read_chain, verify_chain  # noqa: E402
 from scoring.position_exposure import (  # noqa: E402
     UNCLASSIFIED,
@@ -40,6 +41,14 @@ st.set_page_config(page_title="ENERGREX 仓位管理", page_icon="⚖️", layou
 render()
 
 LIMITS_LOG = ROOT / "data" / "position_limits.jsonl"
+MISPRICING_LOG = ROOT / "data" / "mispricing_cases.jsonl"
+
+# route_case_state's non-neutral outcomes, split into the same two severities
+# the hard-constraint alerts above already use. HOLD and ADD_IF_PREAUTHORIZED
+# are deliberately absent: both mean the thesis is intact under price-only
+# opposition, which is not something to alert on.
+_THESIS_SEVERE = {"EXIT", "REDUCE", "RISK_REDUCTION_REQUIRED"}
+_THESIS_WATCH = {"REVIEW_REQUIRED", "FREEZE_ADDS", "REVALUE", "REUNDERWRITE"}
 
 st.title("⚖️ 仓位管理")
 st.caption(
@@ -206,6 +215,58 @@ else:
             f"**逼近 · {item['label']}**{detail}：当前 {item['reading']:.1f}%，"
             f"限额 {item['limit']:.1f}%。"
         )
+
+
+# ── 持仓论点监控 ─────────────────────────────────────────────────────
+# Only tickers that already have a mispricing case on file (authored via the
+# 误价研究 page) show up here -- most held tickers will not, and that is
+# expected, not an error. A thesis breaching a hard limit above is passed in
+# so route_case_state's RISK_REDUCTION_REQUIRED override applies even when
+# the metric-level monitor_rules alone would read as clean.
+st.subheader("持仓论点监控")
+
+if exposures is None or not exposures.by_ticker_pct:
+    st.caption("无持仓数据，无法评估。")
+else:
+    breached_tickers = {
+        item["detail"]
+        for item in breaches(exposures, current_limits)
+        if item["key"] == "single_stock_max" and item["detail"]
+    }
+    thesis_rows = []
+    for ticker in sorted(exposures.by_ticker_pct):
+        state = thesis_state_for_ticker(
+            MISPRICING_LOG,
+            ticker,
+            portfolio_or_option_limit_breached=ticker in breached_tickers,
+        )
+        if state is not None:
+            thesis_rows.append(state)
+
+    if not thesis_rows:
+        st.caption("持仓里没有票在「误价研究」页建过案例，无可监控的论点。")
+    else:
+        for state in thesis_rows:
+            case_state = state["case_state"]
+            label = f"**{state['ticker']}** · {case_state}"
+            rule_text = "；".join(
+                f"{r.rule_id}: {r.reason}" for r in state["triggered_rules"]
+            )
+            if case_state in _THESIS_SEVERE:
+                st.error(f"{label}｜{rule_text}" if rule_text else label)
+            elif case_state in _THESIS_WATCH:
+                st.warning(f"{label}｜{rule_text}" if rule_text else label)
+            else:
+                st.success(label)
+            if state["pending_observation_count"]:
+                pending_text = "、".join(
+                    f"{metric}×{count}"
+                    for metric, count in state["pending_by_metric"].items()
+                )
+                st.info(
+                    f"　↳ {state['ticker']} 有 {state['pending_observation_count']} "
+                    f"项观测值待核对（{pending_text}），核对前不计入触发判断。"
+                )
 
 
 # ── 变更审核 ────────────────────────────────────────────────────────
