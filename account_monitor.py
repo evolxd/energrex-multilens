@@ -572,6 +572,21 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     if equity <= 0:
         return {"error": "no_equity"}
 
+    # ── 数据新鲜度：持仓/余额距上次同步已经过多久 ──────────────────────
+    # 压力测试直接读 DB 里的持仓快照，同步越旧，risk_status 就越可能是
+    # 基于一个已经不存在的持仓组合算出来的——静默沿用会把"两天前的安全"
+    # 显示成"现在安全"，所以这里算出年龄，交给上层判断要不要标红。
+    _sync_raw = bal.get("sync_time")
+    data_age_hours = None
+    try:
+        _sync_dt = datetime.datetime.fromisoformat(str(_sync_raw))
+        _now_dt  = datetime.datetime.now(_sync_dt.tzinfo) if _sync_dt.tzinfo else datetime.datetime.now()
+        data_age_hours = (_now_dt - _sync_dt).total_seconds() / 3600.0
+    except Exception:
+        pass
+    _STALE_HOURS = 24.0
+    data_stale = bool(data_age_hours is not None and data_age_hours > _STALE_HOURS)
+
     conn = _db()
 
     # ── TWR-based drawdown（排除出入金）──────────────────────────────
@@ -614,13 +629,17 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         (acct_id,)).fetchall()
     conn.close()
 
-    # Collect underlyings for option stress test
+    # Collect underlyings for option stress test, plus stock symbols themselves
+    # so both legs shock off the same live quote instead of stocks using the
+    # (possibly stale) DB market_value snapshot while options use a fresh price.
     underlyings = set()
     for o in opts:
         mo = _OCC_RE.match((o["symbol"] or "").upper())
         if mo:
             underlyings.add(mo.group(1))
-    und_prices = _fetch_underlying_prices(tuple(sorted(underlyings))) if underlyings else {}
+    stock_syms = {str(s["symbol"] or "").upper() for s in stks if s["symbol"]}
+    _price_lookup_syms = underlyings | stock_syms
+    und_prices = _fetch_underlying_prices(tuple(sorted(_price_lookup_syms))) if _price_lookup_syms else {}
     _iv_map    = _get_atm_iv_batch(tuple(sorted(underlyings))) if underlyings else {}
     _today     = datetime.date.today()
 
@@ -632,6 +651,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     gamma_tot   = 0.0
     stress_10   = 0.0
     stress_20   = 0.0
+    iv_fallback_syms = set()   # 走了默认 IV(0.30) 兜底的标的，用于在快照里留痕
     nearest_expiry_date = None
     nearest_expiry_sym  = ""
 
@@ -639,7 +659,11 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         sym = str(s["symbol"] or "").upper()
         q   = float(s["quantity"] or 0)
         mv  = float(s["market_value"] or 0)
-        s_price = mv / q if q else 0.0
+        db_price   = mv / q if q else 0.0
+        live_price = und_prices.get(sym)
+        # 压力测试的冲击基准价优先用实时报价（跟期权腿的标的价保持同一时间切片）；
+        # 实时报价缺失（比如网络失败）时才退回 DB 里上次同步的市值反推价。
+        s_price = live_price if live_price else db_price
         b = _BETA_BASE.get(sym, 1.0)   # 用硬编码保守值，不受 yfinance 刷新影响
         gross      += abs(mv)
         delta_notl += abs(mv)           # 股票 delta=1
@@ -666,7 +690,11 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
             _K = float(o["strike"] or 0) or float(mo.group(6)) / 1000.0
             _opt_type = "call" if mo.group(5) == "C" else "put"
             _iv_entry = _iv_map.get(und)
-            _iv = _iv_entry["iv"] if _iv_entry else 0.30
+            if _iv_entry:
+                _iv = _iv_entry["iv"]
+            else:
+                _iv = 0.30   # MarketData.app / yfinance 均未取到 IV 时的兜底默认值
+                iv_fallback_syms.add(und)   # 留痕：这个标的的 Vega 冲击是用假设值算的，不是真实 IV
             try:
                 _exp_date = datetime.date.fromisoformat(str(o["expiry"]))
             except Exception:
@@ -751,6 +779,10 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         "nearest_expiry_sym":  nearest_expiry_sym,
         "risk_status":         risk_status,
         "drawdown_status":     dd_status,
+        "data_synced_at":      _sync_raw,
+        "data_age_hours":      round(data_age_hours, 1) if data_age_hours is not None else None,
+        "data_stale":          data_stale,
+        "iv_fallback_symbols": sorted(iv_fallback_syms),
     }
 
 
@@ -3077,6 +3109,16 @@ def _refresh_stock_prices(acct_id: str) -> dict:
     updated = 0
     failed  = []
     conn    = _db()
+    # One timestamp for the whole batch, not one per row: readers across the
+    # app (pages/5, home.py, account.repository.load_positions) all fetch
+    # "the positions as of the latest sync_time" by matching that single
+    # value exactly. A fresh datetime.now() per iteration here gave every
+    # stock its own microsecond-distinct sync_time, so that exact-match read
+    # only ever returned the one row updated last -- every other stock
+    # silently vanished from every exposure/dashboard calculation that reads
+    # this table, with no error anywhere (2026-08-27, found while auditing
+    # today's real portfolio).
+    now = datetime.datetime.now(_ET).isoformat()
     for sym in syms:
         try:
             px = tickers.tickers[sym].fast_info["lastPrice"]
@@ -3092,8 +3134,7 @@ def _refresh_stock_prices(acct_id: str) -> dict:
                 SET current_price=?, market_value=?, unrealized_pnl=?,
                     unrealized_pnl_pct=?, sync_time=?
                 WHERE account_id=? AND symbol=? AND position_type='stock'
-            """, (round(px, 4), mv, pnl, pnl_pct,
-                  datetime.datetime.now(_ET).isoformat(), acct_id, sym))
+            """, (round(px, 4), mv, pnl, pnl_pct, now, acct_id, sym))
             updated += 1
         except Exception:
             failed.append(sym)
@@ -4563,6 +4604,17 @@ if abs(_bdr_now) > _RISK_LIMITS["max_beta_delta_ratio"] * 100:
     st.warning(f"🟠 **Beta-Delta {_bdr_now:.1f}%** 超过限额 "
                f"{_RISK_LIMITS['max_beta_delta_ratio']*100:.0f}%，建议执行对冲")
 
+# 数据陈旧警告 —— 压力测试是基于 DB 里最后一次同步的持仓算的，
+# 同步太旧时上面那行"🟢 风险正常"可能只是两天前的持仓组合是安全的
+if _war_snap.get("data_stale"):
+    _age_h = _war_snap.get("data_age_hours") or 0
+    st.error(f"🔴 **持仓数据已 {_age_h/24:.1f} 天未同步** — 上面的压力测试结果基于旧持仓组合，"
+             f"如果这期间有调仓，当前数字不代表真实风险，请先同步最新持仓再参考")
+_iv_fb_now = _war_snap.get("iv_fallback_symbols") or []
+if _iv_fb_now:
+    st.caption(f"⚠️ {'、'.join(_iv_fb_now)} 未取到实时 IV，压力测试对其使用了默认值 30%，"
+               f"实际 Vega 冲击可能被低估或高估")
+
 # ── B. 卖Call触发提醒（实时）────────────────────────────
 with st.spinner("检查 Long Call 触发条件…"):
     _call_triggers = _check_sell_call_triggers(_war_acct_id)
@@ -5102,6 +5154,18 @@ with _pos_tabs[0]:
         if "error" in _snap:
             st.info("暂无账户净值数据，请先完成同步。")
         else:
+            # 数据陈旧警告 —— 放在最前面，比 IV 告警更优先，因为它决定了
+            # 下面所有数字（包括压力-10%/-20%）是否还对应真实持仓
+            if _snap.get("data_stale"):
+                _age_h = _snap.get("data_age_hours") or 0
+                st.error(f"🔴 **持仓数据已 {_age_h/24:.1f} 天未同步**（上次同步：{_snap.get('data_synced_at') or '未知'}）"
+                         f"— 下面的压力测试等指标基于旧持仓组合计算，如果这期间有调仓，"
+                         f"当前数字不代表真实风险，请先同步最新持仓")
+            _iv_fb = _snap.get("iv_fallback_symbols") or []
+            if _iv_fb:
+                st.caption(f"⚠️ {'、'.join(_iv_fb)} 未取到实时 IV，压力测试对其使用了默认值 30%，"
+                           f"实际 Vega 冲击可能被低估或高估")
+
             # IV alert check — runs first so alerts appear at top
             _iv_data = _fetch_iv_monitor_batch(_IV_WATCH_SYMS)
             _iv_hot  = [(s, d["ivr"]) for s, d in _iv_data.items()

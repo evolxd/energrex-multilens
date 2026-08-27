@@ -135,18 +135,28 @@ def load_latest_balance(acct_id: str) -> dict:
 
 
 def load_positions(acct_id: str) -> pd.DataFrame:
+    """Each symbol's own latest row -- not "every row sharing the single
+    latest sync_time" (2026-08-27 bug fix). _refresh_stock_prices() used to
+    stamp each stock with its own datetime.now() inside a per-symbol loop,
+    so a global exact-match on sync_time only ever returned whichever stock
+    happened to update last; every other holding silently disappeared from
+    this and everything downstream of it. That write bug is fixed too, but
+    this read is now robust to it regardless -- it never again requires
+    every row to share one exact timestamp for a holding to be found.
+    """
     conn = db()
-    latest = conn.execute(
-        "SELECT sync_time FROM positions WHERE account_id=? ORDER BY sync_time DESC LIMIT 1",
-        (acct_id,),
-    ).fetchone()
-    if not latest:
-        conn.close()
-        return pd.DataFrame()
     df = pd.read_sql_query(
-        "SELECT * FROM positions WHERE account_id=? AND sync_time=? ORDER BY market_value DESC",
+        """
+        SELECT * FROM positions p1
+        WHERE p1.account_id = ?
+          AND p1.sync_time = (
+              SELECT MAX(p2.sync_time) FROM positions p2
+              WHERE p2.account_id = p1.account_id AND p2.symbol = p1.symbol
+          )
+        ORDER BY market_value DESC
+        """,
         conn,
-        params=(acct_id, latest[0]),
+        params=(acct_id,),
     )
     conn.close()
     return df

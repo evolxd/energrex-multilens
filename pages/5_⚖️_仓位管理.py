@@ -77,15 +77,26 @@ def _load_portfolio():
 
         conn = db()
         latest = conn.execute(
-            "SELECT sync_time FROM positions ORDER BY sync_time DESC LIMIT 1"
+            "SELECT MAX(sync_time) FROM positions"
         ).fetchone()
         sync_time = latest[0] if latest else None
+        # Latest row per symbol, not "every row sharing one exact global
+        # sync_time" -- _refresh_stock_prices() used to stamp each stock
+        # with its own datetime.now() one at a time, so the old exact-match
+        # query silently returned only whichever stock happened to update
+        # last (2026-08-27 bug fix; see account/repository.py::load_positions
+        # for the full story).
         rows = (
             [
                 dict(r)
                 for r in conn.execute(
-                    "SELECT symbol, market_value FROM positions WHERE sync_time=?",
-                    (sync_time,),
+                    """
+                    SELECT symbol, market_value FROM positions p1
+                    WHERE p1.sync_time = (
+                        SELECT MAX(p2.sync_time) FROM positions p2
+                        WHERE p2.symbol = p1.symbol
+                    )
+                    """
                 )
             ]
             if sync_time

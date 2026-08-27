@@ -124,16 +124,22 @@ def _load_thesis_alerts() -> list[dict]:
         from account.db import db
 
         conn = db()
-        latest = conn.execute(
-            "SELECT sync_time FROM positions ORDER BY sync_time DESC LIMIT 1"
-        ).fetchone()
+        latest = conn.execute("SELECT MAX(sync_time) FROM positions").fetchone()
         sync_time = latest[0] if latest else None
+        # Latest row per symbol, not "every row sharing one exact global
+        # sync_time" -- see account/repository.py::load_positions for why
+        # the old exact-match query used to silently drop most holdings.
         rows = (
             [
                 dict(r)
                 for r in conn.execute(
-                    "SELECT symbol, market_value FROM positions WHERE sync_time=?",
-                    (sync_time,),
+                    """
+                    SELECT symbol, market_value FROM positions p1
+                    WHERE p1.sync_time = (
+                        SELECT MAX(p2.sync_time) FROM positions p2
+                        WHERE p2.symbol = p1.symbol
+                    )
+                    """
                 )
             ]
             if sync_time

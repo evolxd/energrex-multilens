@@ -37,13 +37,19 @@ LOOKBACK = "2y"
 
 def _load_current_exposures():
     conn = db()
-    sync_time = conn.execute(
-        "SELECT sync_time FROM positions ORDER BY sync_time DESC LIMIT 1"
-    ).fetchone()
+    sync_time = conn.execute("SELECT MAX(sync_time) FROM positions").fetchone()
     sync_time = sync_time[0] if sync_time else None
+    # Latest row per symbol -- see account/repository.py::load_positions for
+    # why an exact match on a single global sync_time silently drops rows.
     positions = (
         [dict(r) for r in conn.execute(
-            "SELECT symbol, market_value FROM positions WHERE sync_time=?", (sync_time,)
+            """
+            SELECT symbol, market_value FROM positions p1
+            WHERE p1.sync_time = (
+                SELECT MAX(p2.sync_time) FROM positions p2
+                WHERE p2.symbol = p1.symbol
+            )
+            """
         )] if sync_time else []
     )
     options = [dict(r) for r in conn.execute("SELECT symbol, market_value FROM options_positions")]
