@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-08-27 01:21:28",
+  "current_weights_pct_excl_qqq": {
+    "VST": 3.292801764856037,
+    "ARM": 5.4266714613909794,
+    "FCX": 2.8938366054842453,
+    "FUTU": 6.404869750568752,
+    "MU": 26.65008077123016,
+    "NVDA": 3.202434875284376,
+    "PLTR": 8.489363723935673,
+    "SNDK": 9.723756803136197
+  },
+  "cash_pct": 44.48,
+  "note": "线性近似，未对期权非线性payoff建模——见本文件docstring局限2。",
+  "windows": {
+    "2022_rate_hike_bear": {
+      "covered_tickers": {
+        "FCX": -0.4602,
+        "FUTU": -0.3807,
+        "MU": -0.4556,
+        "NVDA": -0.627,
+        "PLTR": -0.5936,
+        "VST": -0.206
+      },
+      "missing_tickers_no_history": [
+        "ARM",
+        "SNDK"
+      ],
+      "missing_weight_pct": 15.15,
+      "portfolio_drawdown_estimate": -0.4641,
+      "covered_weight_pct": 50.93
+    },
+    "2020_covid_crash": {
+      "covered_tickers": {
+        "FCX": -0.5545,
+        "FUTU": -0.3781,
+        "MU": -0.3624,
+        "NVDA": -0.3237,
+        "VST": -0.4437
+      },
+      "missing_tickers_no_history": [
+        "ARM",
+        "PLTR",
+        "SNDK"
+      ],
+      "missing_weight_pct": 23.64,
+      "portfolio_drawdown_estimate": -0.3813,
+      "covered_weight_pct": 42.44
+    },
+    "2018_q4_selloff": {
+      "covered_tickers": {
+        "FCX": -0.2963,
+        "MU": -0.3658,
+        "NVDA": -0.5604,
+        "VST": -0.1729
+      },
+      "missing_tickers_no_history": [
+        "ARM",
+        "FUTU",
+        "PLTR",
+        "SNDK"
+      ],
+      "missing_weight_pct": 30.04,
+      "portfolio_drawdown_estimate": -0.3599,
+      "covered_weight_pct": 36.04
+    }
+  }
+}
