@@ -1,0 +1,801 @@
+<title>ENERGREX 管线图</title>
+<!--
+  维护说明（给未来的我，或任何打开这份源码的人）：
+
+  这份文件不是自动生成的，是每次有真实架构改动之后手动核实+编辑的。它不会
+  自己保持准确——上一次让它准确的动作是"读代码、grep、跑测试"，不是"相信
+  上一版写的内容"。下次要更新时：
+
+  1. 顶部 L0-L8 的管线图（.schematic 里那些 <div class="layer">）是"当前状态
+     快照"——直接在原位置改，不保留旧版本的描述。改之前重新核实一遍相关代码/
+     import关系/进程状态，不要照抄上一版。
+  2. 底部"架构诊断"区（.actions 列表）是"变更记录"——新的一轮问题/手术往后
+     追加新条目（数字继续往下编号），不要覆盖或删除已完成的旧条目，带上
+     commit 哈希。这部分应该只增不改，像 CHANGELOG 一样。
+  3. 改完之后：同步更新顶部 hero 里的日期和"这版更新了什么"那段。
+  4. 这份文件本身也应该被 git commit——它是仓库的一部分，不是聊天记录的
+     副产品。
+  5. 如果想要在 claude.ai 上有个好看的可分享版本，用 Artifact 工具重新发布
+     这个文件（同一个 file_path 会更新回同一个链接）；但仓库里这份才是权威
+     版本，Artifact 链接不会自动跟着这个文件变。
+-->
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --surface-2: #eef2f7;
+    --border: #dce3ec;
+    --text: #14202e;
+    --muted: #5b6b80;
+    --muted-2: #7c8ba0;
+    --run: #0a9e80;
+    --run-bg: #e3f6f0;
+    --warn: #b8790a;
+    --warn-bg: #fbf0dd;
+    --legacy: #d6335a;
+    --legacy-bg: #fbe4ea;
+    --doc: #1379b0;
+    --doc-bg: #e2f1fa;
+    --done: #6a56c9;
+    --done-bg: #ece8fa;
+    --rail: #c4cfdc;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #0b1420;
+      --surface: #101c2a;
+      --surface-2: #16243444;
+      --border: #22334a;
+      --text: #e7edf5;
+      --muted: #8ca0b8;
+      --muted-2: #6d829c;
+      --run: #14d6ac;
+      --run-bg: #0e2b26;
+      --warn: #ffb454;
+      --warn-bg: #2e2410;
+      --legacy: #ff6b8b;
+      --legacy-bg: #2c1420;
+      --doc: #5cc3f7;
+      --doc-bg: #10222c;
+      --done: #b3a4ff;
+      --done-bg: #201c3a;
+      --rail: #2a3b52;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0b1420;
+    --surface: #101c2a;
+    --surface-2: #16243444;
+    --border: #22334a;
+    --text: #e7edf5;
+    --muted: #8ca0b8;
+    --muted-2: #6d829c;
+    --run: #14d6ac;
+    --run-bg: #0e2b26;
+    --warn: #ffb454;
+    --warn-bg: #2e2410;
+    --legacy: #ff6b8b;
+    --legacy-bg: #2c1420;
+    --doc: #5cc3f7;
+    --doc-bg: #10222c;
+    --done: #b3a4ff;
+    --done-bg: #201c3a;
+    --rail: #2a3b52;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+  }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 48px 28px 96px;
+  }
+
+  header.hero {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+  }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 700;
+    margin: 0;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+
+  .lede {
+    max-width: 68ch;
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  code.inline {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  /* Legend / filter bar */
+  .legend {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 14px 0;
+    margin: 8px 0 36px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    color: var(--text);
+    transition: opacity 0.15s, border-color 0.15s, transform 0.1s;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--muted-2); }
+  .chip:active { transform: scale(0.97); }
+  .chip.off { opacity: 0.35; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .chip.reset { color: var(--muted); border-style: dashed; }
+
+  .dot.run { background: var(--run); }
+  .dot.warn { background: var(--warn); }
+  .dot.legacy { background: var(--legacy); }
+  .dot.doc { background: var(--doc); }
+  .dot.done { background: var(--done); }
+
+  /* Layer schematic */
+  .schematic {
+    position: relative;
+    padding-left: 26px;
+  }
+  .schematic::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    background: var(--rail);
+  }
+
+  .layer {
+    position: relative;
+    padding-bottom: 44px;
+  }
+  .layer::before {
+    content: "";
+    position: absolute;
+    left: -26px;
+    top: 6px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--rail);
+  }
+
+  .layer-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .layer-tag {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted-2);
+    letter-spacing: 0.06em;
+  }
+
+  .layer h2 {
+    font-size: 19px;
+    margin: 0;
+    font-weight: 700;
+  }
+
+  .layer-note {
+    color: var(--muted);
+    font-size: 14.5px;
+    max-width: 74ch;
+    margin: 4px 0 16px;
+  }
+
+  .callout {
+    font-size: 13.5px;
+    border-radius: 8px;
+    padding: 9px 13px;
+    margin: 10px 0 16px;
+    max-width: 74ch;
+    border: 1px solid transparent;
+  }
+  .callout.warn { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 35%, transparent); color: var(--text); }
+  .callout.legacy { background: var(--legacy-bg); border-color: color-mix(in srgb, var(--legacy) 35%, transparent); color: var(--text); }
+  .callout.done { background: var(--done-bg); border-color: color-mix(in srgb, var(--done) 35%, transparent); color: var(--text); }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--rail);
+    border-radius: 8px;
+    padding: 11px 13px;
+    transition: opacity 0.2s, border-color 0.2s;
+  }
+  .card.run { border-left-color: var(--run); }
+  .card.warn { border-left-color: var(--warn); }
+  .card.legacy { border-left-color: var(--legacy); }
+  .card.doc { border-left-color: var(--doc); }
+  .card.done { border-left-color: var(--done); }
+  .card.dim { opacity: 0.22; }
+
+  .card .name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    display: block;
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+  .card .desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .card-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.9;
+  }
+  .card-list .name { font-family: var(--mono); color: var(--text); font-size: 13px; }
+
+  /* Action list */
+  .actions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .actions li {
+    display: flex;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .actions .num {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted-2);
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .actions .body b { display: block; margin-bottom: 3px; }
+  .actions .body span { color: var(--muted); font-size: 14px; }
+
+  /* VS Code section */
+  .vscode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .vscode-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .vscode-card h3 {
+    font-size: 14.5px;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .vscode-card p {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .kbd {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+
+  section.block { margin: 56px 0; }
+  section.block h2.section-title {
+    font-size: 22px;
+    margin: 0 0 8px;
+  }
+  section.block .section-sub {
+    color: var(--muted);
+    font-size: 14.5px;
+    margin: 0 0 22px;
+    max-width: 74ch;
+  }
+
+  footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted-2);
+    font-size: 12.5px;
+    font-family: var(--mono);
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 32px 16px 72px; }
+    .schematic { padding-left: 20px; }
+    .layer::before { left: -20px; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">ai_valuation / ENERGREX — 代码实测生成，非文档转抄 · 2026-08-27 二次核实更新</div>
+    <h1>你铺的这些管线，实际长这样</h1>
+    <p class="lede">
+      这张图不是根据仓库里的 <code class="inline">CLAUDE.md</code> 画的——那份文档还停在"4个页面、10只股票 mock"的旧版本，早就跟不上代码了。
+      下面每一块都是<strong>直接读代码、读配置、读端口占用</strong>核实过的：谁 import 谁、哪条路径真的在跑、哪条是搭好没打开的备用管道。
+      点下面的状态标签可以过滤，先看清楚哪些是真水管，哪些可能该拆。
+    </p>
+    <p class="lede" style="margin-top:-6px;">
+      <span style="color:var(--done);font-weight:600;">这版更新了什么：</span>
+      首版发布后，图里标出的 7 个问题全部动过手术并跑了测试验证——标紫色 ✓ 的都是"以前是问题，现在已解决"，不是一直健康。
+    </p>
+  </header>
+
+  <div class="legend" id="legend">
+    <div class="chip reset" data-filter="all">○ 显示全部</div>
+    <div class="chip" data-filter="run"><span class="dot run"></span>核心在跑</div>
+    <div class="chip" data-filter="warn"><span class="dot warn"></span>搭好但没启用</div>
+    <div class="chip" data-filter="legacy"><span class="dot legacy"></span>历史遗留 / 值得清理</div>
+    <div class="chip" data-filter="doc"><span class="dot doc"></span>规范文档（非代码）</div>
+    <div class="chip" data-filter="done"><span class="dot done"></span>✓ 已解决</div>
+  </div>
+
+  <div class="schematic" id="schematic">
+
+    <!-- LAYER 0 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L0 · 接口</span>
+        <h2>你和系统之间</h2>
+      </div>
+      <p class="layer-note">这两条是你（和我）实际摸到这套系统的入口，其余所有层都是它们背后的东西。</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run">
+          <span class="name">.vscode/</span>
+          <div class="desc">已经配好的工作区：任务面板（一键启动/刷新/测试）、pytest 测试目录、Python 路径提示、推荐插件清单。打开仓库根目录就是完整工作区，不用重新配置。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">.mcp.json → scoring/mcp_server.py</span>
+          <div class="desc">Claude Code 专用的接口：把"查某只股票评分 / 拿完整估值报告 / 列出股票池"包装成 3 个可调用工具。这就是我不用打开 CSV 也能直接答你问题的原因。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAYER 1 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L1 · 入口与界面</span>
+        <h2>Streamlit 应用（1 个进程，5 个页面）</h2>
+      </div>
+      <p class="layer-note">真正的启动命令是 <code class="inline">streamlit run home.py</code>——不是 app.py。5 个页面在同一个进程里，靠左侧导航切换，不需要分别启动。</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run">
+          <span class="name">home.py</span>
+          <div class="desc">真正的启动入口，"作战室"主页。直接读 account 的 SQLite 和当日评分，拼一份开盘前简报；现在还新增了"持仓论点监控"区块，live 汇总持仓里 SEVERE/WATCH 状态的误价论点。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">_sidebar.py</span>
+          <div class="desc">各页面共用的导航条组件。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">pages/1_AI_估值评分.py</span>
+          <div class="desc">只有 12 行——把根目录 app.py（3788 行）整段读进来执行。app.py 不是废弃文件，是被这层壳"借运行"。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">pages/2_期权分析.py</span>
+          <div class="desc">期权持仓分析，读 account/ 记账层的数据。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">pages/3_账户监控.py</span>
+          <div class="desc">账户总览：净值、现金、风险状态条。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">pages/4_误价研究.py</span>
+          <div class="desc">给个股建"误价案例"的地方，会调用 L2 的统一估值证据流水线去抓多源数据。</div>
+        </div>
+        <div class="card run" data-status="run">
+          <span class="name">pages/5_仓位管理.py</span>
+          <div class="desc">硬约束看板 + 持仓论点监控。</div>
+        </div>
+      </div>
+      <div class="callout done">
+        ✓ <b>已解决</b>：5_仓位管理.py 曾经没被写进 _sidebar.py 的导航条——页面本身能打开，但从应用自己的侧边栏点不到。现在 <code class="inline">_sidebar.py</code> 和 <code class="inline">home.py</code> 首页快捷入口都补上了这一条，两处导航都能点到。
+      </div>
+    </div>
+
+    <!-- LAYER 2 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L2 · 核心引擎</span>
+        <h2>scoring/（五个子群，全部在跑）</h2>
+      </div>
+      <p class="layer-note">这是整个系统真正的大脑，一共 30 多个文件，按职责分五群。所有 L1 页面最终都在调这里的函数。</p>
+
+      <p style="font-size:13.5px;color:var(--muted);margin:18px 0 8px;font-family:var(--mono);letter-spacing:.03em;">A · 估值打分</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">scoring_engine.py</span><div class="desc">核心评分公式 + 各类型公司权重表 WEIGHT_CONFIG。</div></div>
+        <div class="card run" data-status="run"><span class="name">decision_policy.py</span><div class="desc">把分数换算成"买/持/卖"的规则，防止分数被当交易信号直接用。</div></div>
+        <div class="card run" data-status="run"><span class="name">kelly_position.py 家族</span><div class="desc">建议仓位比例算法（含回测、快照日志）。</div></div>
+        <div class="card run" data-status="run"><span class="name">investor_lenses.py</span><div class="desc">同一只股票换几个投资大师视角点评。</div></div>
+        <div class="card run" data-status="run"><span class="name">drift_detector.py</span><div class="desc">季度基准数据漂移自动检测。</div></div>
+        <div class="card run" data-status="run"><span class="name">universe.py</span><div class="desc">当前覆盖的股票池定义。</div></div>
+      </div>
+
+      <p style="font-size:13.5px;color:var(--muted);margin:22px 0 8px;font-family:var(--mono);letter-spacing:.03em;">B · 数据获取</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">yfinance_fetcher.py</span><div class="desc">实时行情。</div></div>
+        <div class="card run" data-status="run"><span class="name">polygon_fetcher.py / marketdata_fetcher.py</span><div class="desc">备用/补充行情源。</div></div>
+        <div class="card run" data-status="run"><span class="name">edgar_fetcher.py</span><div class="desc">SEC 10-Q/8-K 里自动抓 AI 暴露字段，每周刷新一次。</div></div>
+        <div class="card run" data-status="run"><span class="name">fx_normalize.py</span><div class="desc">汇率统一换算。</div></div>
+        <div class="card run" data-status="run"><span class="name">db_client.py</span><div class="desc">Streamlit 一侧访问数据库的唯一入口——见下方 L4。现在会在进程第一次调用时打一行日志说明当前数据源，不再是完全静默的分支。</div></div>
+      </div>
+
+      <p style="font-size:13.5px;color:var(--muted);margin:22px 0 8px;font-family:var(--mono);letter-spacing:.03em;">F · 信任与证据（这版新收敛的一处）</p>
+      <div class="card-grid">
+        <div class="card done" data-status="done"><span class="name">evidence.py</span><div class="desc">✓ 新建。把"这个手填数值有多可信"的最窄判断（status=="verified" 且数值有限）收成一个共享原语，input_verification.py 和 mispricing_monitor.py 都从这里导入，不再各写一份。</div></div>
+        <div class="card run" data-status="run"><span class="name">input_verification.py</span><div class="desc">AI估值评分页人工覆盖值的两道闸门：宽松的生产评分闸门 + 严格的UI徽章闸门（对95条历史遗留数据留了豁免）。这道严格闸门刻意没被收进 evidence.py，避免误伤那95条老数据的评分权重。</div></div>
+      </div>
+
+      <p style="font-size:13.5px;color:var(--muted);margin:22px 0 8px;font-family:var(--mono);letter-spacing:.03em;">C · 误价发现引擎</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">mispricing_engine.py</span><div class="desc">核心结构：六道验证闸门、六条"为什么便宜"的路径分类。</div></div>
+        <div class="card run" data-status="run"><span class="name">mispricing_monitor.py + mispricing_store.py</span><div class="desc">执行期监控规则 + 哈希链存储。thesis_state_for_ticker 把持仓和案例连起来；SEVERE_STATES/WATCH_STATES 是这两个状态分类的唯一定义处，仓位管理页和作战室首页都从这里导入，不再各写一份。</div></div>
+        <div class="card run" data-status="run"><span class="name">basis_check.py</span><div class="desc">检测同一字段在不同地方的数字是否互相矛盾。</div></div>
+        <div class="card run" data-status="run"><span class="name">mispricing_adapters.py / mispricing_evidence.py</span><div class="desc">证据格式转换与整理。</div></div>
+      </div>
+
+      <p style="font-size:13.5px;color:var(--muted);margin:22px 0 8px;font-family:var(--mono);letter-spacing:.03em;">D · 统一估值证据流水线（较新，被"误价研究"页调用）</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">unified_valuation.py</span><div class="desc">编排入口 run_unified_valuation，被 pages/4 直接调用。</div></div>
+        <div class="card run" data-status="run"><span class="name">valuation_evidence_pipeline.py</span><div class="desc">多数据源证据收集流程。</div></div>
+        <div class="card run" data-status="run"><span class="name">source_navigator.py</span><div class="desc">告诉界面"这个字段该去哪里人工核实"。</div></div>
+        <div class="card run" data-status="run"><span class="name">sec_fundamental_evidence.py / valuation_source_adapters.py</span><div class="desc">SEC 基本面证据抓取与多源适配。</div></div>
+      </div>
+
+      <p style="font-size:13.5px;color:var(--muted);margin:22px 0 8px;font-family:var(--mono);letter-spacing:.03em;">E · 仓位与风控</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">position_exposure.py</span><div class="desc">持仓敞口计算，期权按标的净额折算进股票敞口。</div></div>
+        <div class="card run" data-status="run"><span class="name">position_limits.py</span><div class="desc">硬约束治理：收紧立即生效，放宽要过 5 道门槛。</div></div>
+      </div>
+    </div>
+
+    <!-- LAYER 3 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L3 · 账本真相层</span>
+        <h2>account/（独立的 SQLite 数据库）</h2>
+      </div>
+      <p class="layer-note">和 L2 的评分数据是两回事——这里存的是"你实际持有什么、成本多少"，被账户监控 / 期权分析 / 仓位管理三个页面共用。</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">db.py</span><div class="desc">连接层，指向 <code class="inline">data/energrex.db</code>。</div></div>
+        <div class="card run" data-status="run"><span class="name">fifo.py</span><div class="desc">先进先出成本计算。</div></div>
+        <div class="card run" data-status="run"><span class="name">options.py / options_repository.py</span><div class="desc">期权持仓记录。</div></div>
+        <div class="card run" data-status="run"><span class="name">hedge_governance.py</span><div class="desc">对冲规则治理。</div></div>
+        <div class="card run" data-status="run"><span class="name">importers.py</span><div class="desc">券商 CSV 导入。</div></div>
+        <div class="card run" data-status="run"><span class="name">risk.py</span><div class="desc">风险指标计算。</div></div>
+      </div>
+      <div class="callout done">
+        ✓ <b>已解决</b>：根目录曾经有个孤立的 <code class="inline">./energrex.db</code>——查了是 0 字节的空文件，没被 git 跟踪，也没有任何代码引用，已经删掉。代码现在只认 <code class="inline">data/energrex.db</code> 这一个。
+      </div>
+    </div>
+
+    <!-- LAYER 4 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L4 · 已归档</span>
+        <h2>backend/ + Postgres —— ✓ 已决定"暂不用"，挪出主目录</h2>
+      </div>
+      <p class="layer-note">
+        这套东西完整地搭好了，但从 2026-06-20 初始提交到归档这天没被真正碰过——同期 scoring/、pages/ 全在持续演进，这是唯一两个多月零变化的角落。
+        JSON/CSV 方案已经稳定跑了两个多月，没有并发写入的真实场景，启用反而是新增运维负担。整套挪进
+        <code class="inline">_archive/backend_postgres_unused/</code>（只挪不删，git 历史完整保留）。
+        <code class="inline">db_client.py</code> 原本"先试连 Postgres 连不上就退回 JSON"的分支现在直接走 fallback，行为跟归档前一致——已用测试和 CLI 状态检查验证过。
+      </p>
+      <div class="card-grid">
+        <div class="card done" data-status="done"><span class="name">_archive/.../backend/main.py</span><div class="desc">✓ 已归档。FastAPI 应用，管理 overrides / 行情缓存 / 评分历史三类接口。</div></div>
+        <div class="card done" data-status="done"><span class="name">_archive/.../backend/scheduler.py</span><div class="desc">✓ 已归档。内建的 APScheduler 定时任务，本来就没跑起来过。</div></div>
+        <div class="card done" data-status="done"><span class="name">_archive/.../docker-compose.yml</span><div class="desc">✓ 已归档。Postgres + FastAPI 容器编排。</div></div>
+        <div class="card done" data-status="done"><span class="name">_archive/.../Dockerfile.api / init.sql</span><div class="desc">✓ 已归档。API 镜像构建 + 建库脚本。</div></div>
+      </div>
+    </div>
+
+    <!-- LAYER 5 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L5 · 自动化调度</span>
+        <h2>真正每天在跑的定时任务</h2>
+      </div>
+      <p class="layer-note">曾经和 L4 的 APScheduler 是两套并存的实现，现在 L4 已经归档，这一套是唯一在跑的定时机制——<code class="inline">logs/</code> 里每天一份日志，从 7 月底到现在没断过。</p>
+      <div class="card-grid">
+        <div class="card run" data-status="run"><span class="name">Register-DailyScoreRefresh.ps1</span><div class="desc">注册 Windows 计划任务。</div></div>
+        <div class="card run" data-status="run"><span class="name">Update-DailyScores.ps1 → refresh_scores.py</span><div class="desc">定时拉数据、重算评分，写入 score_snapshots.csv / results_validated.csv。</div></div>
+      </div>
+    </div>
+
+    <!-- LAYER 6 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L6 · 校验层</span>
+        <h2>validation/</h2>
+      </div>
+      <p class="layer-note">独立于展示流程，专门交叉核对 results 里的数字站不站得住——需要手动跑，不在每天的自动流程里。</p>
+      <div class="card-list">
+        <span class="name">validate_results.py</span> · <span class="name">validators/</span> · <span class="name">fetchers/</span> · <span class="name">report_generator.py</span>
+      </div>
+    </div>
+
+    <!-- LAYER 7 -->
+    <div class="layer" data-layer>
+      <div class="layer-head">
+        <span class="layer-tag">L7 · 规范文档</span>
+        <h2>*_STANDARD.md — 不是代码，是"该怎么做"的规则</h2>
+      </div>
+      <p class="layer-note">这些文档定义了系统"应该"怎样，不参与运行。文档和代码打架时，以代码为准——文档更新总会滞后。</p>
+      <div class="card-list">
+        <span class="name">REPORT_STANDARD.md</span> · <span class="name">PRINT_REPORT_STANDARD.md</span> · <span class="name">MISPRICING_ENGINE_STANDARD.md</span> · <span class="name">PRICE_BOUNDARY_STANDARD.md</span> · <span class="name">UNIFIED_VALUATION_STANDARD.md</span> · <span class="name">VALUATION_EVIDENCE_STANDARD.md</span> · <span class="name">EXTERNAL_CONSENSUS_STANDARD.md</span> · <span class="name">DEPLOYMENT_SYNC_STANDARD.md</span> · <span class="name">PROTECTIVE_PUT_GOVERNANCE_STANDARD.md</span> · <span class="name">POSITION_MODULE_DESIGN.md</span>
+      </div>
+      <div class="card-grid" style="margin-top:10px;">
+        <div class="card legacy" data-status="legacy"><span class="name">CLAUDE.md</span><div class="desc">项目根目录这份已经过期——还写着"app.py（4个页面）"和"10只股票"，早于现在的 5 页面结构。这次的图就是因为它靠不住才重新读代码画的。</div></div>
+      </div>
+    </div>
+
+    <!-- LAYER 8 -->
+    <div class="layer" data-layer style="padding-bottom:8px;">
+      <div class="layer-head">
+        <span class="layer-tag">L8 · 大部分已归档</span>
+        <h2>✓ 16个零引用脚本挪进 _archive/legacy_scripts/</h2>
+      </div>
+      <p class="layer-note">
+        每个都先 grep 过全仓库(*.py/*.ps1/*.bat/*.json)确认零引用才挪的，不是看着像废弃就搬。
+        <code class="inline">account_monitor.py.bak</code>（编码损坏的旧备份）和空的孤立 <code class="inline">energrex.db</code> 直接删了——都没被 git 跟踪，删了不影响历史。
+        <b>还没动的</b>：40+ 张历史截图 png、十余份调试 .txt 输出——这些当时讨论的范围是"脚本"，图片/文本类没有擅自一起挪。
+      </p>
+      <div class="card-list">
+        <span class="name">✓ check_db.py</span> · <span class="name">✓ check_nrr.py</span> · <span class="name">✓ classify_combos.py</span> · <span class="name">✓ import_csv.py</span> · <span class="name">✓ import_positions_xlsx.py</span> · <span class="name">✓ inspect_csv.py</span> · <span class="name">✓ migrate_db.py</span> · <span class="name">✓ preview_csv.py</span> · <span class="name">✓ reconstruct_nav.py</span> · <span class="name">✓ run_cost_and_price.py</span> · <span class="name">✓ seed_options.py</span> · <span class="name">✓ status_check.py</span> · <span class="name">✓ test_cdp.py</span> · <span class="name">✓ test_login.py</span> · <span class="name">✓ scroll_screenshot.py</span> · <span class="name">✓ _test_quant.py</span>
+      </div>
+      <div class="callout done" style="margin-top:10px;">
+        ✓ <code class="inline">cross_validate_data.py</code> <b>没有</b>跟着挪——它被 <code class="inline">.vscode/tasks.json</code> 的"数据体检"任务实际调用，是活的工具不是遗留。同理 <code class="inline">_run_sync.py</code>/<code class="inline">_run_price_refresh.py</code> 名字长得像调试脚本，但被 <code class="inline">_sidebar.py</code> 用 subprocess 真实调用，也没有动。
+      </div>
+    </div>
+
+  </div>
+
+  <section class="block">
+    <h2 class="section-title">架构诊断：8个问题，全部已动手术</h2>
+    <p class="section-sub">这份原本是"发现问题"的清单，现在改成手术记录——每条都有对应的 commit，都跑过全量测试（358个用例）和至少一次真实浏览器渲染验证，不是"改完就当完事"。</p>
+
+    <p style="font-size:13px;color:var(--done);font-family:var(--mono);letter-spacing:.06em;margin:0 0 12px;text-transform:uppercase;">✓ 曾经紧急 — 会让你漏看警报或悄悄读错数据</p>
+    <ol class="actions">
+      <li>
+        <span class="num">01</span>
+        <div class="body">
+          <b>✓ "要不要动这个仓位"曾经有三套互不知情的判断</b>
+          <span>
+            <code class="inline">_cascade.py::_scan_exit_signals()</code>(机械层面：止盈/止损/临近到期)、
+            <code class="inline">decision_policy.py</code>(估值层面)、
+            <code class="inline">mispricing_monitor.py::route_case_state</code>(论点层面) 三条没有汇总处。
+            <b>没有合并逻辑</b>(机械/估值/论点是三个不同风险维度，合并会抹掉"价格单独不能触发退出"的刻意设计)——
+            在 <code class="inline">home.py</code> 作战室首页新增"持仓论点监控"区块，live 计算，只在持仓论点转 SEVERE/WATCH 时才显示。
+            <code class="inline">commit f4fc02f</code>
+          </span>
+        </div>
+      </li>
+      <li>
+        <span class="num">02</span>
+        <div class="body">
+          <b>✓ db_client.py 对 Postgres 的连接尝试曾经是静默的</b>
+          <span>
+            加了一次性日志：进程里第一次调用 <code class="inline">is_available()</code> 就打印当前数据源是 Postgres 还是 JSON fallback，不改变行为、不改 UI，只是让"到底在读哪儿"这件事从零信号变成日志里能查。
+            <code class="inline">commit cd988a9</code>
+          </span>
+        </div>
+      </li>
+      <li>
+        <span class="num">03</span>
+        <div class="body">
+          <b>✓ 仓位管理页曾经没接入导航条</b>
+          <span><code class="inline">_sidebar.py</code> 和 <code class="inline">home.py</code> 快捷入口都补上了 <code class="inline">st.page_link("pages/5_⚖️_仓位管理.py", ...)</code>。<code class="inline">commit cd988a9</code></span>
+        </div>
+      </li>
+    </ol>
+
+    <p style="font-size:13px;color:var(--done);font-family:var(--mono);letter-spacing:.06em;margin:34px 0 12px;text-transform:uppercase;">✓ 曾经的整合机会</p>
+    <ol class="actions">
+      <li>
+        <span class="num">04</span>
+        <div class="body">
+          <b>✓ scoring/score_audit.py 死代码已删除</b>
+          <span>全仓库零引用，已被根目录 <code class="inline">quant_audit.py</code> 完全取代。直接删除，不是挪走。<code class="inline">commit cd988a9</code></span>
+        </div>
+      </li>
+      <li>
+        <span class="num">05</span>
+        <div class="body">
+          <b>✓ "这个数字有多可信"曾经四套系统各写一遍</b>
+          <span>
+            读代码后发现范围要收窄：<code class="inline">input_verification.py</code> 其实是两道不同严格度的闸门(宽松的生产评分闸门 + 严格的UI徽章闸门，后者对95条历史数据留了豁免)，不能整套合并。
+            新建 <code class="inline">scoring/evidence.py</code>，只收敛真正共享的最窄原语("status==verified 且数值有限")，
+            <code class="inline">input_verification.trusted_override_value</code> 和 <code class="inline">mispricing_monitor.split_observations</code> 都改成从这里导入。
+            <code class="inline">source_navigator.py</code>/<code class="inline">mock_data.py</code> 仍未动——性质不同，硬套反而奇怪。
+            <code class="inline">commit d3d9c88</code>
+          </span>
+        </div>
+      </li>
+      <li>
+        <span class="num">06</span>
+        <div class="body">
+          <b>✓ 两套定时任务曾经并存，一套完全没在跑</b>
+          <span><code class="inline">backend/scheduler.py</code> 的 APScheduler 随整个 backend/ 一起归档(见下方L4)。Windows 计划任务现在是唯一在跑的定时机制。<code class="inline">commit 9696d06</code></span>
+        </div>
+      </li>
+      <li>
+        <span class="num">07</span>
+        <div class="body">
+          <b>✓ L8 历史遗留已归档</b>
+          <span>16个零引用脚本挪进 <code class="inline">_archive/legacy_scripts/</code>，逐个 grep 确认过零引用才动手；两个纯垃圾文件(空的孤立db、编码损坏的.bak)直接删除。截图/txt类还没动，见下方L8。<code class="inline">commit a9da892</code></span>
+        </div>
+      </li>
+      <li>
+        <span class="num">08</span>
+        <div class="body">
+          <b>✓ backend/ + Postgres：决定"暂不用"，已归档（讨论中新增的一条）</b>
+          <span>两个多月零改动、生产部署本来就没用它、JSON/CSV方案已经稳定运行——整套挪进 <code class="inline">_archive/backend_postgres_unused/</code>，写了README说明以后要用该怎么想（到时候需要的是全新的用户权限模型，不是把这套代码接回去）。<code class="inline">commit 9696d06</code></span>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout" style="background:var(--surface-2);border-color:var(--border);margin-top:8px;">
+      ✓ <b>验证过但证伪的一处"看起来像重复"</b>：<code class="inline">options_module.py</code>（根目录，期权链/IV曲面/Greeks，接的是 MarketData.app 实时行情，喂给"期权分析"页）和 <code class="inline">account/options.py</code>（只是一个 OCC 期权代码的正则解析函数，给记账层用）名字很像，但不是一回事——一个是行情分析层，一个是记账解析层。之所以写出来，是想说明这份诊断是真的挖过每一条线索，不是看名字像就贴"冗余"标签。
+    </div>
+  </section>
+
+  <section class="block">
+    <h2 class="section-title">VS Code 具体怎么管理</h2>
+    <p class="section-sub">.vscode/ 已经配好了，不用重新搭——打开仓库根目录当 workspace 就能用。</p>
+    <div class="vscode-grid">
+      <div class="vscode-card">
+        <h3>启动整套系统</h3>
+        <p><span class="kbd">Ctrl+Shift+P</span> → Tasks: Run Task → "🏠 启动 Dashboard"。这一个任务就够了——5 个页面是同一个 Streamlit 进程，靠左侧导航切，不用分别启动。</p>
+      </div>
+      <div class="vscode-card">
+        <h3>跑测试</h3>
+        <p>左侧烧杯图标是 Testing 面板，能看到全部用例逐个点右键单跑；或者 <span class="kbd">Ctrl+Shift+P</span> → Tasks: Run Task → "🧪 测试：全部"，一次跑完 tests/ 下所有用例。</p>
+      </div>
+      <div class="vscode-card">
+        <h3>搞清楚"谁调用谁"</h3>
+        <p><span class="kbd">Ctrl+Shift+F</span> 全仓库搜一个函数名（比如 <code class="inline">thesis_state_for_ticker</code>），比一个个文件点开读快得多——这是本图里所有"连接线"的验证方法。</p>
+      </div>
+      <div class="vscode-card">
+        <h3>看某段代码的来龙去脉</h3>
+        <p>装上推荐的 GitLens 插件后，每一行代码旁边会标最后修改的时间和 commit 信息，鼠标悬停就能看——比翻聊天记录问"这段什么时候写的"快。</p>
+      </div>
+      <div class="vscode-card">
+        <h3>单独刷新/审计一只股票</h3>
+        <p>Tasks 面板里还有"极速价格刷新"和"命令行审计单只股票"，会弹出输入框让你填股票代码，留空就是全量。</p>
+      </div>
+      <div class="vscode-card">
+        <h3>Claude Code 已经接进来了</h3>
+        <p>.mcp.json 让我在这个项目里天然能查评分数据，不用你专门开终端喂数据给我——这也是为什么直接问我"XX 现在什么状态"通常比自己翻文件快。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>核实方式：git status / grep import / netstat 端口占用 / 直接读源文件——不是转抄任何一份 .md · 全部改动已 push 到 origin/master（828b4b4..d3d9c88）</footer>
+
+</div>
+
+<script>
+(function () {
+  var chips = document.querySelectorAll('.chip');
+  var cards = document.querySelectorAll('[data-status]');
+  var active = 'all';
+
+  function apply() {
+    chips.forEach(function (c) {
+      c.classList.toggle('off', active !== 'all' && c.dataset.filter !== active && c.dataset.filter !== undefined && c.dataset.filter !== active);
+    });
+    cards.forEach(function (card) {
+      if (active === 'all' || card.dataset.status === active) {
+        card.classList.remove('dim');
+      } else {
+        card.classList.add('dim');
+      }
+    });
+  }
+
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var f = chip.dataset.filter;
+      active = (active === f) ? 'all' : f;
+      chips.forEach(function (c) { c.classList.remove('off'); });
+      if (active !== 'all') {
+        chips.forEach(function (c) {
+          if (c.dataset.filter !== active) c.classList.add('off');
+        });
+      }
+      cards.forEach(function (card) {
+        card.classList.toggle('dim', active !== 'all' && card.dataset.status !== active);
+      });
+    });
+  });
+})();
+</script>
