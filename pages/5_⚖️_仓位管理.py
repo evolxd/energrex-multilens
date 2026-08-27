@@ -16,7 +16,11 @@ ROOT = pathlib.Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from _sidebar import render  # noqa: E402
-from scoring.mispricing_monitor import thesis_state_for_ticker  # noqa: E402
+from scoring.mispricing_monitor import (  # noqa: E402
+    SEVERE_STATES,
+    WATCH_STATES,
+    thesis_state_for_ticker,
+)
 from scoring.mispricing_store import append_snapshot, read_chain, verify_chain  # noqa: E402
 from scoring.position_exposure import (  # noqa: E402
     UNCLASSIFIED,
@@ -47,9 +51,6 @@ MISPRICING_LOG = ROOT / "data" / "mispricing_cases.jsonl"
 # the hard-constraint alerts above already use. HOLD and ADD_IF_PREAUTHORIZED
 # are deliberately absent: both mean the thesis is intact under price-only
 # opposition, which is not something to alert on.
-_THESIS_SEVERE = {"EXIT", "REDUCE", "RISK_REDUCTION_REQUIRED"}
-_THESIS_WATCH = {"REVIEW_REQUIRED", "FREEZE_ADDS", "REVALUE", "REUNDERWRITE"}
-
 st.title("⚖️ 仓位管理")
 st.caption(
     "硬约束看板与预警。这一版不产生任何基于评分的买卖建议 —— "
@@ -252,9 +253,9 @@ else:
             rule_text = "；".join(
                 f"{r.rule_id}: {r.reason}" for r in state["triggered_rules"]
             )
-            if case_state in _THESIS_SEVERE:
+            if case_state in SEVERE_STATES:
                 st.error(f"{label}｜{rule_text}" if rule_text else label)
-            elif case_state in _THESIS_WATCH:
+            elif case_state in WATCH_STATES:
                 st.warning(f"{label}｜{rule_text}" if rule_text else label)
             else:
                 st.success(label)

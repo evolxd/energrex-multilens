@@ -44,6 +44,16 @@ class CaseState(str, Enum):
     RISK_REDUCTION_REQUIRED = "RISK_REDUCTION_REQUIRED"
 
 
+# CaseState's non-neutral outcomes, split into the two severities any UI that
+# surfaces thesis_state_for_ticker's result wants to render differently.
+# HOLD and ADD_IF_PREAUTHORIZED are deliberately absent from both: they mean
+# the thesis is intact under price-only opposition, which is not something
+# to alert on. Single source of truth -- every page that shows a thesis
+# alert (仓位管理, 作战室) imports these instead of redefining them.
+SEVERE_STATES = frozenset({"EXIT", "REDUCE", "RISK_REDUCTION_REQUIRED"})
+WATCH_STATES = frozenset({"REVIEW_REQUIRED", "FREEZE_ADDS", "REVALUE", "REUNDERWRITE"})
+
+
 @dataclass(frozen=True)
 class TriggerResult:
     rule_id: str

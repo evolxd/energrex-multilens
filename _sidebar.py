@@ -108,12 +108,20 @@ def render_nav(subnav_render_fn=None) -> None:
             f"letter-spacing:1px;margin-bottom:2px'>📍 导航</div>",
             unsafe_allow_html=True,
         )
-        st.page_link("home.py",                        label="作战室（主页）", icon="🏠")
+        # app.py may also be launched directly on port 8501. In that mode
+        # home.py is not a Streamlit page relative to the entry point, so a
+        # page_link would abort the entire valuation page.
+        try:
+            st.page_link("home.py", label="作战室（主页）", icon="🏠")
+        except st.errors.StreamlitPageNotFoundError:
+            st.link_button("🏠 作战室（主页）", "http://127.0.0.1:8502")
         st.page_link("pages/1_📊_AI_估值评分.py",      label="AI 估值评分",   icon="📊")
         if subnav_render_fn is not None:
             subnav_render_fn()
+        st.page_link("pages/4_🔎_误价研究.py",          label="误价与特殊机会", icon="🔎")
         st.page_link("pages/2_📈_期权分析.py",         label="期权分析",       icon="📈")
         st.page_link("pages/3_🏦_账户监控.py",         label="账户监控",       icon="🏦")
+        st.page_link("pages/5_⚖️_仓位管理.py",         label="仓位管理",       icon="⚖️")
         st.divider()
 
 

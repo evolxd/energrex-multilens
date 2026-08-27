@@ -4,11 +4,13 @@ All database calls from app.py go through this module.
 Falls back to JSON file automatically when DATABASE_URL is not set.
 """
 import json
+import logging
 import pathlib
 import sys
 from datetime import datetime
 from typing import Optional
 
+_log = logging.getLogger("energrex.db_client")
 _JSON_PATH = pathlib.Path(__file__).parent / "user_overrides.json"
 
 # Attempt to load SQLAlchemy; gracefully degrade if unavailable or DB unreachable.
@@ -22,12 +24,33 @@ try:
 except ImportError:
     _SA_AVAILABLE = False
 
+# is_available() runs on nearly every call in this module -- log which data
+# source is active exactly once per process instead of silently swallowing
+# the Postgres attempt every time. The failure mode this guards against:
+# DATABASE_URL pointing at a *reachable but wrong/stale* database would
+# otherwise produce no signal anywhere that reads stopped coming from JSON.
+_source_logged = False
+
+
+def _log_source_once(available: bool) -> None:
+    global _source_logged
+    if _source_logged:
+        return
+    _source_logged = True
+    if available:
+        _log.warning("db_client: 数据源 = Postgres (DATABASE_URL 已连通)")
+    else:
+        _log.warning("db_client: 数据源 = JSON fallback (%s) — Postgres 未启用或连不上", _JSON_PATH)
+
 
 def is_available() -> bool:
     """Return True if the database is reachable."""
     if not _SA_AVAILABLE:
+        _log_source_once(False)
         return False
-    return is_db_available()
+    result = is_db_available()
+    _log_source_once(result)
+    return result
 
 
 # ── User Overrides ─────────────────────────────────────────

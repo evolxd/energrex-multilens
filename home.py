@@ -6,8 +6,12 @@ import os, pathlib, datetime, sqlite3, json, socket
 import streamlit as st
 import pytz
 
+from scoring.mispricing_monitor import SEVERE_STATES, WATCH_STATES, thesis_state_for_ticker
+from scoring.position_exposure import compute_exposures
+
 _ROOT = pathlib.Path(__file__).parent
 _DB   = _ROOT / "data" / "energrex.db"
+_MISPRICING_LOG = _ROOT / "data" / "mispricing_cases.jsonl"
 
 # ── .env 加载 ────────────────────────────────────────────
 _env = _ROOT / ".env"
@@ -106,6 +110,60 @@ def _load_war_data():
     return result
 
 
+@st.cache_data(ttl=60)
+def _load_thesis_alerts() -> list[dict]:
+    """Held tickers whose mispricing thesis has moved to SEVERE/WATCH.
+
+    Deliberately separate from daily_briefing's recs above: those are
+    mechanical (stop-loss / take-profit / DTE, from _cascade.py's exit-signal
+    scan). This is "the reason you bought it may no longer hold" -- a
+    different question with a different response, so it gets its own block
+    instead of being folded into the same card list.
+    """
+    try:
+        from account.db import db
+
+        conn = db()
+        latest = conn.execute(
+            "SELECT sync_time FROM positions ORDER BY sync_time DESC LIMIT 1"
+        ).fetchone()
+        sync_time = latest[0] if latest else None
+        rows = (
+            [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT symbol, market_value FROM positions WHERE sync_time=?",
+                    (sync_time,),
+                )
+            ]
+            if sync_time
+            else []
+        )
+        options = [
+            dict(r)
+            for r in conn.execute("SELECT symbol, market_value FROM options_positions")
+        ]
+        bal = conn.execute(
+            "SELECT total_equity FROM account_balance ORDER BY sync_time DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        equity = float(bal[0]) if bal and bal[0] else None
+
+        exposures = compute_exposures(rows, equity, None, lambda _s: None, options)
+        if exposures is None:
+            return []
+
+        alert_states = SEVERE_STATES | WATCH_STATES
+        alerts = []
+        for ticker in sorted(exposures.by_ticker_pct):
+            state = thesis_state_for_ticker(_MISPRICING_LOG, ticker)
+            if state and state["case_state"] in alert_states:
+                alerts.append(state)
+        return alerts
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=30)
 def _chrome_ok() -> bool:
     try:
@@ -140,6 +198,8 @@ _nexp_s   = _snap.get("nearest_expiry_sym", "")
 _nexp_d   = _snap.get("nearest_expiry_date")
 _risk_st  = _snap.get("risk_status", "")
 _draw_st  = _snap.get("drawdown_status", "")
+_draw_pct = (_snap.get("drawdown") or 0) * 100
+_draw_basis = _snap.get("drawdown_basis", "legacy_or_unknown")
 
 _RISK_DOT = {
     "RED_HARD_STOP":  ("🔴", _R),
@@ -365,9 +425,36 @@ with _right:
             unsafe_allow_html=True,
         )
 
+# ─── 行 2.5：持仓论点监控（跟上面的机械层信号是两回事，见函数注释）───
+_thesis_alerts = _load_thesis_alerts()
+if _thesis_alerts:
+    st.markdown(
+        f"<div style='font-size:14px;font-weight:700;color:{_TXT};"
+        f"margin:14px 0 6px'>🔎 持仓论点监控</div>",
+        unsafe_allow_html=True,
+    )
+    for _t in _thesis_alerts:
+        _cs = _t["case_state"]
+        _lc = _R if _cs in SEVERE_STATES else _A
+        _rule_text = "；".join(
+            f"{r.rule_id}: {r.reason}" for r in _t["triggered_rules"]
+        )
+        st.markdown(
+            f"<div style='border-left:3px solid {_lc};padding:5px 10px;"
+            f"margin:3px 0;background:{_lc}0d;border-radius:0 5px 5px 0'>"
+            f"<span style='color:{_lc};font-weight:700;font-size:12px'>{_cs}</span>"
+            f"<span style='color:{_TXT};font-weight:600;font-size:13px;"
+            f"margin:0 6px'>{_t['ticker']}</span>"
+            + (f"<span style='color:{_MUT};font-size:11px'>{_rule_text}</span>"
+               if _rule_text else "")
+            + f"<div style='color:{_MUT};font-size:11px;margin-top:2px'>"
+            f"详情 → ⚖️ 仓位管理</div></div>",
+            unsafe_allow_html=True,
+        )
+
 # ─── 行 3：快捷入口 ─────────────────────────────────
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-_n1, _n2, _n3, _n4 = st.columns(4, gap="small")
+_n1, _n2, _n3, _n4, _n5 = st.columns(5, gap="small")
 with _n1:
     st.page_link("pages/1_📊_AI_估值评分.py",
                  label="📊 AI估值排行榜", use_container_width=True)
@@ -378,5 +465,9 @@ with _n3:
     st.page_link("pages/3_🏦_账户监控.py",
                  label="🏦 持仓详情", use_container_width=True)
 with _n4:
+    st.page_link("pages/5_⚖️_仓位管理.py",
+                 label="⚖️ 仓位管理", use_container_width=True)
+with _n5:
     st.page_link("pages/3_🏦_账户监控.py",
                  label="⚙️ 数据管理", use_container_width=True)
+
