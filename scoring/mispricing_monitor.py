@@ -10,15 +10,17 @@ from typing import Any, Iterable, Mapping, Sequence
 
 try:
     from .mispricing_store import latest_case_for
+    from .evidence import TRUSTED_STATUS, numeric_value
 except ImportError:  # pragma: no cover - direct import path
     from mispricing_store import latest_case_for
+    from evidence import TRUSTED_STATUS, numeric_value
 
-# Same convention as scoring/input_verification.py: only a "verified" value is
-# trusted to drive a real conclusion. A thesis's metric_observations are
-# hand-entered exactly like user_overrides.json entries, and an unconfirmed
-# number must not be able to trigger EXIT/REDUCE on a real position -- it can
-# only ever raise a "go check this" flag.
-TRUSTED_STATUS = "verified"
+# Same convention as scoring/input_verification.py -- literally the same
+# TRUSTED_STATUS constant, from scoring/evidence.py -- only a "verified"
+# value is trusted to drive a real conclusion. A thesis's metric_observations
+# are hand-entered exactly like user_overrides.json entries, and an
+# unconfirmed number must not be able to trigger EXIT/REDUCE on a real
+# position -- it can only ever raise a "go check this" flag.
 
 
 class Operator(str, Enum):
@@ -256,12 +258,8 @@ def split_observations(metric_observations: Mapping[str, Any]) -> ObservationSet
         for entry in entries:
             if not isinstance(entry, Mapping):
                 continue
-            value = entry.get("value")
-            try:
-                numeric = float(value) if value is not None else None
-            except (TypeError, ValueError):
-                numeric = None
-            if numeric is None or not math.isfinite(numeric):
+            numeric = numeric_value(entry)
+            if numeric is None:
                 continue
             if str(entry.get("status") or "").strip().lower() == TRUSTED_STATUS:
                 verified.setdefault(metric, []).append(numeric)

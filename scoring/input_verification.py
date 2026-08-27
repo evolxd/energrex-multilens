@@ -28,8 +28,8 @@ import math
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from evidence import TRUSTED_STATUS, trusted_numeric_value
 
-TRUSTED_STATUS = "verified"
 _EMPTY_SOURCE_MARKERS = {"", "n/a", "na", "none", "unknown", "待补", "待補"}
 
 
@@ -65,15 +65,11 @@ def trusted_override_value(field: str, entry: Any) -> Optional[float]:
     "source": ...}. Only status == "verified" with a present, finite value is
     accepted; anything else (including "pending") returns None so the caller
     falls back to mock_data.py or the existing CSV value.
+
+    `field` is unused here but kept in the signature -- callers pass it and
+    audit_override_entry below needs it for its issue messages.
     """
-    if not isinstance(entry, dict):
-        return None
-    if entry.get("status") != TRUSTED_STATUS:
-        return None
-    value = entry.get("value")
-    if value is None or not _finite_number(value):
-        return None
-    return float(value)
+    return trusted_numeric_value(entry)
 
 
 def audit_override_entry(
