@@ -58,6 +58,7 @@ class LimitSpec:
     label: str
     kind: LimitKind
     help_text: str = ""
+    unit: str = "%"
 
     def is_loosening(self, old_value: float, new_value: float) -> bool:
         """A max limit loosens upward; a min limit loosens downward."""
@@ -89,6 +90,18 @@ LIMIT_SPECS: tuple[LimitSpec, ...] = (
         label="最低现金比例",
         kind="min",
         help_text="现金占总资产的下限。这是一条下限：放宽意味着调低。",
+    ),
+    LimitSpec(
+        key="liquidity_days_max",
+        label="最大退出天数",
+        kind="max",
+        unit="天",
+        help_text=(
+            "任何单一标的，按不超过其日均成交额20%的节奏平仓，需要多少个交易日"
+            "才能清完。管的不是「该不该持有这么多」，是「真要卖的时候卖不卖得掉」——"
+            "一个仓位可能完全没超单股/产业链上限，但如果标的本身成交清淡，"
+            "同样规模的仓位可能要花很多天才能不砸盘出清。"
+        ),
     ),
 )
 

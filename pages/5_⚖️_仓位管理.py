@@ -27,10 +27,12 @@ from scoring.position_exposure import (  # noqa: E402
     approaching,
     breaches,
     compute_exposures,
+    underlying_of,
 )
 from scoring.position_limits import (  # noqa: E402
     COOLING_OFF_DAYS,
     CORRECTION_WINDOW_HOURS,
+    LIMIT_BY_KEY,
     LIMIT_SPECS,
     LOOSEN_COOLDOWN_DAYS,
     MAX_LOOSEN_STEP_PCT,
@@ -118,9 +120,40 @@ def _chain_of(symbol: str) -> str | None:
         return None
 
 
+@st.cache_data(ttl=3600)
+def _load_avg_dollar_volume(tickers: tuple[str, ...]) -> dict[str, float]:
+    """20-trading-day average daily dollar volume per underlying.
+
+    Cached for an hour, not 60s like the portfolio itself -- this is a
+    liquidity characteristic of the stock, not something that meaningfully
+    changes minute to minute, and it's one yfinance call per ticker.
+    """
+    import yfinance as yf
+
+    result: dict[str, float] = {}
+    for ticker in tickers:
+        try:
+            hist = yf.Ticker(ticker).history(period="1mo")
+            if hist.empty:
+                continue
+            dollar_vol = (hist["Close"] * hist["Volume"]).dropna()
+            if len(dollar_vol):
+                result[ticker] = float(dollar_vol.tail(20).mean())
+        except Exception:
+            continue
+    return result
+
+
 positions, option_positions, total_equity, cash_balance, sync_time = _load_portfolio()
+_underlyings = tuple(sorted({
+    p["symbol"].strip().upper() for p in positions if p.get("symbol")
+} | {
+    underlying_of(p["symbol"]) for p in (option_positions or []) if p.get("symbol")
+}))
+avg_dollar_volume = _load_avg_dollar_volume(_underlyings)
 exposures = compute_exposures(
-    positions, total_equity, cash_balance, _chain_of, option_positions
+    positions, total_equity, cash_balance, _chain_of, option_positions,
+    avg_dollar_volume=avg_dollar_volume,
 )
 
 records = read_chain(LIMITS_LOG)
@@ -156,16 +189,16 @@ else:
         limit_value = current_limits.get(spec.key)
         reading = exposures.for_limit(spec.key)
         with col:
-            st.metric(spec.label, f"{reading:.1f}%" if reading is not None else "—")
+            st.metric(spec.label, f"{reading:.1f}{spec.unit}" if reading is not None else "—")
             if limit_value is None:
-                st.caption("尚未设定上限")
+                st.caption("尚未设定上限" if spec.kind == "max" else "尚未设定下限")
             else:
                 if spec.kind == "max":
                     room = limit_value - (reading or 0.0)
-                    st.caption(f"上限 {limit_value:.1f}% ｜ 余量 {room:+.1f}%")
+                    st.caption(f"上限 {limit_value:.1f}{spec.unit} ｜ 余量 {room:+.1f}{spec.unit}")
                 else:
                     room = (reading or 0.0) - limit_value
-                    st.caption(f"下限 {limit_value:.1f}% ｜ 余量 {room:+.1f}%")
+                    st.caption(f"下限 {limit_value:.1f}{spec.unit} ｜ 余量 {room:+.1f}{spec.unit}")
 
     if exposures.unclassified_tickers:
         st.warning(
@@ -205,16 +238,18 @@ else:
         st.success("全部约束均在线内。")
     for item in breached:
         detail = f"（{item['detail']}）" if item["detail"] else ""
+        unit = LIMIT_BY_KEY[item["key"]].unit
         st.error(
-            f"**突破 · {item['label']}**{detail}：当前 {item['reading']:.1f}%，"
-            f"限额 {item['limit']:.1f}%，超出 {item['overshoot']:.1f} 个百分点。"
+            f"**突破 · {item['label']}**{detail}：当前 {item['reading']:.1f}{unit}，"
+            f"限额 {item['limit']:.1f}{unit}，超出 {item['overshoot']:.1f}{unit}。"
             "超限期间无法调高该限额，只能调整持仓。"
         )
     for item in near:
         detail = f"（{item['detail']}）" if item["detail"] else ""
+        unit = LIMIT_BY_KEY[item["key"]].unit
         st.warning(
-            f"**逼近 · {item['label']}**{detail}：当前 {item['reading']:.1f}%，"
-            f"限额 {item['limit']:.1f}%。"
+            f"**逼近 · {item['label']}**{detail}：当前 {item['reading']:.1f}{unit}，"
+            f"限额 {item['limit']:.1f}{unit}。"
         )
 
 
@@ -283,23 +318,24 @@ for spec in LIMIT_SPECS:
     current = current_limits.get(spec.key)
     with st.expander(
         f"{spec.label}"
-        + (f" — 当前 {current:.1f}%" if current is not None else " — 未设定")
+        + (f" — 当前 {current:.1f}{spec.unit}" if current is not None else " — 未设定")
         + ("　⏳ 有变更待生效" if pending else "")
     ):
         st.caption(spec.help_text)
 
         if pending:
             st.info(
-                f"已记录变更：{pending['old_value']:.1f}% → {pending['new_value']:.1f}%，"
+                f"已记录变更：{pending['old_value']:.1f}{spec.unit} → "
+                f"{pending['new_value']:.1f}{spec.unit}，"
                 f"于 {pending['effective_at']} 生效。在此之前仍按 "
-                f"{current:.1f}% 执行。"
+                f"{current:.1f}{spec.unit} 执行。"
             )
 
         with st.form(f"limit_form_{spec.key}"):
             new_value = st.number_input(
-                "新的限额（%）",
+                f"新的限额（{spec.unit}）",
                 min_value=0.0,
-                max_value=100.0,
+                max_value=100.0 if spec.unit == "%" else 250.0,
                 value=float(current) if current is not None else 15.0,
                 step=0.5,
                 key=f"val_{spec.key}",
@@ -356,9 +392,11 @@ with st.expander("变更历史（哈希链，不可篡改）"):
         )
         for record in reversed(records):
             p = record["payload"]
-            old = f"{p['old_value']:.1f}%" if p.get("old_value") is not None else "—"
+            spec = LIMIT_BY_KEY.get(p["key"])
+            unit = spec.unit if spec else "%"
+            old = f"{p['old_value']:.1f}{unit}" if p.get("old_value") is not None else "—"
             st.write(
-                f"`{p['timestamp']}` **{p['key']}** {old} → {p['new_value']:.1f}%"
+                f"`{p['timestamp']}` **{p['key']}** {old} → {p['new_value']:.1f}{unit}"
                 f" · {p['direction']}"
                 + (f" · 生效 {p['effective_at']}" if p.get("effective_at") else "")
             )

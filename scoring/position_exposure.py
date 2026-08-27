@@ -42,6 +42,7 @@ class Exposures:
     by_ticker_pct: dict[str, float] = field(default_factory=dict)
     by_chain_pct: dict[str, float] = field(default_factory=dict)
     unclassified_tickers: list[str] = field(default_factory=list)
+    by_ticker_days_to_exit: dict[str, float] = field(default_factory=dict)
 
     @property
     def max_single_stock_pct(self) -> float:
@@ -63,6 +64,16 @@ class Exposures:
             return None
         return max(self.by_chain_pct, key=self.by_chain_pct.get)
 
+    @property
+    def max_days_to_exit(self) -> float:
+        return max(self.by_ticker_days_to_exit.values(), default=0.0)
+
+    @property
+    def max_days_to_exit_ticker(self) -> str | None:
+        if not self.by_ticker_days_to_exit:
+            return None
+        return max(self.by_ticker_days_to_exit, key=self.by_ticker_days_to_exit.get)
+
     def for_limit(self, key: str) -> float | None:
         """The reading that the named limit governs."""
         if key == "single_stock_max":
@@ -71,6 +82,10 @@ class Exposures:
             return self.max_chain_pct
         if key == "cash_floor_min":
             return self.cash_pct
+        if key == "liquidity_days_max":
+            # No volume data supplied -> no reading, not "0 days" (which would
+            # read as perfectly liquid and silently disable the limit).
+            return self.max_days_to_exit if self.by_ticker_days_to_exit else None
         return None
 
 
@@ -91,12 +106,41 @@ def _signed_value(row: dict) -> float | None:
         return None
 
 
+DEFAULT_MAX_PCT_OF_ADV = 0.20
+"""Standard institutional heuristic: trading more than ~20% of a stock's
+average daily dollar volume in one day starts to move the price against you.
+Position size beyond that isn't a governance-limit question of "should I
+hold this much" -- it's "can I actually get out at a fair price if I need to."
+"""
+
+
+def days_to_exit(
+    position_value: float,
+    avg_daily_dollar_volume: float | None,
+    max_pct_of_adv: float = DEFAULT_MAX_PCT_OF_ADV,
+) -> float | None:
+    """Trading days to unwind `position_value` without exceeding
+    `max_pct_of_adv` of the stock's own average daily dollar volume per day.
+
+    None when volume data is unavailable or non-positive -- silently reading
+    that as "0 days, perfectly liquid" would be worse than not answering.
+    """
+    if not avg_daily_dollar_volume or avg_daily_dollar_volume <= 0:
+        return None
+    daily_capacity = avg_daily_dollar_volume * max_pct_of_adv
+    if daily_capacity <= 0:
+        return None
+    return abs(position_value) / daily_capacity
+
+
 def compute_exposures(
     positions: list[dict],
     total_equity: float | None,
     cash_balance: float | None,
     category_of,
     option_positions: list[dict] | None = None,
+    avg_dollar_volume: dict[str, float] | None = None,
+    max_pct_of_adv: float = DEFAULT_MAX_PCT_OF_ADV,
 ) -> Exposures | None:
     """Build exposures from raw position rows.
 
@@ -105,6 +149,12 @@ def compute_exposures(
     a chain name, returning None when it does not know it. Returns None when
     total equity is unusable, because every figure here is a percentage of it
     and a zero denominator would silently produce nonsense.
+
+    `avg_dollar_volume` is optional {ticker: average daily dollar volume}. Only
+    tickers present in it get a days-to-exit reading -- a ticker missing here
+    is left out of by_ticker_days_to_exit entirely rather than defaulting to
+    "liquid," so a caller without volume data (or with partial coverage) can
+    tell the difference between "checked, it's fine" and "never checked."
     """
     if not total_equity or total_equity <= 0:
         return None
@@ -141,12 +191,23 @@ def compute_exposures(
 
     cash_pct = (float(cash_balance or 0.0) / total_equity) * 100.0
 
+    by_ticker_days_to_exit: dict[str, float] = {}
+    if avg_dollar_volume:
+        for ticker, net_value in net_by_ticker.items():
+            adv = avg_dollar_volume.get(ticker)
+            if adv is None:
+                continue
+            reading = days_to_exit(net_value, adv, max_pct_of_adv)
+            if reading is not None:
+                by_ticker_days_to_exit[ticker] = reading
+
     return Exposures(
         total_equity=float(total_equity),
         cash_pct=cash_pct,
         by_ticker_pct=by_ticker_pct,
         by_chain_pct=by_chain_pct,
         unclassified_tickers=sorted(unclassified),
+        by_ticker_days_to_exit=by_ticker_days_to_exit,
     )
 
 
@@ -226,4 +287,6 @@ def _detail_for(exposures: Exposures, key: str) -> str:
         return exposures.max_single_stock_ticker or ""
     if key == "chain_max":
         return exposures.max_chain_name or ""
+    if key == "liquidity_days_max":
+        return exposures.max_days_to_exit_ticker or ""
     return ""

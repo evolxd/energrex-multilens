@@ -7,6 +7,7 @@ from scoring.position_exposure import (
     approaching,
     breaches,
     compute_exposures,
+    days_to_exit,
 )
 
 CHAINS = {"NVDA": "AI芯片", "AMD": "AI芯片", "MSFT": "大型科技"}
@@ -172,3 +173,54 @@ def test_breach_detail_names_the_offender():
 def test_empty_portfolio_is_not_a_breach_of_a_max_limit():
     e = compute_exposures([], 100_000.0, 100_000.0, chain_of)
     assert breaches(e, {"single_stock_max": 15.0, "chain_max": 35.0}) == []
+
+
+# ── Liquidity / days-to-exit ────────────────────────────────────────────
+
+def test_days_to_exit_basic_math():
+    # $1M position, $2M average daily dollar volume, cap trading at 20% of
+    # that per day -> $400k/day capacity -> 2.5 days to unwind.
+    assert days_to_exit(1_000_000, 2_000_000) == pytest.approx(2.5)
+
+
+def test_days_to_exit_ignores_position_sign():
+    # A short leg's negative market value is still a real position to exit.
+    assert days_to_exit(-1_000_000, 2_000_000) == pytest.approx(2.5)
+
+
+def test_days_to_exit_none_without_volume_data():
+    assert days_to_exit(1_000_000, None) is None
+    assert days_to_exit(1_000_000, 0) is None
+    assert days_to_exit(1_000_000, -5) is None
+
+
+def test_days_to_exit_respects_custom_participation_rate():
+    # Trading only 10% of ADV per day doubles the time to unwind.
+    assert days_to_exit(1_000_000, 2_000_000, max_pct_of_adv=0.10) == pytest.approx(5.0)
+
+
+def test_a_ticker_without_volume_data_is_left_out_not_defaulted_liquid():
+    """Missing coverage must read as "unknown," never as "0 days, all clear" --
+    for_limit()'s None (not 0.0) is what lets the UI tell the two apart."""
+    e = compute_exposures(
+        [pos("NVDA", 30_000)], 100_000.0, 10_000.0, chain_of,
+        avg_dollar_volume={},  # supplied but empty: NVDA not covered
+    )
+    assert e.by_ticker_days_to_exit == {}
+    assert e.for_limit("liquidity_days_max") is None
+
+
+def test_liquidity_reading_flows_through_for_limit_and_breaches():
+    e = compute_exposures(
+        [pos("NVDA", 30_000), pos("AMD", 15_000)], 100_000.0, 10_000.0, chain_of,
+        avg_dollar_volume={"NVDA": 200_000, "AMD": 5_000_000},
+    )
+    # NVDA: 30_000 / (200_000 * 0.20) = 0.75 days. AMD: 15_000 / (5_000_000*0.20) = 0.015 days.
+    assert e.by_ticker_days_to_exit["NVDA"] == pytest.approx(0.75)
+    assert e.max_days_to_exit == pytest.approx(0.75)
+    assert e.max_days_to_exit_ticker == "NVDA"
+    assert e.for_limit("liquidity_days_max") == pytest.approx(0.75)
+
+    found = breaches(e, {"liquidity_days_max": 0.5})
+    assert [i["key"] for i in found] == ["liquidity_days_max"]
+    assert found[0]["detail"] == "NVDA"
