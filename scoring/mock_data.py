@@ -2191,5 +2191,48 @@ _EXTENDED_STOCKS_D: dict[str, dict] = {
         "valuation_risk": 0.28, "concentration_risk": 0.35, "liquidity_risk": 0.18,
         "_data_vintage": "2026-06-11 initial estimate",
     },
+    "DUOL": {
+        "company_name": "Duolingo, Inc.", "current_price": 146.04, "market_cap": 6.04e9,
+        "peg_ratio": None,      # 未核实：可靠的远期EPS增速数据没查到，不硬算
+        "ev_ebitda": None,      # 未核实：没有精确EBITDA数值，只有指引性调整后EBITDA利润率
+        # ev_sales/ps_ratio 用 market_cap/TTM营收 近似（Duolingo现金充裕、负债很少，
+        # EV≈市值的近似合理，但不是精确EV算出来的，别当成跟其他票同等精度的数字）
+        "ev_sales": 5.49, "ps_ratio": 5.49,
+        "forward_pe": 53.43,    # 2026-08-22核实，仍比软件板块中位数19.53x贵173.6%
+        "fcf_yield": 0.061,     # TTM FCF $369.73M / 市值 $6.04B
+        "revenue_growth_yoy": 0.18,   # Q2 2026同比，非TTM（TTM同比35%但那是被更早高增速拉高的混合值，Q2单季才是当前真实趋势）
+        "eps_growth_yoy": -0.26,      # 净利润同比-26%，管理层披露原因是运营费用+税务拨备上升，非一次性科目
+        "fcf_growth_yoy": None,       # 未核实：没查到上年同期FCF做同比
+        "next_year_revenue_growth_est": 0.161,  # FY2026全年指引营收增速约16.1%
+        "analyst_revision_30d": None,
+        "arr_growth_yoy": None,   # Duolingo是订阅制App不是企业SaaS，不适用标准ARR口径，没有强行套用bookings数字
+        "gross_margin": 0.7223,   # TTM实际值，2026-08核实
+        "fcf_margin": 0.336,      # TTM FCF $369.73M / TTM营收 $1.10B
+        "operating_margin": 0.257,  # 用FY26指引的调整后EBITDA利润率近似，不是精确GAAP营业利润率，口径不同别直接跟其他票比
+        "roic": None, "debt_to_equity": None, "revenue_predictability_score": None,
+        "net_revenue_retention": None,   # 同上，B2C订阅制不套用企业SaaS的NRR口径
+        # 以下4个是绝对值分母，供价格敏感度模拟(app.py价格温度带)重算比率用——
+        # 不是新查的数据，是从上面已核实的比率反推算出来的（revenue_ttm=TTM营收
+        # $1.10B、fcf_ttm=TTM FCF $369.73M 都是直接来源；shares/forward_eps
+        # 是 market_cap/price 和 price/forward_pe 反算，算法一致不是编的)
+        "revenue_ttm": 1.10e9, "fcf_ttm": 369.73e6,
+        "shares_outstanding": 41358532, "forward_eps": 2.733,
+        # AI暴露这几个字段全部留空，不是漏查——Duolingo的"AI故事"跟这套系统给
+        # NVDA/PLTR这类公司设计的"AI收入占比"框架对不上：它不是靠卖AI产品赚钱，
+        # 是①用AI(Duolingo Max)当产品功能、②把AI推理迁移到开源模型上砍自己的
+        # 成本、③同时正被ChatGPT/Google翻译这类免费AI工具威胁自己的核心产品
+        # 价值——是"AI机遇与AI冲击同时存在"，不是一个百分比数字能装下的。
+        "ai_revenue_exposure_pct": None, "ai_profit_exposure_pct": None,
+        "ai_growth_contribution_pct": None, "datacenter_exposure_pct": None,
+        "advanced_packaging_exposure_pct": None, "ai_order_backlog_exposure": None,
+        "cybersecurity_ai_exposure_pct": None, "software_ai_platform_exposure_pct": None,
+        "actual_revenue_vs_consensus": None, "actual_eps_vs_consensus": None,
+        "guidance_vs_consensus": None, "earnings_reaction_score": None,
+        "market_expectation_score": None,
+        "beta": None, "volatility_30d": None, "max_drawdown_1y": None,   # 会在真实yfinance刷新时自动补上，这里不猜
+        "valuation_risk": None, "concentration_risk": None, "liquidity_risk": None,
+        "_data_vintage": "2026-08-27 web_search核实：价格/市值/远期PE/营收增速/毛利率/FCF；"
+                         "AI暴露字段、beta、风险类字段均未核实，显式留空，非遗漏",
+    },
 }
 MOCK_STOCKS.update(_EXTENDED_STOCKS_D)

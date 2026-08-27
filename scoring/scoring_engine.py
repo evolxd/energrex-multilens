@@ -91,6 +91,7 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "ZM":   CompanyCategory.AI_SOFTWARE,
     "DOCU": CompanyCategory.AI_SOFTWARE,
     "NTNX": CompanyCategory.AI_SOFTWARE,
+    "DUOL": CompanyCategory.AI_SOFTWARE,   # Duolingo，AI个性化辅导(Duolingo Max)+AI压缩自身推理成本，也直面AI翻译/聊天机器人对核心产品的替代威胁
     "AFRM": CompanyCategory.AI_SOFTWARE,
     "ACN":  CompanyCategory.AI_SOFTWARE,
     "EXLS": CompanyCategory.AI_SOFTWARE,

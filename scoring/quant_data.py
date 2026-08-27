@@ -60,6 +60,7 @@ QUANT_META: dict[str, dict] = {
     "TEAM": {"sector_tag": "SaaS"},
     "APP":  {"sector_tag": "SaaS"},
     "ESTC": {"sector_tag": "SaaS"},
+    "DUOL": {"sector_tag": "SaaS"},   # Duolingo，订阅制App，资本结构上是SaaS不是Hardware
     # ── 网络安全 (independent sector) ────────────────────────────────
     "PANW": {"sector_tag": "Cybersecurity"},
     "CRWD": {"sector_tag": "Cybersecurity"},
