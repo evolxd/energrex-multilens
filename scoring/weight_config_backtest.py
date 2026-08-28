@@ -215,6 +215,14 @@ def run_backtest() -> dict:
     print("\n按头尾分档收益差排名（仅供近似参考，见 methodology_caveat）：")
     for name, spread in ranked_by_spread:
         print(f"  {name:25s} spread={spread}")
+
+    from methodology_trend import append_trend_row
+    append_trend_row({
+        "current_final_spread": results.get("current_final", {}).get("top_minus_bottom_spread"),
+        "category_weighted_spread": results.get("category_weighted", {}).get("top_minus_bottom_spread"),
+        "growth_only_spread": results.get("growth_only", {}).get("top_minus_bottom_spread"),
+        "valuation_only_spread": results.get("valuation_only", {}).get("top_minus_bottom_spread"),
+    })
     return report
 
 

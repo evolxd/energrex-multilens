@@ -156,6 +156,21 @@ def main() -> None:
             print(f"{name:40s}  {r['spread']:+.4f}   n={r['n_tickers']}")
     print(f"\n已保存: {OUT_PATH}")
 
+    def _spread_for(prefix: str) -> float | None:
+        for name, r in results.items():
+            if name.startswith(prefix) and not r.get("insufficient_universe"):
+                return r["spread"]
+        return None
+
+    from methodology_trend import append_trend_row
+    append_trend_row({
+        "beta_spread": _spread_for("beta "),
+        "volatility_30d_spread": _spread_for("volatility_30d "),
+        "valuation_risk_spread": _spread_for("valuation_risk "),
+        "liquidity_risk_spread": _spread_for("liquidity_risk "),
+        "max_drawdown_spread": _spread_for("max_drawdown "),
+    })
+
 
 if __name__ == "__main__":
     main()

@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-08-27 01:12:47",
+  "generated_at": "2026-08-27 23:16:11",
   "methodology_caveat": "近似回测，非因果验证，与 weight_config_backtest.py / spread_decomposition_backtest.py 同源同局限（生存者偏差、非前瞻式）。beta/volatility_30d 跟远期收益负相关，在动量驱动的上涨样本期是预期内的现象，不代表这两项的风险扣分设计有误——不要仅凭这份报告调整它们的权重，见本文件顶部docstring的完整讨论。",
   "results": {
     "beta (live(yfinance))": {
       "n_tickers": 93,
-      "spread": -0.1485
+      "spread": -0.1493
     },
     "volatility_30d (static(mock_data.py))": {
       "n_tickers": 84,
-      "spread": -0.1404
+      "spread": -0.1572
     },
     "valuation_risk (static(mock_data.py))": {
       "n_tickers": 86,
-      "spread": 0.0701
+      "spread": 0.0733
     },
     "liquidity_risk (static(mock_data.py))": {
       "n_tickers": 86,
-      "spread": -0.0762
+      "spread": -0.0756
     },
     "max_drawdown (live(yfinance))": {
       "n_tickers": 93,
-      "spread": 0.0661
+      "spread": 0.0701
     }
   }
 }

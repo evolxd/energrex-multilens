@@ -41,6 +41,7 @@ try {
 
     Write-Host "Weekly methodology checks finished: $(Get-Date -Format o)"
     Write-Host "Reports written to scoring/*_report.json -- read them, this script only reruns them."
+    Write-Host "Trend across runs: scoring/methodology_trend.csv (one row per day, merged from all three scripts)."
 }
 finally {
     Stop-Transcript | Out-Null
