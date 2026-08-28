@@ -2193,8 +2193,10 @@ _EXTENDED_STOCKS_D: dict[str, dict] = {
     },
     "DUOL": {
         "company_name": "Duolingo, Inc.", "current_price": 146.04, "market_cap": 6.04e9,
-        "peg_ratio": None,      # 未核实：可靠的远期EPS增速数据没查到，不硬算
-        "ev_ebitda": None,      # 未核实：没有精确EBITDA数值，只有指引性调整后EBITDA利润率
+        "peg_ratio": None,      # 2026-08-28复核仍不采用：外部聚合结果给0.92，但反推是用被压低的trailing PE(17.23，处于历史89%分位低位，
+                                # 疑似有一次性损益扭曲，跟INTC那次的处理逻辑一样不采信)算的，跟本系统forward_pe(53.43)+16.1%指引增速换算出的
+                                # PEG≈3.3量级完全对不上，判定为口径不可比，不强行套用
+        "ev_ebitda": 52.0,      # 2026-08-28 web_search核实（聚合口径，未逐一核对EV/EBITDA分子分母的精确取数日期，置信度中等）
         # ev_sales/ps_ratio 用 market_cap/TTM营收 近似（Duolingo现金充裕、负债很少，
         # EV≈市值的近似合理，但不是精确EV算出来的，别当成跟其他票同等精度的数字）
         "ev_sales": 5.49, "ps_ratio": 5.49,
@@ -2202,14 +2204,17 @@ _EXTENDED_STOCKS_D: dict[str, dict] = {
         "fcf_yield": 0.061,     # TTM FCF $369.73M / 市值 $6.04B
         "revenue_growth_yoy": 0.18,   # Q2 2026同比，非TTM（TTM同比35%但那是被更早高增速拉高的混合值，Q2单季才是当前真实趋势）
         "eps_growth_yoy": -0.26,      # 净利润同比-26%，管理层披露原因是运营费用+税务拨备上升，非一次性科目
-        "fcf_growth_yoy": None,       # 未核实：没查到上年同期FCF做同比
+        "fcf_growth_yoy": None,       # 2026-08-28搜索到三个互相矛盾的数字（40%/36.33%/21.5%年化），口径来源不明确，未采用
         "next_year_revenue_growth_est": 0.161,  # FY2026全年指引营收增速约16.1%
         "analyst_revision_30d": None,
         "arr_growth_yoy": None,   # Duolingo是订阅制App不是企业SaaS，不适用标准ARR口径，没有强行套用bookings数字
         "gross_margin": 0.7223,   # TTM实际值，2026-08核实
         "fcf_margin": 0.336,      # TTM FCF $369.73M / TTM营收 $1.10B
         "operating_margin": 0.257,  # 用FY26指引的调整后EBITDA利润率近似，不是精确GAAP营业利润率，口径不同别直接跟其他票比
-        "roic": None, "debt_to_equity": None, "revenue_predictability_score": None,
+        "roic": 0.0799,   # GuruFocus TTM口径7.99%（对照WACC 17.14%，即ROIC<WACC，资本回报跑输资本成本）；
+                          # 另有9.41%~60.20%等相差数量级的口径被判定为不可比,未采用
+        "debt_to_equity": 0.07,   # 总负债$91.87M / 股东权益$1.3B≈0.07，AlphaQuery/macrotrends 2026-08-28核实，杠杆极低
+        "revenue_predictability_score": None,
         "net_revenue_retention": None,   # 同上，B2C订阅制不套用企业SaaS的NRR口径
         # 以下4个是绝对值分母，供价格敏感度模拟(app.py价格温度带)重算比率用——
         # 不是新查的数据，是从上面已核实的比率反推算出来的（revenue_ttm=TTM营收
@@ -2226,13 +2231,24 @@ _EXTENDED_STOCKS_D: dict[str, dict] = {
         "ai_growth_contribution_pct": None, "datacenter_exposure_pct": None,
         "advanced_packaging_exposure_pct": None, "ai_order_backlog_exposure": None,
         "cybersecurity_ai_exposure_pct": None, "software_ai_platform_exposure_pct": None,
-        "actual_revenue_vs_consensus": None, "actual_eps_vs_consensus": None,
-        "guidance_vs_consensus": None, "earnings_reaction_score": None,
-        "market_expectation_score": None,
-        "beta": None, "volatility_30d": None, "max_drawdown_1y": None,   # 会在真实yfinance刷新时自动补上，这里不猜
-        "valuation_risk": None, "concentration_risk": None, "liquidity_risk": None,
-        "_data_vintage": "2026-08-27 web_search核实：价格/市值/远期PE/营收增速/毛利率/FCF；"
-                         "AI暴露字段、beta、风险类字段均未核实，显式留空，非遗漏",
+        # 以下4个是2026-08-06 Q2财报当天的真实数据（多来源交叉核实）：
+        "actual_revenue_vs_consensus": 0.0102,   # 实际营收$298.45M vs 一致预期$295.44M，超预期约1.0%
+        "actual_eps_vs_consensus": 0.082,        # 实际调整后EPS$0.66 vs Zacks一致预期$0.61，超预期8.2%
+                                                  # （另有$0.58/$0.62两个来源版本，13.8%和6.5%两种口径，
+                                                  # Zacks数字有具体机构名+能精确对上8.2%的官方口径，取这个）
+        "guidance_vs_consensus": -0.0066,        # Q3指引营收$302M vs 一致预期约$304M，指引低于预期约0.66%
+        "earnings_reaction_score": -0.15,        # 财报当日(8/6)股价跌约15%——营收与EPS双超预期，仍因Q3指引不及预期重挫，
+                                                  # 属于"买预期卖事实"式的负面反应，多来源交叉一致
+        "market_expectation_score": None,   # 无直接可比的量化口径，未强行套用
+        "beta": 0.88,   # Yahoo Finance 5年月度beta，2026-08-28核实（Investing.com给0.85，量级一致，取Yahoo）
+        "volatility_30d": None,   # 搜到的0.5582是6/18的旧值(早于8/6财报暴跌，已过时)，另一个"3.47%"数量级明显不是同一口径，未采用
+        "max_drawdown_1y": -0.8375,   # 52周高$540.30→低$87.89，(540.30-87.89)/540.30=83.75%，Motley Fool等多来源交叉确认
+        "valuation_risk": None, "concentration_risk": None, "liquidity_risk": None,   # 这三项按CLAUDE.md定义是主观人工评估值，非可网上核实的客观数字，不代为填写
+        "_data_vintage": "2026-08-28 web_search补充核实：ev_ebitda/roic/debt_to_equity/beta/max_drawdown_1y/"
+                         "Q2财报vs一致预期四项(actual_revenue/eps/guidance/earnings_reaction)；"
+                         "peg_ratio/fcf_growth_yoy因来源自相矛盾或口径不可比，明确判定不采用，非漏查；"
+                         "AI暴露字段、市场预期分、volatility_30d、动量类字段(价格历史依赖)、"
+                         "valuation/concentration/liquidity_risk(主观人工评估)仍未核实/不适用，显式留空",
     },
 }
 MOCK_STOCKS.update(_EXTENDED_STOCKS_D)
