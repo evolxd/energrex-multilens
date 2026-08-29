@@ -2242,10 +2242,15 @@ _EXTENDED_STOCKS_D: dict[str, dict] = {
         "market_expectation_score": None,   # 无直接可比的量化口径，未强行套用
         "beta": 0.88,   # Yahoo Finance 5年月度beta，2026-08-28核实（Investing.com给0.85，量级一致，取Yahoo）
         "volatility_30d": None,   # 搜到的0.5582是6/18的旧值(早于8/6财报暴跌，已过时)，另一个"3.47%"数量级明显不是同一口径，未采用
-        "max_drawdown_1y": -0.8375,   # 52周高$540.30→低$87.89，(540.30-87.89)/540.30=83.75%，Motley Fool等多来源交叉确认
+        "max_drawdown_1y": None,   # 2026-08-29撤回：此前用$540.30算的-83.75%是错的——$540.30/$544.93是2025-05-14的
+                                   # 历史最高价，不是52周高点，到今天已经滚出52周窗口了。真正的52周高点目前查到
+                                   # $353.00和$468.00两个互相矛盾的版本(不同网站的历史快照，抓取时间不同)，
+                                   # yfinance/stockanalysis.com/Yahoo Finance在当前环境全部被出站代理拦截，
+                                   # 拿不到可信OHLC序列去自己算，明确判定为未核实，不用有问题的旧值顶着
         "valuation_risk": None, "concentration_risk": None, "liquidity_risk": None,   # 这三项按CLAUDE.md定义是主观人工评估值，非可网上核实的客观数字，不代为填写
-        "_data_vintage": "2026-08-28 web_search补充核实：ev_ebitda/roic/debt_to_equity/beta/max_drawdown_1y/"
+        "_data_vintage": "2026-08-28 web_search补充核实：ev_ebitda/roic/debt_to_equity/beta/"
                          "Q2财报vs一致预期四项(actual_revenue/eps/guidance/earnings_reaction)；"
+                         "2026-08-29撤回max_drawdown_1y(52周高点数据源冲突，见字段注释)；"
                          "peg_ratio/fcf_growth_yoy因来源自相矛盾或口径不可比，明确判定不采用，非漏查；"
                          "AI暴露字段、市场预期分、volatility_30d、动量类字段(价格历史依赖)、"
                          "valuation/concentration/liquidity_risk(主观人工评估)仍未核实/不适用，显式留空",
