@@ -444,3 +444,156 @@ def classify_drawdown_status(drawdown: float, limits: dict | None = None) -> str
     if drawdown >= limits["drawdown_freeze"]:
         return "ORANGE_FREEZE_NEW_RISK"
     return "GREEN"
+
+
+def score_label(score: float | None) -> str:
+    """Format an AI score (0-100) with a quality-band emoji, or '' when unknown."""
+    if score is None:
+        return ""
+    if score >= 80:
+        return f"{score:.0f} ⭐"
+    if score >= 65:
+        return f"{score:.0f} ✅"
+    if score >= 50:
+        return f"{score:.0f} 🟡"
+    if score >= 35:
+        return f"{score:.0f} ⚠️"
+    return f"{score:.0f} 🔴"
+
+
+_RISK_PRIORITY_LABEL = {
+    "CRITICAL": "🔴 紧急",
+    "HIGH":     "🟠 高",
+    "MEDIUM":   "🟡 中",
+    "LOW":      "🟢 低",
+}
+
+
+def build_recommendations(
+    *,
+    portfolios: list[dict],
+    risk_snapshot: dict,
+    iv_regime: dict,
+    ai_scores: dict,
+    risk_limits: dict | None = None,
+) -> list[dict]:
+    """Turn already-identified spread portfolios + account state into the
+    recommendations table (one row per spread, plus a macro-hedge suggestion
+    and up to 3 new-opportunity candidates).
+
+    Pure given its inputs -- `portfolios`/`risk_snapshot`/`iv_regime`/
+    `ai_scores` are each produced by DB reads and market-data calls upstream
+    (account_monitor.py's `_build_spread_portfolios`/`_compute_risk_snapshot`/
+    `_compute_iv_regime`/`_load_ai_scores`); this function only decides what
+    to recommend given those results.
+    """
+    limits = risk_limits or DEFAULT_RISK_LIMITS
+    iv_status = iv_regime.get("status", "NO_DATA")
+    stress10 = risk_snapshot.get("stress_10_ratio") or 0.0
+    leverage = risk_snapshot.get("leverage_delta") or risk_snapshot.get("leverage") or 0.0
+    held_underlyings = {p["underlying"] for p in portfolios}
+
+    recs: list[dict] = []
+    idx = 1
+
+    # 1. Portfolio-level recommendations
+    for p in portfolios:
+        und = p["underlying"]
+        rl = p["risk_level"]
+        priority = _RISK_PRIORITY_LABEL.get(rl, "🟡 中")
+        score = ai_scores.get(und)
+        ptype = p["type"]
+        pnl = p.get("current_pnl") or 0
+        dte_v = p.get("dte")
+        pnl_pct = p.get("pnl_pct")
+
+        action_parts: list[str] = [p["recommendation"]]
+
+        if score is not None:
+            action_parts.append(f"AI评分 {score_label(score)}")
+
+        is_short_vega = "Credit" in ptype or "Bear Call" in ptype or "Bull Put" in ptype
+        if is_short_vega and iv_status in ("HIGH_IV", "EXTREME_IV"):
+            action_parts.append(f"IV Regime={iv_status}，卖权环境有利，可持有至 80% 利润后平仓")
+        elif "Debit" in ptype or "Bull Call" in ptype or "Bear Put" in ptype:
+            if iv_status == "LOW_IV":
+                action_parts.append("低 IV 环境，买权价差成本低，有利于持有")
+
+        if abs(stress10) >= limits["stress_hard_stop"]:
+            action_parts.append("⚠️ 组合压力超限(≥15%)，优先减仓")
+
+        if rl == "LOW" and pnl_pct is not None:
+            if pnl_pct >= 50:
+                action_parts.append("已盈利50%+，可考虑提前平仓锁利")
+            else:
+                action_parts.append("建议继续持有至75%利润或到期2周前评估")
+        elif rl == "MEDIUM" and "Diagonal" in ptype:
+            action_parts.append("关注近月腿到期节点，提前15天制定展期方案")
+
+        trigger_parts = [f"组合类型={ptype}", f"风险={rl}"]
+        if dte_v is not None:
+            trigger_parts.append(f"DTE={dte_v}天")
+        if pnl != 0:
+            trigger_parts.append(f"盈亏=${pnl:+,.0f}")
+
+        recs.append({
+            "序号":   idx,
+            "优先级": priority,
+            "标的":   und,
+            "组合":   ptype,
+            "手数":   p.get("spread_qty", 0),
+            "到期":   p.get("expiry", "—"),
+            "DTE":    dte_v if dte_v is not None else "—",
+            "AI评分": score_label(score) if score else "—",
+            "行动建议": " ；".join(action_parts),
+            "触发原因": " | ".join(trigger_parts),
+            "最大盈利": f"${p['max_profit']:,.0f}" if p.get("max_profit") is not None else "—",
+            "最大亏损": f"${p['max_loss']:,.0f}"  if p.get("max_loss")   is not None else "无限",
+            "当前盈亏": f"${pnl:+,.0f}",
+            "_sim_action": {
+                "type": "close_underlying", "underlying": und,
+                "label": f"关闭 {und} 全部期权持仓",
+            },
+        })
+        idx += 1
+
+    # 2. Portfolio stress hedge suggestion
+    if abs(stress10) >= limits["stress_de_risk"]:
+        recs.append({
+            "序号":   idx, "优先级": "🟠 高", "标的": "QQQ",
+            "组合":   "宏观对冲（建议）", "手数": 0, "到期": "—", "DTE": "—",
+            "AI评分": score_label(ai_scores.get("QQQ")) if ai_scores.get("QQQ") else "—",
+            "行动建议": "建议买入 QQQ Put Debit Spread 作宏观对冲，最大亏损 = 净权利金",
+            "触发原因": f"-10% 压力损失 {stress10*100:+.1f}% ≥ {limits['stress_de_risk']*100:.0f}% 阈值",
+            "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
+            "_sim_action": {"type": "qqq_hedge", "label": "执行 QQQ Put Spread 对冲（方案A）"},
+        })
+        idx += 1
+
+    # 3. New opportunity candidates: high AI score + IV regime fit + risk headroom
+    if not risk_snapshot.get("error") and leverage < limits["max_leverage"] * 0.75:
+        candidates = [(t, s) for t, s in ai_scores.items()
+                      if s >= 70 and t not in held_underlyings]
+        for t, s in sorted(candidates, key=lambda x: -x[1])[:3]:
+            if iv_status in ("HIGH_IV", "EXTREME_IV"):
+                strat = "卖出 Put Credit Spread（高 IV 收权利金，限定风险）"
+                reason = f"IV Regime={iv_status} 适合卖权；{t} AI评分={s:.0f}"
+            elif iv_status == "LOW_IV":
+                strat = "买入 Call Debit Spread（低 IV 低成本买权）"
+                reason = f"IV Regime=LOW_IV 适合买权；{t} AI评分={s:.0f}"
+            else:
+                strat = "观望或小仓 Bull Call Spread（中性 IV）"
+                reason = f"{t} AI评分={s:.0f}，IV 正常区间"
+            recs.append({
+                "序号":   idx, "优先级": "🟢 机会", "标的": t,
+                "组合":   "新开仓候选", "手数": 0, "到期": "—", "DTE": "—",
+                "AI评分": score_label(s),
+                "行动建议": strat,
+                "触发原因": reason,
+                "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
+                "_sim_action": {"type": "no_sim",
+                                "label": f"新开仓 {t}（需指定具体参数，暂不支持模拟）"},
+            })
+            idx += 1
+
+    return recs

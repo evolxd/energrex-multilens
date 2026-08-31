@@ -8,6 +8,7 @@ from account.risk import (
     DEFAULT_OPTIONS_COST_RATIO_LIMIT,
     DEFAULT_RISK_LIMITS,
     bs_greeks,
+    build_recommendations,
     calculate_option_position_greeks,
     classify_drawdown_status,
     classify_stress_status,
@@ -15,6 +16,7 @@ from account.risk import (
     compute_twr_drawdown,
     delta_drift_trigger,
     load_options_cost_ratio_limit,
+    score_label,
     summarize_portfolio_greeks,
     vix_spike_trigger,
 )
@@ -228,6 +230,130 @@ class PortfolioStressTestTests(unittest.TestCase):
         self.assertEqual(result["gross_notional"], 0.0)
         self.assertEqual(result["delta_notional"], 0.0)
         self.assertIsNone(result["nearest_expiry_date"])
+
+
+class ScoreLabelTests(unittest.TestCase):
+    def test_bands(self):
+        self.assertEqual(score_label(None), "")
+        self.assertEqual(score_label(85), "85 ⭐")
+        self.assertEqual(score_label(70), "70 ✅")
+        self.assertEqual(score_label(55), "55 🟡")
+        self.assertEqual(score_label(40), "40 ⚠️")
+        self.assertEqual(score_label(10), "10 🔴")
+
+
+class BuildRecommendationsTests(unittest.TestCase):
+    def _portfolio(self, **overrides):
+        base = {
+            "underlying": "PLTR",
+            "risk_level": "LOW",
+            "type": "Bull Call Debit Spread",
+            "recommendation": "持有至到期",
+            "current_pnl": 0.0,
+            "dte": 30,
+            "pnl_pct": 20.0,
+            "spread_qty": 1,
+            "expiry": "2026-07-17",
+            "max_profit": 1000.0,
+            "max_loss": 500.0,
+        }
+        base.update(overrides)
+        return base
+
+    def _snapshot(self, **overrides):
+        base = {"stress_10_ratio": 0.02, "leverage_delta": 1.0, "leverage": 1.0}
+        base.update(overrides)
+        return base
+
+    def test_low_risk_high_profit_spread_suggests_locking_in_gains(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio(pnl_pct=60.0)],
+            risk_snapshot=self._snapshot(),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertEqual(len(recs), 1)
+        self.assertIn("已盈利50%+", recs[0]["行动建议"])
+        self.assertEqual(recs[0]["标的"], "PLTR")
+
+    def test_low_risk_moderate_profit_suggests_holding(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio(pnl_pct=20.0)],
+            risk_snapshot=self._snapshot(),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertIn("建议继续持有", recs[0]["行动建议"])
+
+    def test_stress_hard_stop_adds_deleverage_warning_to_every_position(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio()],
+            risk_snapshot=self._snapshot(stress_10_ratio=0.16),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertIn("组合压力超限", recs[0]["行动建议"])
+
+    def test_stress_de_risk_appends_qqq_hedge_row(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio()],
+            risk_snapshot=self._snapshot(stress_10_ratio=0.13),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        hedge_rows = [r for r in recs if r["标的"] == "QQQ"]
+        self.assertEqual(len(hedge_rows), 1)
+        self.assertEqual(hedge_rows[0]["组合"], "宏观对冲（建议）")
+
+    def test_no_hedge_row_when_stress_below_de_risk_threshold(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio()],
+            risk_snapshot=self._snapshot(stress_10_ratio=0.05),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertFalse(any(r["标的"] == "QQQ" for r in recs))
+
+    def test_new_opportunity_candidates_exclude_held_underlyings_and_cap_at_three(self):
+        ai_scores = {"PLTR": 90, "AAAA": 85, "BBBB": 80, "CCCC": 75, "DDDD": 71, "EEEE": 60}
+        recs = build_recommendations(
+            portfolios=[self._portfolio(underlying="PLTR")],  # PLTR already held
+            risk_snapshot=self._snapshot(leverage_delta=0.5),  # well under headroom limit
+            iv_regime={"status": "NORMAL"},
+            ai_scores=ai_scores,
+        )
+        candidate_rows = [r for r in recs if r["组合"] == "新开仓候选"]
+        self.assertEqual(len(candidate_rows), 3)
+        self.assertNotIn("PLTR", [r["标的"] for r in candidate_rows])
+        # Highest scores first, EEEE (60) excluded for being below the 70 cutoff
+        self.assertEqual([r["标的"] for r in candidate_rows], ["AAAA", "BBBB", "CCCC"])
+
+    def test_no_new_candidates_when_leverage_exceeds_headroom(self):
+        recs = build_recommendations(
+            portfolios=[],
+            risk_snapshot=self._snapshot(leverage_delta=3.5),  # >= 4.0 * 0.75
+            iv_regime={"status": "NORMAL"},
+            ai_scores={"AAAA": 90},
+        )
+        self.assertFalse(any(r["组合"] == "新开仓候选" for r in recs))
+
+    def test_risk_snapshot_error_suppresses_new_candidates(self):
+        recs = build_recommendations(
+            portfolios=[],
+            risk_snapshot={"error": "no_equity"},
+            iv_regime={"status": "NORMAL"},
+            ai_scores={"AAAA": 90},
+        )
+        self.assertEqual(recs, [])
+
+    def test_high_iv_favors_credit_spread_for_new_candidates(self):
+        recs = build_recommendations(
+            portfolios=[],
+            risk_snapshot=self._snapshot(),
+            iv_regime={"status": "HIGH_IV"},
+            ai_scores={"AAAA": 90},
+        )
+        self.assertIn("Put Credit Spread", recs[0]["行动建议"])
 
 
 class RiskStatusClassificationTests(unittest.TestCase):

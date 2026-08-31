@@ -300,6 +300,7 @@ from account.options import parse_occ as _parse_occ
 from account.options import parse_occ_sym as _parse_occ_sym
 from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
 from account.risk import bs_greeks as _bs_greeks
+from account.risk import build_recommendations as _build_recommendations
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
 from account.risk import classify_drawdown_status as _classify_drawdown_status
 from account.risk import classify_stress_status as _classify_stress_status
@@ -307,6 +308,7 @@ from account.risk import compute_portfolio_stress_test as _compute_portfolio_str
 from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.risk import delta_drift_trigger as _delta_drift_trigger
 from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
+from account.risk import score_label as _score_label_impl
 from account.risk import summarize_portfolio_greeks as _summarize_portfolio_greeks
 from account.risk import vix_spike_trigger as _vix_spike_trigger
 from account.marketdata import fetch_option_quote as _fetch_option_quote_md
@@ -719,18 +721,7 @@ def _load_ai_scores() -> dict:
         return {}
 
 
-def _score_label(score: float | None) -> str:
-    if score is None:
-        return ""
-    if score >= 80:
-        return f"{score:.0f} ⭐"
-    if score >= 65:
-        return f"{score:.0f} ✅"
-    if score >= 50:
-        return f"{score:.0f} 🟡"
-    if score >= 35:
-        return f"{score:.0f} ⚠️"
-    return f"{score:.0f} 🔴"
+_score_label = _score_label_impl
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1680,135 +1671,13 @@ def _generate_recommendations(acct_id: str) -> list[dict]:
     基于组合识别结果生成建议（以价差为单位，不拆单腿）。
     同时叠加：IV Regime / 压力测试 / AI评分 / 新机会候选。
     """
-    snap      = _compute_risk_snapshot(acct_id)
-    iv_regime = _compute_iv_regime(acct_id)
-    ai_scores = _load_ai_scores()
-    portfolios = _build_spread_portfolios(acct_id)
-
-    iv_status = iv_regime.get("status", "NO_DATA")
-    stress10  = snap.get("stress_10_ratio") or 0.0
-    leverage  = snap.get("leverage_delta")  or snap.get("leverage") or 0.0  # 优先用 Delta 口径
-    held_und  = {p["underlying"] for p in portfolios}
-
-    _RISK_PRIORITY = {
-        "CRITICAL": "🔴 紧急",
-        "HIGH":     "🟠 高",
-        "MEDIUM":   "🟡 中",
-        "LOW":      "🟢 低",
-    }
-    _RISK_EMOJI = {
-        "CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢",
-    }
-
-    recs = []
-    idx  = 1
-
-    # 1. Portfolio-level recommendations
-    for p in portfolios:
-        und        = p["underlying"]
-        rl         = p["risk_level"]
-        priority   = _RISK_PRIORITY.get(rl, "🟡 中")
-        score      = ai_scores.get(und)
-        ptype      = p["type"]
-        pnl        = p.get("current_pnl") or 0
-        dte_v      = p.get("dte")
-        pnl_pct    = p.get("pnl_pct")
-
-        # Build action string
-        action_parts: list[str] = [p["recommendation"]]
-
-        # AI score supplement
-        if score is not None:
-            action_parts.append(f"AI评分 {_score_label(score)}")
-
-        # IV-driven advice for short vega spreads (credit spreads)
-        is_short_vega = "Credit" in ptype or "Bear Call" in ptype or "Bull Put" in ptype
-        if is_short_vega and iv_status in ("HIGH_IV", "EXTREME_IV"):
-            action_parts.append(f"IV Regime={iv_status}，卖权环境有利，可持有至 80% 利润后平仓")
-        elif "Debit" in ptype or "Bull Call" in ptype or "Bear Put" in ptype:
-            if iv_status == "LOW_IV":
-                action_parts.append("低 IV 环境，买权价差成本低，有利于持有")
-
-        # Portfolio stress supplement
-        if abs(stress10) >= _RISK_LIMITS["stress_hard_stop"]:
-            action_parts.append("⚠️ 组合压力超限(≥15%)，优先减仓")
-
-        # Spread-specific hold/roll/close logic
-        if rl == "LOW" and pnl_pct is not None:
-            if pnl_pct >= 50:
-                action_parts.append("已盈利50%+，可考虑提前平仓锁利")
-            else:
-                action_parts.append("建议继续持有至75%利润或到期2周前评估")
-        elif rl == "MEDIUM" and "Diagonal" in ptype:
-            action_parts.append("关注近月腿到期节点，提前15天制定展期方案")
-
-        trigger_parts = [f"组合类型={ptype}", f"风险={rl}"]
-        if dte_v is not None:
-            trigger_parts.append(f"DTE={dte_v}天")
-        if pnl != 0:
-            trigger_parts.append(f"盈亏=${pnl:+,.0f}")
-
-        recs.append({
-            "序号":   idx,
-            "优先级": priority,
-            "标的":   und,
-            "组合":   ptype,
-            "手数":   p.get("spread_qty", 0),
-            "到期":   p.get("expiry", "—"),
-            "DTE":    dte_v if dte_v is not None else "—",
-            "AI评分": _score_label(score) if score else "—",
-            "行动建议": " ；".join(action_parts),
-            "触发原因": " | ".join(trigger_parts),
-            "最大盈利": f"${p['max_profit']:,.0f}" if p.get("max_profit") is not None else "—",
-            "最大亏损": f"${p['max_loss']:,.0f}"  if p.get("max_loss")   is not None else "无限",
-            "当前盈亏": f"${pnl:+,.0f}",
-            "_sim_action": {
-                "type": "close_underlying", "underlying": und,
-                "label": f"关闭 {und} 全部期权持仓",
-            },
-        })
-        idx += 1
-
-    # 2. Portfolio stress hedge suggestion
-    if abs(stress10) >= _RISK_LIMITS["stress_de_risk"]:
-        recs.append({
-            "序号":   idx, "优先级": "🟠 高", "标的": "QQQ",
-            "组合":   "宏观对冲（建议）", "手数": 0, "到期": "—", "DTE": "—",
-            "AI评分": _score_label(ai_scores.get("QQQ")) if ai_scores.get("QQQ") else "—",
-            "行动建议": "建议买入 QQQ Put Debit Spread 作宏观对冲，最大亏损 = 净权利金",
-            "触发原因": f"-10% 压力损失 {stress10*100:+.1f}% ≥ {_RISK_LIMITS['stress_de_risk']*100:.0f}% 阈值",
-            "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
-            "_sim_action": {"type": "qqq_hedge", "label": "执行 QQQ Put Spread 对冲（方案A）"},
-        })
-        idx += 1
-
-    # 3. New opportunity candidates: high AI score + IV regime fit + risk headroom
-    if not snap.get("error") and leverage < _RISK_LIMITS["max_leverage"] * 0.75:
-        candidates = [(t, s) for t, s in ai_scores.items()
-                      if s >= 70 and t not in held_und]
-        for t, s in sorted(candidates, key=lambda x: -x[1])[:3]:
-            if iv_status in ("HIGH_IV", "EXTREME_IV"):
-                strat  = "卖出 Put Credit Spread（高 IV 收权利金，限定风险）"
-                reason = f"IV Regime={iv_status} 适合卖权；{t} AI评分={s:.0f}"
-            elif iv_status == "LOW_IV":
-                strat  = "买入 Call Debit Spread（低 IV 低成本买权）"
-                reason = f"IV Regime=LOW_IV 适合买权；{t} AI评分={s:.0f}"
-            else:
-                strat  = "观望或小仓 Bull Call Spread（中性 IV）"
-                reason = f"{t} AI评分={s:.0f}，IV 正常区间"
-            recs.append({
-                "序号":   idx, "优先级": "🟢 机会", "标的": t,
-                "组合":   "新开仓候选", "手数": 0, "到期": "—", "DTE": "—",
-                "AI评分": _score_label(s),
-                "行动建议": strat,
-                "触发原因": reason,
-                "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
-                "_sim_action": {"type": "no_sim",
-                                "label": f"新开仓 {t}（需指定具体参数，暂不支持模拟）"},
-            })
-            idx += 1
-
-    return recs
+    return _build_recommendations(
+        portfolios=_build_spread_portfolios(acct_id),
+        risk_snapshot=_compute_risk_snapshot(acct_id),
+        iv_regime=_compute_iv_regime(acct_id),
+        ai_scores=_load_ai_scores(),
+        risk_limits=_RISK_LIMITS,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
