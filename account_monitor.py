@@ -306,6 +306,7 @@ from account.risk import classify_drawdown_status as _classify_drawdown_status
 from account.risk import classify_stress_status as _classify_stress_status
 from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
 from account.risk import compute_portfolio_stress_test as _compute_portfolio_stress_test
+from account.risk import compute_qqq_hedge_plan as _compute_qqq_hedge_plan_impl
 from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.risk import delta_drift_trigger as _delta_drift_trigger
 from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
@@ -320,7 +321,6 @@ from account.marketdata import get_vix_snapshot as _get_vix_snapshot_md
 from account.importers import detect_csv_type as _detect_csv_type
 from account.importers import import_positions_csv as _account_import_positions_csv
 from account.importers import import_transactions_csv as _account_import_transactions_csv
-from account.hedge_governance import evaluate_protective_put_hedges as _evaluate_protective_put_hedges
 from account.importers import parse_date as _parse_date
 from account.importers import parse_money as _parse_money
 from account.importers import process_csv_file as _account_process_csv_file
@@ -958,8 +958,6 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
     }
 
 
-_RF_RATE = 0.045   # 2026 risk-free rate (3-month T-bill proxy)
-
 
 def _md_options_quote(symbol: str) -> dict | None:
     return _fetch_option_quote_md(symbol, api_key=_MD_KEY, logger=_log)
@@ -1265,43 +1263,21 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     target_bd_ratio: 目标 Beta-Delta/净值 (小数，如 1.50 = 150%)。
     返回三套方案 (A=标准$35宽, B=宽幅$60, C=保留现有+补充)。
     """
-    import json as _json, math as _math
-    from scipy.stats import norm as _sn
-
-    # ── 当前快照 ──────────────────────────────────────────────────
     snap = _compute_risk_snapshot(acct_id)
     if "error" in snap:
         return {"error": "no_data"}
 
     equity      = snap["equity"]
-    current_bd  = snap["beta_delta"]                   # $ amount
-    current_bdr = (snap["beta_delta_ratio"] or 0)      # fraction (e.g. 3.23)
+    current_bd  = snap["beta_delta"]
+    current_bdr = (snap["beta_delta_ratio"] or 0)
 
-    target_bd    = target_bd_ratio * equity
-    bd_to_hedge  = current_bd - target_bd               # positive ⟹ need to reduce
-
-    # ── QQQ 价格 + IV ─────────────────────────────────────────────
     qqq_price = _fetch_underlying_prices(("QQQ",)).get("QQQ", 0.0)
     if qqq_price <= 0:
         return {"error": "no_qqq_price"}
 
-    _iv_d      = _fetch_ivrank_md("QQQ")
-    qqq_iv_pct = _iv_d.get("iv") or 20.0    # in %
-    qqq_iv     = qqq_iv_pct / 100            # decimal for BS
+    qqq_iv_pct = _fetch_ivrank_md("QQQ").get("iv") or 20.0
     b_qqq      = _BETA_SPY.get("QQQ", 1.31)
 
-    # ── 内联 BS put 定价 ──────────────────────────────────────────
-    def _bs_put_price(S, K, T, sigma):
-        if T <= 1e-6 or sigma <= 1e-6 or S <= 0:
-            return max(K - S, 0.0)
-        try:
-            d1 = (_math.log(S / K) + (_RF_RATE + 0.5 * sigma**2) * T) / (sigma * _math.sqrt(T))
-            d2 = d1 - sigma * _math.sqrt(T)
-            return K * _math.exp(-_RF_RATE * T) * _sn.cdf(-d2) - S * _sn.cdf(-d1)
-        except Exception:
-            return max(K - S, 0.0)
-
-    # ── 现有 QQQ 持仓 ─────────────────────────────────────────────
     conn = _db()
     _q_rows = conn.execute(
         "SELECT symbol, quantity, current_price, delta, market_value "
@@ -1333,116 +1309,16 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     n_existing = sum(int(l["qty"]) for l in existing_legs
                      if l["type"] == "P" and l["qty"] > 0)
 
-    # ── 参考买入行权价（最近 $5 整数）────────────────────────────
-    _long_ks = [l["strike"] for l in existing_legs
-                if l["type"] == "P" and l["qty"] > 0]
-    if _long_ks:
-        ref_buy_k = float(max(_long_ks))
-    else:
-        ref_buy_k = float(round(qqq_price * 0.97 / 5) * 5)
+    ocr_now = _compute_options_cost_ratio(acct_id)
+    current_option_cost = (ocr_now["ratio"] or 0) * equity
 
-    # ── 计划到期：约 90 DTE ───────────────────────────────────────
-    plan_exp     = datetime.date.today() + datetime.timedelta(days=90)
-    plan_dte     = 90
-    plan_occ_exp = plan_exp.strftime("%y%m%d")
-
-    # ── 当前期权成本率（用于执行后估算）─────────────────────────
-    _ocr_now = _compute_options_cost_ratio(acct_id)
-    _cur_cost = (_ocr_now["ratio"] or 0) * equity
-
-    # ── 内联方案计算 ──────────────────────────────────────────────
-    def _plan(buy_k, sell_k):
-        T = plan_dte / 365.0
-        gb = _bs_greeks(qqq_price, buy_k,  T, qqq_iv, "put")
-        gs = _bs_greeks(qqq_price, sell_k, T, qqq_iv, "put")
-        d_buy, th_buy   = gb["delta"], gb["theta"]
-        d_sell, th_sell = gs["delta"], gs["theta"]
-
-        # BD contribution per spread: buy 1 put at buy_k + sell 1 put at sell_k
-        #   buy leg:  +1 × 100 × d_buy  × qqq_price × b_qqq  (negative, d_buy<0)
-        #   sell leg: -1 × 100 × d_sell × qqq_price × b_qqq  (positive, since d_sell<0)
-        #   net = 100 × (d_buy - d_sell) × qqq_price × b_qqq  (negative, reduces BD)
-        bd_ps = 100 * (d_buy - d_sell) * qqq_price * b_qqq
-
-        if bd_to_hedge > 0 and bd_ps < 0:
-            n_total = _math.ceil(bd_to_hedge / (-bd_ps))
-        else:
-            n_total = 0
-
-        p_buy  = _bs_put_price(qqq_price, buy_k,  T, qqq_iv) * 100
-        p_sell = _bs_put_price(qqq_price, sell_k, T, qqq_iv) * 100
-        cost_ps = p_buy - p_sell     # net debit per spread
-
-        post_bdr    = ((current_bd + n_total * bd_ps) / equity * 100) if equity else 0
-        theta_chg   = n_total * (th_buy - th_sell) * 100    # $/day change
-        new_cost_tot = _cur_cost + n_total * cost_ps
-        new_ocr     = (new_cost_tot / equity * 100) if equity else 0
-
-        return {
-            "buy_strike":    buy_k,  "sell_strike": sell_k,
-            "n_total":       n_total,
-            "bd_per_spread": round(bd_ps, 0),
-            "d_long":        round(d_buy,  3),
-            "d_short":       round(d_sell, 3),
-            "cost_per_spread": round(cost_ps, 2),
-            "total_cost":    round(n_total * cost_ps, 0),
-            "post_bd_ratio": round(post_bdr, 1),
-            "theta_change":  round(theta_chg, 2),
-            "new_ocr":       round(new_ocr, 1),
-        }
-
-    plan_a = _plan(ref_buy_k, ref_buy_k - 35)
-    plan_b = _plan(ref_buy_k, ref_buy_k - 60)
-
-    # Plan C: 保留现有 + 补充（用方案A的价差结构）
-    remaining_bd = bd_to_hedge + existing_bd     # still-unhedged BD after existing positions
-    if remaining_bd <= 0:
-        n_add = 0
-    elif plan_a["bd_per_spread"] >= 0:
-        n_add = 0
-    else:
-        n_add = _math.ceil(remaining_bd / (-plan_a["bd_per_spread"]))
-    post_bdc = ((current_bd + existing_bd + n_add * plan_a["bd_per_spread"])
-                / equity * 100) if equity else 0
-    add_cost_c = n_add * plan_a["cost_per_spread"]
-
-    plan_c = {
-        "n_existing":     n_existing,
-        "n_additional":   n_add,
-        "buy_strike":     ref_buy_k,
-        "sell_strike":    ref_buy_k - 35,
-        "cost_per_spread": plan_a["cost_per_spread"],
-        "additional_cost": round(add_cost_c, 0),
-        "post_bd_ratio":  round(post_bdc, 1),
-        "existing_bd":    round(existing_bd, 0),
-    }
-
-    hedge_governance = _evaluate_protective_put_hedges(
-        existing_legs,
-        equity=equity,
-        beta_delta_pct=current_bdr * 100,
-        target_beta_delta_pct=target_bd_ratio * 100,
+    return _compute_qqq_hedge_plan_impl(
+        equity=equity, current_bd=current_bd, current_bdr=current_bdr,
+        target_bd_ratio=target_bd_ratio,
+        qqq_price=qqq_price, qqq_iv_pct=qqq_iv_pct, beta_qqq=b_qqq,
+        existing_legs=existing_legs, existing_bd=existing_bd, n_existing=n_existing,
+        current_option_cost=current_option_cost,
     )
-
-    return {
-        "equity":          equity,
-        "current_bd_ratio": round(current_bdr * 100, 1),
-        "target_bd_ratio":  round(target_bd_ratio * 100, 1),
-        "bd_to_hedge":      round(bd_to_hedge, 0),
-        "qqq_price":        round(qqq_price, 2),
-        "qqq_iv":           round(qqq_iv_pct, 1),
-        "b_qqq":            b_qqq,
-        "existing_legs":    existing_legs,
-        "existing_bd":      round(existing_bd, 0),
-        "n_existing":       n_existing,
-        "plan_dte":         plan_dte,
-        "plan_occ_exp":     plan_occ_exp,
-        "plan_exp_str":     plan_exp.strftime("%Y-%m-%d"),
-        "plan_a":           plan_a,
-        "plan_b":           plan_b,
-        "plan_c":           plan_c,
-        "hedge_governance": hedge_governance,
-    }
 
 
 def _pltr_ivr_signal(iv: float, ivr: float | None) -> tuple[str, str, str]:

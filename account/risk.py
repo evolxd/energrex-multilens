@@ -8,6 +8,7 @@ from pathlib import Path
 
 from scipy.stats import norm
 
+from account.hedge_governance import evaluate_protective_put_hedges
 from account.options import parse_occ
 
 
@@ -799,4 +800,145 @@ def compute_exit_analysis(
             "top_unds":   top_unds,
             "n_broken":   sum(1 for p in enriched_list if p["thesis_broken"]),
         },
+    }
+
+
+def _bs_put_price(S: float, K: float, T: float, sigma: float,
+                   risk_free_rate: float = RF_RATE) -> float:
+    """Black-Scholes European put price (not per-share Greeks -- a $ price)."""
+    if T <= 1e-6 or sigma <= 1e-6 or S <= 0:
+        return max(K - S, 0.0)
+    try:
+        sqrt_t = math.sqrt(T)
+        d1 = (math.log(S / K) + (risk_free_rate + 0.5 * sigma**2) * T) / (sigma * sqrt_t)
+        d2 = d1 - sigma * sqrt_t
+        return K * math.exp(-risk_free_rate * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+    except Exception:
+        return max(K - S, 0.0)
+
+
+def compute_qqq_hedge_plan(
+    *,
+    equity: float,
+    current_bd: float,
+    current_bdr: float,
+    target_bd_ratio: float,
+    qqq_price: float,
+    qqq_iv_pct: float,
+    beta_qqq: float,
+    existing_legs: list[dict],
+    existing_bd: float,
+    n_existing: int,
+    current_option_cost: float,
+    plan_dte: int = 90,
+    today: datetime.date | None = None,
+) -> dict:
+    """Three QQQ put-debit-spread hedge plans (A=$35-wide, B=$60-wide,
+    C=keep existing + top up) that bring beta-weighted Delta down toward
+    `target_bd_ratio`.
+
+    Pure given account_monitor.py's already-fetched risk snapshot, QQQ spot
+    price + IV, existing QQQ option legs, and current options-cost-ratio
+    dollar amount -- it does none of those fetches itself, and delegates the
+    protective-put governance check to account.hedge_governance, which is
+    already deterministic/pure.
+    """
+    today = today or datetime.date.today()
+    qqq_iv = qqq_iv_pct / 100.0
+
+    target_bd = target_bd_ratio * equity
+    bd_to_hedge = current_bd - target_bd  # positive => need to reduce
+
+    plan_exp = today + datetime.timedelta(days=plan_dte)
+    plan_occ_exp = plan_exp.strftime("%y%m%d")
+
+    long_strikes = [
+        l["strike"] for l in existing_legs
+        if l.get("type") == "P" and l.get("qty", 0) > 0
+    ]
+    ref_buy_k = float(max(long_strikes)) if long_strikes else float(round(qqq_price * 0.97 / 5) * 5)
+
+    def _plan(buy_k: float, sell_k: float) -> dict:
+        T = plan_dte / 365.0
+        gb = bs_greeks(qqq_price, buy_k, T, qqq_iv, "put")
+        gs = bs_greeks(qqq_price, sell_k, T, qqq_iv, "put")
+        d_buy, th_buy = gb["delta"], gb["theta"]
+        d_sell, th_sell = gs["delta"], gs["theta"]
+
+        # BD contribution per spread: long 1 put at buy_k, short 1 put at sell_k.
+        # Net is negative (reduces beta-weighted Delta) since |d_buy| > |d_sell|.
+        bd_ps = 100 * (d_buy - d_sell) * qqq_price * beta_qqq
+
+        n_total = math.ceil(bd_to_hedge / (-bd_ps)) if bd_to_hedge > 0 and bd_ps < 0 else 0
+
+        p_buy = _bs_put_price(qqq_price, buy_k, T, qqq_iv) * 100
+        p_sell = _bs_put_price(qqq_price, sell_k, T, qqq_iv) * 100
+        cost_ps = p_buy - p_sell  # net debit per spread
+
+        post_bdr = ((current_bd + n_total * bd_ps) / equity * 100) if equity else 0
+        theta_chg = n_total * (th_buy - th_sell) * 100
+        new_cost_tot = current_option_cost + n_total * cost_ps
+        new_ocr = (new_cost_tot / equity * 100) if equity else 0
+
+        return {
+            "buy_strike": buy_k, "sell_strike": sell_k,
+            "n_total": n_total,
+            "bd_per_spread": round(bd_ps, 0),
+            "d_long": round(d_buy, 3), "d_short": round(d_sell, 3),
+            "cost_per_spread": round(cost_ps, 2),
+            "total_cost": round(n_total * cost_ps, 0),
+            "post_bd_ratio": round(post_bdr, 1),
+            "theta_change": round(theta_chg, 2),
+            "new_ocr": round(new_ocr, 1),
+        }
+
+    plan_a = _plan(ref_buy_k, ref_buy_k - 35)
+    plan_b = _plan(ref_buy_k, ref_buy_k - 60)
+
+    # Plan C: keep existing legs, top up with plan A's spread structure.
+    remaining_bd = bd_to_hedge + existing_bd
+    if remaining_bd <= 0 or plan_a["bd_per_spread"] >= 0:
+        n_add = 0
+    else:
+        n_add = math.ceil(remaining_bd / (-plan_a["bd_per_spread"]))
+    post_bdc = ((current_bd + existing_bd + n_add * plan_a["bd_per_spread"])
+                / equity * 100) if equity else 0
+
+    plan_c = {
+        "n_existing": n_existing,
+        "n_additional": n_add,
+        "buy_strike": ref_buy_k,
+        "sell_strike": ref_buy_k - 35,
+        "cost_per_spread": plan_a["cost_per_spread"],
+        "additional_cost": round(n_add * plan_a["cost_per_spread"], 0),
+        "post_bd_ratio": round(post_bdc, 1),
+        "existing_bd": round(existing_bd, 0),
+    }
+
+    hedge_governance = evaluate_protective_put_hedges(
+        existing_legs,
+        equity=equity,
+        beta_delta_pct=current_bdr * 100,
+        target_beta_delta_pct=target_bd_ratio * 100,
+        today=today,
+    )
+
+    return {
+        "equity": equity,
+        "current_bd_ratio": round(current_bdr * 100, 1),
+        "target_bd_ratio": round(target_bd_ratio * 100, 1),
+        "bd_to_hedge": round(bd_to_hedge, 0),
+        "qqq_price": round(qqq_price, 2),
+        "qqq_iv": round(qqq_iv_pct, 1),
+        "b_qqq": beta_qqq,
+        "existing_legs": existing_legs,
+        "existing_bd": round(existing_bd, 0),
+        "n_existing": n_existing,
+        "plan_dte": plan_dte,
+        "plan_occ_exp": plan_occ_exp,
+        "plan_exp_str": plan_exp.strftime("%Y-%m-%d"),
+        "plan_a": plan_a,
+        "plan_b": plan_b,
+        "plan_c": plan_c,
+        "hedge_governance": hedge_governance,
     }

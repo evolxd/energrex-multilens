@@ -14,6 +14,7 @@ from account.risk import (
     classify_stress_status,
     compute_exit_analysis,
     compute_portfolio_stress_test,
+    compute_qqq_hedge_plan,
     compute_twr_drawdown,
     delta_drift_trigger,
     load_options_cost_ratio_limit,
@@ -463,6 +464,85 @@ class ComputeExitAnalysisTests(unittest.TestCase):
         self.assertAlmostEqual(summary["cost_pct"], 3.0)
         self.assertEqual(summary["n_broken"], 1)
         self.assertEqual(summary["top_unds"][0], ("BBB", 2000.0))
+
+
+class ComputeQqqHedgePlanTests(unittest.TestCase):
+    def test_bd_to_hedge_and_reference_strike_with_no_existing_legs(self):
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=10000.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertAlmostEqual(result["bd_to_hedge"], 150000.0)
+        # No existing long puts -> reference strike falls back to 97% of spot,
+        # rounded to the nearest $5.
+        self.assertAlmostEqual(result["plan_a"]["buy_strike"], 485.0)
+        self.assertAlmostEqual(result["plan_a"]["sell_strike"], 450.0)
+        self.assertAlmostEqual(result["plan_b"]["sell_strike"], 425.0)
+        self.assertEqual(result["plan_exp_str"], "2026-08-30")
+
+    def test_no_hedge_needed_when_already_under_target(self):
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=600000, current_bdr=1.2, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=0.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertLess(result["bd_to_hedge"], 0)
+        self.assertEqual(result["plan_a"]["n_total"], 0)
+        self.assertEqual(result["plan_b"]["n_total"], 0)
+
+    def test_existing_long_put_strike_becomes_the_reference_strike(self):
+        legs = [{
+            "sym": "QQQ260830P00470000", "qty": 2, "type": "P",
+            "strike": 470.0, "expiry": "2026-08-30",
+            "delta": -0.3, "price": 10.0, "market_value": 2000.0,
+        }]
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-50000.0, n_existing=2,
+            current_option_cost=2000.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertAlmostEqual(result["plan_a"]["buy_strike"], 470.0)
+        self.assertEqual(result["plan_c"]["n_existing"], 2)
+        self.assertAlmostEqual(result["existing_bd"], -50000.0)
+
+    def test_plan_c_reduces_additional_contracts_when_existing_hedge_already_helps(self):
+        legs = [{
+            "sym": "QQQ260830P00470000", "qty": 2, "type": "P",
+            "strike": 470.0, "expiry": "2026-08-30",
+            "delta": -0.3, "price": 10.0, "market_value": 2000.0,
+        }]
+        with_existing = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-50000.0, n_existing=2,
+            current_option_cost=2000.0, today=datetime.date(2026, 6, 1),
+        )
+        without_existing = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=0.0, today=datetime.date(2026, 6, 1),
+        )
+        # Existing short-Delta hedge already offsets some beta-weighted Delta,
+        # so fewer additional spreads should be needed to reach the same target.
+        self.assertLess(
+            with_existing["plan_c"]["n_additional"],
+            without_existing["plan_c"]["n_additional"],
+        )
+
+    def test_result_includes_hedge_governance_evaluation(self):
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=0.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertIn("hedge_governance", result)
+        self.assertIsInstance(result["hedge_governance"], dict)
 
 
 class RiskStatusClassificationTests(unittest.TestCase):
