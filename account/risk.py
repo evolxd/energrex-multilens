@@ -597,3 +597,206 @@ def build_recommendations(
             idx += 1
 
     return recs
+
+
+def compute_exit_analysis(
+    portfolios: list[dict],
+    *,
+    net_equity: float,
+    underlying_prices: dict[str, float],
+    today: datetime.date | None = None,
+) -> dict:
+    """Layer risk/time/direction analysis onto each already-identified spread
+    portfolio and rank by urgency, plus a portfolio-level summary.
+
+    Pure given `portfolios` (from account_monitor.py's
+    `_build_spread_portfolios`), `net_equity` (from the latest account
+    balance), and `underlying_prices` (from a market-data fetch) -- this
+    function only decides urgency/action/thesis-broken status from what it's
+    handed, it does not fetch anything itself.
+    """
+    if not portfolios:
+        return {"portfolios": [], "summary": {}}
+
+    enriched_list = []
+
+    for port in portfolios:
+        und = port["underlying"]
+        und_price = underlying_prices.get(und)
+
+        cost_basis = abs(port.get("max_loss") or port.get("net_total") or 0)
+        equity_pct = round(cost_basis / net_equity * 100, 1) if net_equity > 0 else 0.0
+
+        pnl_pct = port.get("pnl_pct")
+        if pnl_pct is None and cost_basis > 0.01:
+            pnl_pct = round(port["current_pnl"] / cost_basis * 100, 1)
+
+        min_dte = port["dte"]
+        short_legs = [l for l in port["legs"] if (l.get("qty") or 0) < 0]
+        short_dtes = [l["dte"] for l in short_legs]
+        min_short_dte = min(short_dtes) if short_dtes else None
+        has_short = bool(short_legs)
+
+        # ── Thesis broken detection ──────────────────────────────
+        thesis_broken = False
+        thesis_note = ""
+        if und_price:
+            ptype = port.get("type", "")
+            high_k = port.get("high_strike") or 0
+            low_k = port.get("low_strike") or 0
+            if "Bear Put" in ptype and high_k and und_price > high_k:
+                thesis_broken = True
+                otm = (und_price - high_k) / high_k * 100
+                thesis_note = (f"{und} 现价 ${und_price:.2f} 高于价差上沿 "
+                               f"${high_k:.0f}（超出 {otm:.1f}%），看跌假设已被推翻")
+            elif "Bull Call" in ptype and low_k and und_price < low_k:
+                thesis_broken = True
+                otm = (low_k - und_price) / low_k * 100
+                thesis_note = (f"{und} 现价 ${und_price:.2f} 低于价差下沿 "
+                               f"${low_k:.0f}（偏离 {otm:.1f}%），看涨假设受挫")
+            elif "Bear Call" in ptype and high_k and und_price > high_k:
+                thesis_broken = True
+                otm = (und_price - high_k) / high_k * 100
+                thesis_note = (f"{und} 现价 ${und_price:.2f} 高于上沿 "
+                               f"${high_k:.0f}（超出 {otm:.1f}%），空头承压")
+            elif "Bull Put" in ptype and low_k and und_price < low_k:
+                thesis_broken = True
+                otm = (low_k - und_price) / low_k * 100
+                thesis_note = (f"{und} 现价 ${und_price:.2f} 低于下沿 "
+                               f"${low_k:.0f}（偏离 {otm:.1f}%），多头压力加大")
+            elif "Naked Long Put" in ptype:
+                strike_k = port["legs"][0].get("strike") or 0
+                if strike_k and und_price > strike_k * 1.1:
+                    otm = (und_price - strike_k) / strike_k * 100
+                    thesis_broken = True
+                    thesis_note = (f"{und} 现价 ${und_price:.2f} 高于行权价 "
+                                   f"${strike_k:.0f}（{otm:.0f}% OTM），看跌假设未兑现")
+            elif "Naked Long Call" in ptype:
+                strike_k = port["legs"][0].get("strike") or 0
+                if strike_k and und_price < strike_k * 0.9:
+                    otm = (strike_k - und_price) / strike_k * 100
+                    thesis_broken = True
+                    thesis_note = (f"{und} 现价 ${und_price:.2f} 低于行权价 "
+                                   f"${strike_k:.0f}（{otm:.0f}% OTM），看涨动能不足")
+
+        # ── Urgency score (for sorting) ──────────────────────────
+        urgency = 0
+        if min_dte is not None:
+            if min_dte <= 7:
+                urgency += 5
+            elif min_dte <= 14:
+                urgency += 3
+            elif min_dte <= 21:
+                urgency += 1
+        if pnl_pct is not None:
+            if pnl_pct <= -60:
+                urgency += 6
+            elif pnl_pct <= -45:
+                urgency += 4
+            elif pnl_pct <= -30:
+                urgency += 2
+            elif pnl_pct >= 45:
+                urgency += 2
+            elif pnl_pct >= 30:
+                urgency += 1
+        if equity_pct > 30:
+            urgency += 3
+        elif equity_pct > 20:
+            urgency += 1
+        if thesis_broken:
+            urgency += 4
+
+        # ── Action label & color ─────────────────────────────────
+        _p = pnl_pct or 0
+        if min_dte is not None and min_dte <= 7:
+            action, action_color = "🚨 立即处理", "#FF4B4B"
+        elif _p <= -60:
+            action, action_color = "🛑 止损", "#FF4B4B"
+        elif thesis_broken and _p <= -20:
+            action, action_color = "📉 重新评估", "#FF4B4B"
+        elif pnl_pct is not None and pnl_pct >= 50:
+            action, action_color = "⚡ 止盈", "#00C853"
+        elif pnl_pct is not None and pnl_pct <= -50 and (min_dte or 999) < 30:
+            action, action_color = "🛑 止损", "#FF4B4B"
+        elif has_short and min_short_dte is not None and min_short_dte <= 21:
+            action, action_color = "🔄 滚仓", "#FFB700"
+        elif thesis_broken:
+            action, action_color = "⚠️ 方向反转", "#FFB700"
+        elif pnl_pct is not None and pnl_pct <= -40:
+            action, action_color = "👀 关注", "#FFB700"
+        else:
+            action, action_color = "✅ 持有", "#6B6B6B"
+
+        # ── Why text (layered explanation) ───────────────────────
+        why_parts = []
+
+        if thesis_broken and thesis_note:
+            why_parts.append(f"【方向】{thesis_note}")
+
+        if pnl_pct is not None:
+            dist_stop = pnl_pct - (-50)
+            dist_tp = 50 - pnl_pct
+            if pnl_pct >= 50:
+                why_parts.append("【盈亏】已触发止盈线 +50%，建议锁利或展期")
+            elif pnl_pct <= -50:
+                why_parts.append(f"【盈亏】已触发止损线，亏损 {abs(pnl_pct):.0f}%")
+            elif dist_stop < 15:
+                why_parts.append(f"【盈亏】亏损 {pnl_pct:+.0f}%，距止损线 -50% 仅剩 {dist_stop:.0f}%，需密切关注")
+            elif dist_tp < 12:
+                why_parts.append(f"【盈亏】盈利 {pnl_pct:+.0f}%，距止盈线 +50% 还差 {dist_tp:.0f}%")
+            else:
+                why_parts.append(f"【盈亏】{pnl_pct:+.0f}%（止盈 +50% / 止损 -50%，当前安全区间）")
+
+        if equity_pct > 25:
+            why_parts.append(f"【风险】持仓成本占净值 {equity_pct:.0f}%，集中度偏高（建议单仓 ≤25%净值）")
+        elif equity_pct > 15:
+            why_parts.append(f"【风险】持仓成本占净值 {equity_pct:.0f}%")
+
+        if min_dte is not None:
+            if min_dte <= 7:
+                why_parts.append(f"【时间】DTE={min_dte}天，时间价值极速衰减，立即决策")
+            elif min_dte <= 14:
+                why_parts.append(f"【时间】DTE={min_dte}天，Theta加速衰减，建议本周决策")
+            elif min_dte <= 21:
+                why_parts.append(f"【时间】DTE={min_dte}天，建议2周内决策")
+
+        if not why_parts:
+            why_parts.append("各项指标正常，无需立即行动")
+
+        enriched_list.append({
+            **port,
+            "cost_basis":    cost_basis,
+            "equity_pct":    equity_pct,
+            "pnl_pct":       pnl_pct,
+            "min_dte":       min_dte,
+            "min_short_dte": min_short_dte,
+            "has_short":     has_short,
+            "und_price":     und_price,
+            "thesis_broken": thesis_broken,
+            "thesis_note":   thesis_note,
+            "urgency":       urgency,
+            "action":        action,
+            "action_color":  action_color,
+            "why":           " ；".join(why_parts),
+        })
+
+    enriched_list.sort(key=lambda x: -x["urgency"])
+
+    total_cost = sum(p["cost_basis"] for p in enriched_list)
+    cost_pct = round(total_cost / net_equity * 100, 1) if net_equity > 0 else 0.0
+
+    by_und: dict[str, float] = {}
+    for p in enriched_list:
+        by_und[p["underlying"]] = by_und.get(p["underlying"], 0) + p["cost_basis"]
+    top_unds = sorted(by_und.items(), key=lambda x: -x[1])[:3]
+
+    return {
+        "portfolios": enriched_list,
+        "summary": {
+            "total_cost": round(total_cost, 2),
+            "net_equity": net_equity,
+            "cost_pct":   cost_pct,
+            "top_unds":   top_unds,
+            "n_broken":   sum(1 for p in enriched_list if p["thesis_broken"]),
+        },
+    }

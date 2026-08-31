@@ -12,6 +12,7 @@ from account.risk import (
     calculate_option_position_greeks,
     classify_drawdown_status,
     classify_stress_status,
+    compute_exit_analysis,
     compute_portfolio_stress_test,
     compute_twr_drawdown,
     delta_drift_trigger,
@@ -354,6 +355,114 @@ class BuildRecommendationsTests(unittest.TestCase):
             ai_scores={"AAAA": 90},
         )
         self.assertIn("Put Credit Spread", recs[0]["行动建议"])
+
+
+class ComputeExitAnalysisTests(unittest.TestCase):
+    def _portfolio(self, **overrides):
+        base = {
+            "underlying": "PLTR",
+            "type": "Bull Call Debit Spread",
+            "max_loss": 1000.0,
+            "current_pnl": 100.0,
+            "pnl_pct": None,
+            "dte": 30,
+            "legs": [
+                {"qty": 1, "dte": 30, "strike": 100},
+                {"qty": -1, "dte": 30, "strike": 110},
+            ],
+            "high_strike": 110,
+            "low_strike": 100,
+        }
+        base.update(overrides)
+        return base
+
+    def test_empty_portfolios_returns_empty_result(self):
+        result = compute_exit_analysis([], net_equity=100000, underlying_prices={})
+        self.assertEqual(result, {"portfolios": [], "summary": {}})
+
+    def test_missing_pnl_pct_is_filled_in_from_cost_basis(self):
+        result = compute_exit_analysis(
+            [self._portfolio(max_loss=1000.0, current_pnl=250.0, pnl_pct=None)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertAlmostEqual(result["portfolios"][0]["pnl_pct"], 25.0)
+
+    def test_equity_pct_uses_cost_basis_over_net_equity(self):
+        result = compute_exit_analysis(
+            [self._portfolio(max_loss=20000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertAlmostEqual(result["portfolios"][0]["equity_pct"], 20.0)
+
+    def test_bull_call_thesis_broken_when_price_drops_below_low_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("看涨假设受挫", row["thesis_note"])
+
+    def test_bull_call_thesis_intact_when_price_holds_above_low_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 105.0},
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_near_expiry_forces_immediate_action_regardless_of_pnl(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=5, pnl_pct=10.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🚨 立即处理")
+
+    def test_extreme_loss_forces_stop_loss_regardless_of_dte(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-65.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🛑 止损")
+
+    def test_large_gain_triggers_take_profit(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=55.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "⚡ 止盈")
+
+    def test_healthy_position_defaults_to_hold(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=5.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        row = result["portfolios"][0]
+        self.assertEqual(row["action"], "✅ 持有")
+        self.assertIn("当前安全区间", row["why"])
+
+    def test_results_sorted_by_urgency_descending(self):
+        calm = self._portfolio(underlying="AAA", dte=60, pnl_pct=5.0)
+        urgent = self._portfolio(underlying="BBB", dte=3, pnl_pct=-70.0)
+        result = compute_exit_analysis(
+            [calm, urgent], net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual([p["underlying"] for p in result["portfolios"]], ["BBB", "AAA"])
+
+    def test_summary_aggregates_cost_and_broken_thesis_count(self):
+        result = compute_exit_analysis(
+            [
+                self._portfolio(underlying="AAA", max_loss=1000.0),
+                self._portfolio(underlying="BBB", max_loss=2000.0,
+                                 type="Bull Call Debit Spread", low_strike=100, high_strike=110),
+            ],
+            net_equity=100000,
+            underlying_prices={"BBB": 50.0},  # breaks BBB's bull call thesis
+        )
+        summary = result["summary"]
+        self.assertAlmostEqual(summary["total_cost"], 3000.0)
+        self.assertAlmostEqual(summary["cost_pct"], 3.0)
+        self.assertEqual(summary["n_broken"], 1)
+        self.assertEqual(summary["top_unds"][0], ("BBB", 2000.0))
 
 
 class RiskStatusClassificationTests(unittest.TestCase):
