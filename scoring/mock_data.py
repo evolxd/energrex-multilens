@@ -405,15 +405,18 @@ MOCK_STOCKS: dict[str, dict] = {
 
     "MRVL": {
         "company_name": "Marvell Technology",
-        "current_price": 218.60,   # 2026-08-29核实：多来源交叉一致（WebSearch $216.62/收盘$217.10/yfinance快照$218.6），
-                                   # 此前252.6是财报前的旧价，财报后(8/28)因毛利率指引不及预期单日跌10.1%
-        "market_cap": 1.9145e11,   # $218.60 × 8.758亿股(yfinance快照)
-        "peg_ratio": 0.467,        # 2026-08-29 yfinance快照，内部自洽：远期PE35.03/(EPS增速75%×100)=0.467，非失真口径
-        "ev_ebitda": 63.0,         # 2026-08-29核算：EV快照$170.9B / TTM EBITDA $2.712B（yfinance字段），修正自旧值82.0
-        "ev_sales": 22.13,         # 2026-08-29 yfinance快照，随新股价重算，修正自旧值25.5
-        "ps_ratio": 22.13,
-        "forward_pe": 35.03,       # 2026-08-29 yfinance快照，修正自旧值40.9（旧值基于$252.6旧价）
-        "fcf_yield": 0.012,        # TTM FCF $2.27B / 市值$191.45B，yfinance快照，修正自旧值0.0103
+        "current_price": 211.52,  # 2026-08-31核实：用户提供的实时行情App截图(美东10:27)，昨收$216.62/今开$216.27/
+                                  # 当日区间$210.79~$218.22，当日跌2.35%~2.40%；此前218.60是2026-08-29的价格，
+                                  # 两天内又跌了约3.2%——本环境的yfinance/SEC均被出站代理拦截，这次是用户主动提供的
+                                  # 实时数据源，比web_search快照更新更准，取代旧值
+        "market_cap": 1.85249e11,  # $211.52 × 8.758亿股，用户截图App显示185.4亿~185.5亿(美元)交叉印证一致
+        "peg_ratio": 0.452,        # 随新价重算：远期PE33.89/(EPS增速75%×100)=0.452，方法与2026-08-29版本一致(未加60%封顶，
+                                   # 因为要跟yfinance原始口径对齐)，不是新查的数字，是同一算法换新价重算
+        "ev_ebitda": 68.84,        # 随新价重算：EV$186.68B / TTM EBITDA $2.712B，修正自2026-08-29版本的63.0
+        "ev_sales": 21.42,         # 随新价重算，修正自2026-08-29版本的22.13
+        "ps_ratio": 21.42,
+        "forward_pe": 33.89,       # $211.52 / 远期EPS 6.241，修正自2026-08-29版本的35.03
+        "fcf_yield": 0.01225,      # TTM FCF $2.27B / 新市值$185.25B，修正自2026-08-29版本的0.012
         "revenue_growth_yoy": 0.366,  # Q2(季度截至2026-07)实际同比+36.6%（营收$2.739B创纪录），管理层/多来源一致；
                                       # yfinance自动字段给27.6%，判断是TTM混合值(被更早季度较低增速拉低)，非当季真实趋势，不采用
         "eps_growth_yoy": 0.75,       # 保留手动Non-GAAP；yfinance GAAP=-80.4%不适用；与yfinance该字段75.0%一致，本轮未变
@@ -464,12 +467,14 @@ MOCK_STOCKS: dict[str, dict] = {
         # 与上面已核实的current_price/ev_sales/fcf_yield等比率算法一致（非新编数字）
         "revenue_ttm": 8.717e9, "fcf_ttm": 2.27e9,
         "shares_outstanding": 875800000, "forward_eps": 6.241,
-        "_data_vintage": "2026-08-29 web_search+yfinance快照交叉核实：价格/市值/PEG/EV-EBITDA/EV-Sales/远期PE/"
+        "_data_vintage": "2026-08-29 web_search+yfinance快照交叉核实：市值/EV-EBITDA/EV-Sales/远期PE/PEG/"
                          "FCF收益率/Q2营收同比/ROIC/负债权益比/数据中心暴露/Q2实际vs一致预期四项/beta/1年最大回撤/"
-                         "绝对值分母(营收/FCF/股数/远期EPS)；毛利率(GAAP口径)与yfinance快照一致未变；"
-                         "fcf_growth/次年营收增速/分析师上修/AI收入利润增长贡献暴露/先进封装/AI订单积压/"
-                         "市场预期分/波动率——本轮未重新核实，标注维持旧估计，非漏查。"
-                         "此前该股票条目缺少_data_vintage字段，本次补上",
+                         "绝对值分母(营收/FCF/股数/远期EPS)；2026-08-31用户提供实时行情App截图更新current_price及随价格"
+                         "重算的PEG/EV-EBITDA/EV-Sales/远期PE/FCF收益率（算法不变，仅换新价，非重新独立核实这几个比率）；"
+                         "毛利率(GAAP口径)与yfinance快照一致未变；fcf_growth/次年营收增速/分析师上修/"
+                         "AI收入利润增长贡献暴露/先进封装/AI订单积压/市场预期分/波动率——本轮未重新核实，标注维持旧估计，"
+                         "非漏查。截图中的RSI(多周期)/EMA/MACD/BOLL指标不是系统需要的RSI-14或200日均线口径，"
+                         "未强行套用，动量维度继续留空。此前该股票条目缺少_data_vintage字段，2026-08-29补上",
     },
 
     "SNOW": {
