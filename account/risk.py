@@ -8,12 +8,27 @@ from pathlib import Path
 
 from scipy.stats import norm
 
+from account.options import parse_occ
+
 
 RF_RATE = 0.045
 OPTION_MULTIPLIER = 100
 DELTA_DRIFT_THRESHOLD = 0.10
 VIX_SPIKE_THRESHOLD_PCT = 15.0
 DEFAULT_OPTIONS_COST_RATIO_LIMIT = 0.50
+
+# account_monitor.py's _RISK_LIMITS -- duplicated here as the default so
+# compute_stress_status()/compute_drawdown_status() are callable standalone
+# in tests. account_monitor.py remains the source of truth it should pass in.
+DEFAULT_RISK_LIMITS = {
+    "max_leverage":          4.0,
+    "max_beta_delta_ratio":  3.5,
+    "stress_warning":        0.08,
+    "stress_de_risk":        0.12,
+    "stress_hard_stop":      0.15,
+    "drawdown_freeze":       0.20,
+    "drawdown_de_risk":      0.30,
+}
 
 _log = logging.getLogger("energrex.account.risk")
 
@@ -264,3 +279,168 @@ def load_options_cost_ratio_limit(
             "falling back to default limit=%s", config_path, exc, default,
         )
         return default
+
+
+def compute_twr_drawdown(
+    nav_by_date: dict[str, float],
+    cashflow_by_date: dict[str, float] | None = None,
+) -> float:
+    """Time-weighted-return max drawdown magnitude, excluding cash flows.
+
+    Deposits/withdrawals on a given date are backed out of that day's return
+    so a large deposit doesn't register as a gain (and a withdrawal doesn't
+    register as a loss). Returns a positive magnitude (0.20 means -20%), or
+    0.0 when fewer than two NAV observations exist.
+    """
+    cashflow_by_date = cashflow_by_date or {}
+    dates = sorted(nav_by_date)
+    drawdown = 0.0
+    if len(dates) < 2:
+        return drawdown
+
+    twr = peak = 1.0
+    prev = float(nav_by_date[dates[0]])
+    for d in dates[1:]:
+        nav = float(nav_by_date[d])
+        cf = cashflow_by_date.get(d, 0.0)
+        r = (nav - prev - cf) / prev if prev > 0 else 0.0
+        twr *= (1.0 + r)
+        if twr > peak:
+            peak = twr
+        dd = twr / peak - 1
+        if dd < -drawdown:
+            drawdown = abs(dd)
+        prev = nav
+    return drawdown
+
+
+def compute_portfolio_stress_test(
+    stocks: list,
+    options: list,
+    *,
+    underlying_prices: dict[str, float],
+    iv_map: dict[str, dict],
+    beta_map: dict[str, float],
+    today: datetime.date | None = None,
+) -> dict:
+    """-10%/-20% underlying-shock stress test across stock + option positions.
+
+    `stocks` rows need symbol/quantity/market_value; `options` rows need
+    symbol/quantity/current_price/market_value/strike/expiry (dict or
+    sqlite3.Row -- both support `row["field"]`). Options use Black-Scholes
+    Greeks (spot from `underlying_prices`, IV from `iv_map`, falling back to
+    30% IV when unknown) rather than any Greeks stored on the row, so this
+    never depends on a possibly-NULL DB column. Spread legs on the same
+    underlying naturally net out in delta-adjusted notional exposure.
+
+    stress_pnl = qty * multiplier * (delta*dS + 0.5*gamma*dS^2) + qty * multiplier * vega * iv_shock_pts
+    -10% shock: dS = -10%*S, iv_shock = +8 vol points. -20%: dS = -20%*S, +16 points.
+    """
+    today = today or datetime.date.today()
+    gross = delta_notional = beta_delta = 0.0
+    theta_per_day = vega_per_pt = gamma_total = 0.0
+    stress_10 = stress_20 = 0.0
+    nearest_expiry_date: datetime.date | None = None
+    nearest_expiry_sym = ""
+
+    for s in stocks:
+        sym = str(s["symbol"] or "").upper()
+        q = float(s["quantity"] or 0)
+        mv = float(s["market_value"] or 0)
+        s_price = mv / q if q else 0.0
+        b = beta_map.get(sym, 1.0)
+        gross += abs(mv)
+        delta_notional += abs(mv)
+        beta_delta += q * s_price * 1.0 * b
+        stress_10 += q * (-0.10 * s_price)
+        stress_20 += q * (-0.20 * s_price)
+
+    for o in options:
+        sym = str(o["symbol"] or "").upper()
+        parsed = parse_occ(sym)
+        und = parsed["root"] if parsed else sym
+        b = beta_map.get(und, 1.0)
+        q = float(o["quantity"] or 0)
+        mult = 100.0
+        price = float(o["current_price"] or 0)
+        mv = float(o["market_value"] or 0)
+        S = underlying_prices.get(und, 0.0)
+
+        d = g = th = vg = 0.0
+        if parsed and S > 0:
+            K = float(o["strike"] or 0) or parsed["strike"]
+            opt_type = parsed["option_type"]
+            iv_entry = iv_map.get(und)
+            iv = iv_entry["iv"] if iv_entry else 0.30
+            try:
+                exp_date = datetime.date.fromisoformat(str(o["expiry"]))
+            except Exception:
+                exp_date = datetime.date.fromisoformat(parsed["expiry"])
+            dte = max(0, (exp_date - today).days)
+            if dte > 0 and K > 0:
+                greeks = bs_greeks(S, K, dte / 365.0, iv, opt_type)
+                d, g, th, vg = greeks["delta"], greeks["gamma"], greeks["theta"], greeks["vega"]
+
+        gross += abs(q * mult * S) if S > 0 else abs(q * mult * price)
+        if S > 0 and abs(d) > 0.001:
+            delta_notional += abs(q * mult * d * S)
+        else:
+            # Delta didn't resolve (deep OTM / expired) -- use market value
+            # rather than overstate exposure.
+            delta_notional += abs(mv) if abs(mv) > 0 else abs(q * mult * price)
+        theta_per_day += q * mult * th
+        vega_per_pt += q * mult * vg
+        gamma_total += abs(q) * g * mult
+
+        if parsed:
+            try:
+                exp = datetime.date.fromisoformat(parsed["expiry"])
+                if nearest_expiry_date is None or exp < nearest_expiry_date:
+                    nearest_expiry_date = exp
+                    nearest_expiry_sym = und
+            except ValueError:
+                pass
+
+        if S > 0:
+            beta_delta += q * mult * d * S * b
+            ds10, ds20 = -0.10 * S, -0.20 * S
+            stress_10 += q * mult * (d * ds10 + 0.5 * g * ds10 * ds10) + q * mult * vg * 8
+            stress_20 += q * mult * (d * ds20 + 0.5 * g * ds20 * ds20) + q * mult * vg * 16
+
+    return {
+        "gross_notional": gross,
+        "delta_notional": delta_notional,
+        "beta_delta": beta_delta,
+        "theta_per_day": theta_per_day,
+        "vega_per_pt": vega_per_pt,
+        "gamma_total": gamma_total,
+        "stress_10": stress_10,
+        "stress_20": stress_20,
+        "nearest_expiry_date": nearest_expiry_date,
+        "nearest_expiry_sym": nearest_expiry_sym,
+    }
+
+
+def classify_stress_status(
+    stress_10_ratio: float | None, limits: dict | None = None
+) -> str:
+    """GREEN / YELLOW_WARNING / ORANGE_DE_RISK / RED_HARD_STOP from -10% stress ratio."""
+    limits = limits or DEFAULT_RISK_LIMITS
+    magnitude = abs(stress_10_ratio) if stress_10_ratio else 0.0
+    if magnitude >= limits["stress_hard_stop"]:
+        return "RED_HARD_STOP"
+    if magnitude >= limits["stress_de_risk"]:
+        return "ORANGE_DE_RISK"
+    if magnitude >= limits["stress_warning"]:
+        return "YELLOW_WARNING"
+    return "GREEN"
+
+
+def classify_drawdown_status(drawdown: float, limits: dict | None = None) -> str:
+    """GREEN / ORANGE_FREEZE_NEW_RISK / RED_MANDATORY_DE_RISK from TWR drawdown magnitude."""
+    limits = limits or DEFAULT_RISK_LIMITS
+    if drawdown >= limits["drawdown_de_risk"]:
+        return "RED_MANDATORY_DE_RISK"
+    if drawdown >= limits["drawdown_freeze"]:
+        return "ORANGE_FREEZE_NEW_RISK"
+    return "GREEN"

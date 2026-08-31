@@ -6,8 +6,13 @@ from pathlib import Path
 
 from account.risk import (
     DEFAULT_OPTIONS_COST_RATIO_LIMIT,
+    DEFAULT_RISK_LIMITS,
     bs_greeks,
     calculate_option_position_greeks,
+    classify_drawdown_status,
+    classify_stress_status,
+    compute_portfolio_stress_test,
+    compute_twr_drawdown,
     delta_drift_trigger,
     load_options_cost_ratio_limit,
     summarize_portfolio_greeks,
@@ -122,6 +127,132 @@ class OptionsCostRatioLimitTests(unittest.TestCase):
             self.assertEqual(
                 load_options_cost_ratio_limit(path), DEFAULT_OPTIONS_COST_RATIO_LIMIT
             )
+
+
+class TwrDrawdownTests(unittest.TestCase):
+    def test_fewer_than_two_observations_has_no_drawdown(self):
+        self.assertEqual(compute_twr_drawdown({}), 0.0)
+        self.assertEqual(compute_twr_drawdown({"2026-06-01": 100000}), 0.0)
+
+    def test_pure_loss_registers_as_drawdown(self):
+        nav = {"2026-06-01": 100000, "2026-06-02": 90000}
+        self.assertAlmostEqual(compute_twr_drawdown(nav), 0.10, places=6)
+
+    def test_partial_recovery_keeps_the_worse_drawdown(self):
+        nav = {"2026-06-01": 100000, "2026-06-02": 90000, "2026-06-03": 99000}
+        # -10% then +10% off the new base recovers most of the loss, but the
+        # worst drawdown along the path (-10%) is what should be reported,
+        # not the smaller current gap to the running peak.
+        self.assertAlmostEqual(compute_twr_drawdown(nav), 0.10, places=6)
+
+    def test_deposit_on_a_flat_day_is_not_counted_as_a_gain(self):
+        # NAV rose by exactly the deposit amount -- zero real return, so this
+        # must not register as a recovery/gain that resets the peak upward.
+        nav = {"2026-06-01": 100000, "2026-06-02": 110000}
+        cashflow = {"2026-06-02": 10000}
+        self.assertAlmostEqual(compute_twr_drawdown(nav, cashflow), 0.0, places=6)
+
+    def test_withdrawal_on_a_flat_day_is_not_counted_as_a_loss(self):
+        nav = {"2026-06-01": 100000, "2026-06-02": 90000}
+        cashflow = {"2026-06-02": -10000}
+        self.assertAlmostEqual(compute_twr_drawdown(nav, cashflow), 0.0, places=6)
+
+
+class PortfolioStressTestTests(unittest.TestCase):
+    def test_stock_and_option_positions_aggregate_correctly(self):
+        stocks = [{"symbol": "AAPL", "quantity": 100, "market_value": 15000.0}]
+        options = [{
+            "symbol": "AAPL260717C00150000",
+            "quantity": 1,
+            "current_price": 5.0,
+            "market_value": 500.0,
+            "strike": 150.0,
+            "expiry": "2026-07-17",
+        }]
+
+        result = compute_portfolio_stress_test(
+            stocks, options,
+            underlying_prices={"AAPL": 150.0},
+            iv_map={"AAPL": {"iv": 0.30, "src": "test"}},
+            beta_map={"AAPL": 1.2},
+            today=datetime.date(2026, 6, 17),
+        )
+
+        # Independently derived from the same Black-Scholes call this
+        # function uses internally (dte=30, S=K=150, iv=0.30) -- this test
+        # is exercising the position-loop assembly (signs, which total each
+        # term feeds, per-position aggregation), not bs_greeks itself, which
+        # test_bs_greeks_known_deterministic_case already locks down.
+        greeks = bs_greeks(150.0, 150.0, 30 / 365, 0.30, "call")
+        d, g, th, vg = greeks["delta"], greeks["gamma"], greeks["theta"], greeks["vega"]
+        opt_delta_notl = abs(1 * 100 * d * 150.0)
+        ds10, ds20 = -0.10 * 150.0, -0.20 * 150.0
+        opt_pnl10 = 1 * 100 * (d * ds10 + 0.5 * g * ds10 * ds10) + 1 * 100 * vg * 8
+        opt_pnl20 = 1 * 100 * (d * ds20 + 0.5 * g * ds20 * ds20) + 1 * 100 * vg * 16
+
+        self.assertAlmostEqual(result["gross_notional"], 30000.0, places=2)
+        self.assertAlmostEqual(result["delta_notional"], 15000.0 + opt_delta_notl, places=2)
+        self.assertAlmostEqual(result["beta_delta"], 100 * 150 * 1.2 + 100 * d * 150.0 * 1.2, places=2)
+        self.assertAlmostEqual(result["theta_per_day"], 100 * th, places=4)
+        self.assertAlmostEqual(result["vega_per_pt"], 100 * vg, places=4)
+        self.assertAlmostEqual(result["gamma_total"], 100 * g, places=4)
+        self.assertAlmostEqual(result["stress_10"], 100 * (-0.10 * 150.0) + opt_pnl10, places=2)
+        self.assertAlmostEqual(result["stress_20"], 100 * (-0.20 * 150.0) + opt_pnl20, places=2)
+        self.assertEqual(result["nearest_expiry_date"], datetime.date(2026, 7, 17))
+        self.assertEqual(result["nearest_expiry_sym"], "AAPL")
+
+    def test_unknown_underlying_price_falls_back_to_market_value_for_delta_notional(self):
+        options = [{
+            "symbol": "ZZZZ260717C00100000",
+            "quantity": 2,
+            "current_price": 3.0,
+            "market_value": 600.0,
+            "strike": 100.0,
+            "expiry": "2026-07-17",
+        }]
+        result = compute_portfolio_stress_test(
+            [], options, underlying_prices={}, iv_map={}, beta_map={},
+            today=datetime.date(2026, 6, 17),
+        )
+        # No spot price for ZZZZ -> can't price Greeks -> delta_notional and
+        # gross both fall back to using market value / current_price rather
+        # than silently under- or over-stating exposure as zero.
+        self.assertAlmostEqual(result["delta_notional"], 600.0, places=2)
+        self.assertAlmostEqual(result["gross_notional"], 2 * 100 * 3.0, places=2)
+        self.assertEqual(result["stress_10"], 0.0)
+
+    def test_empty_portfolio_returns_zeros(self):
+        result = compute_portfolio_stress_test(
+            [], [], underlying_prices={}, iv_map={}, beta_map={},
+        )
+        self.assertEqual(result["gross_notional"], 0.0)
+        self.assertEqual(result["delta_notional"], 0.0)
+        self.assertIsNone(result["nearest_expiry_date"])
+
+
+class RiskStatusClassificationTests(unittest.TestCase):
+    def test_stress_status_thresholds(self):
+        self.assertEqual(classify_stress_status(0.05), "GREEN")
+        self.assertEqual(classify_stress_status(0.08), "YELLOW_WARNING")
+        self.assertEqual(classify_stress_status(0.12), "ORANGE_DE_RISK")
+        self.assertEqual(classify_stress_status(0.15), "RED_HARD_STOP")
+        self.assertEqual(classify_stress_status(None), "GREEN")
+
+    def test_stress_status_uses_magnitude_not_sign(self):
+        self.assertEqual(
+            classify_stress_status(-0.16), classify_stress_status(0.16)
+        )
+        self.assertEqual(classify_stress_status(-0.16), "RED_HARD_STOP")
+
+    def test_drawdown_status_thresholds(self):
+        self.assertEqual(classify_drawdown_status(0.10), "GREEN")
+        self.assertEqual(classify_drawdown_status(0.20), "ORANGE_FREEZE_NEW_RISK")
+        self.assertEqual(classify_drawdown_status(0.30), "RED_MANDATORY_DE_RISK")
+
+    def test_custom_limits_override_defaults(self):
+        tight = {**DEFAULT_RISK_LIMITS, "stress_warning": 0.01, "stress_de_risk": 0.02,
+                 "stress_hard_stop": 0.03}
+        self.assertEqual(classify_stress_status(0.015, tight), "YELLOW_WARNING")
 
 
 if __name__ == "__main__":

@@ -301,6 +301,10 @@ from account.options import parse_occ_sym as _parse_occ_sym
 from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
 from account.risk import bs_greeks as _bs_greeks
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
+from account.risk import classify_drawdown_status as _classify_drawdown_status
+from account.risk import classify_stress_status as _classify_stress_status
+from account.risk import compute_portfolio_stress_test as _compute_portfolio_stress_test
+from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.risk import delta_drift_trigger as _delta_drift_trigger
 from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
 from account.risk import summarize_portfolio_greeks as _summarize_portfolio_greeks
@@ -595,22 +599,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     for r in _nav_rows:
         _nav_by_d[str(r[0])] = float(r[1])
     _cf_map_dd = {r[0]: float(r[1]) for r in _cf_rows_dd}
-    _dates_dd = sorted(_nav_by_d)
-    drawdown = 0.0
-    if len(_dates_dd) >= 2:
-        _twr_f = _peak_f = 1.0
-        _prev = float(_nav_by_d[_dates_dd[0]])
-        for _d in _dates_dd[1:]:
-            _nav = float(_nav_by_d[_d])
-            _cf  = _cf_map_dd.get(_d, 0.0)
-            _r   = (_nav - _prev - _cf) / _prev if _prev > 0 else 0.0
-            _twr_f *= (1.0 + _r)
-            if _twr_f > _peak_f:
-                _peak_f = _twr_f
-            _dd = _twr_f / _peak_f - 1
-            if _dd < -drawdown:
-                drawdown = abs(_dd)
-            _prev = _nav
+    drawdown = _compute_twr_drawdown(_nav_by_d, _cf_map_dd)
 
     opts = conn.execute(
         "SELECT symbol, quantity, current_price, market_value, strike, expiry "
@@ -630,89 +619,21 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
             underlyings.add(mo.group(1))
     und_prices = _fetch_underlying_prices(tuple(sorted(underlyings))) if underlyings else {}
     _iv_map    = _get_atm_iv_batch(tuple(sorted(underlyings))) if underlyings else {}
-    _today     = datetime.date.today()
 
-    gross       = 0.0
-    delta_notl  = 0.0   # Delta-adjusted notional: Σ|Δ × qty × 100 × S|，spread 两腿自然对冲
-    beta_delta  = 0.0
-    theta_tot   = 0.0
-    vega_tot    = 0.0
-    gamma_tot   = 0.0
-    stress_10   = 0.0
-    stress_20   = 0.0
-    nearest_expiry_date = None
-    nearest_expiry_sym  = ""
-
-    for s in stks:
-        sym = str(s["symbol"] or "").upper()
-        q   = float(s["quantity"] or 0)
-        mv  = float(s["market_value"] or 0)
-        s_price = mv / q if q else 0.0
-        b = _BETA_BASE.get(sym, 1.0)   # 用硬编码保守值，不受 yfinance 刷新影响
-        gross      += abs(mv)
-        delta_notl += abs(mv)           # 股票 delta=1
-        beta_delta += q * s_price * 1.0 * b
-        ds10 = -0.10 * s_price
-        ds20 = -0.20 * s_price
-        stress_10 += q * ds10
-        stress_20 += q * ds20
-
-    for o in opts:
-        sym   = (o["symbol"] or "").upper()
-        mo    = _OCC_RE.match(sym)
-        und   = mo.group(1) if mo else sym
-        b     = _BETA_BASE.get(und, 1.0)   # 用硬编码保守值，不受 yfinance 刷新影响
-        q     = float(o["quantity"] or 0)
-        mult  = 100.0
-        price = float(o["current_price"] or 0)
-        mv    = float(o["market_value"] or 0)
-        S     = und_prices.get(und, 0.0)
-
-        # ── 始终用 BS 公式计算 Greeks，不依赖 DB 中可能为 NULL 的列 ──
-        d = g = th = vg = 0.0
-        if mo and S > 0:
-            _K = float(o["strike"] or 0) or float(mo.group(6)) / 1000.0
-            _opt_type = "call" if mo.group(5) == "C" else "put"
-            _iv_entry = _iv_map.get(und)
-            _iv = _iv_entry["iv"] if _iv_entry else 0.30
-            try:
-                _exp_date = datetime.date.fromisoformat(str(o["expiry"]))
-            except Exception:
-                _exp_date = datetime.date(2000 + int(mo.group(2)), int(mo.group(3)), int(mo.group(4)))
-            _dte = max(0, (_exp_date - _today).days)
-            if _dte > 0 and _K > 0:
-                _gr = _bs_greeks(S, _K, _dte / 365.0, _iv, _opt_type)
-                d, g, th, vg = _gr["delta"], _gr["gamma"], _gr["theta"], _gr["vega"]
-
-        gross      += abs(q * mult * S) if S > 0 else abs(q * mult * price)
-        # Delta-adjusted notional: 价差两腿 delta 符号相反，自然抵消，不双计
-        if S > 0 and abs(d) > 0.001:
-            delta_notl += abs(q * mult * d * S)
-        else:
-            # Delta 未算出（深度 OTM / 到期）：用期权市值代替，避免高估
-            delta_notl += abs(mv) if abs(mv) > 0 else abs(q * mult * price)
-        theta_tot  += q * mult * th
-        vega_tot   += q * mult * vg
-        gamma_tot  += abs(q) * g * mult
-
-        # nearest expiry — OCC groups: 1=und 2=YY 3=MM 4=DD
-        if mo:
-            try:
-                _exp = datetime.date(2000 + int(mo.group(2)), int(mo.group(3)), int(mo.group(4)))
-                if nearest_expiry_date is None or _exp < nearest_expiry_date:
-                    nearest_expiry_date = _exp
-                    nearest_expiry_sym  = und
-            except ValueError:
-                pass
-
-        if S > 0:
-            beta_delta += q * mult * d * S * b
-            ds10 = -0.10 * S
-            ds20 = -0.20 * S
-            pnl10 = q * mult * (d * ds10 + 0.5 * g * ds10 * ds10) + q * mult * vg * 8
-            pnl20 = q * mult * (d * ds20 + 0.5 * g * ds20 * ds20) + q * mult * vg * 16
-            stress_10 += pnl10
-            stress_20 += pnl20
+    stress = _compute_portfolio_stress_test(
+        stks, opts,
+        underlying_prices=und_prices, iv_map=_iv_map, beta_map=_BETA_BASE,
+    )
+    gross, delta_notl, beta_delta = (
+        stress["gross_notional"], stress["delta_notional"], stress["beta_delta"]
+    )
+    theta_tot, vega_tot, gamma_tot = (
+        stress["theta_per_day"], stress["vega_per_pt"], stress["gamma_total"]
+    )
+    stress_10, stress_20 = stress["stress_10"], stress["stress_20"]
+    nearest_expiry_date, nearest_expiry_sym = (
+        stress["nearest_expiry_date"], stress["nearest_expiry_sym"]
+    )
 
     leverage          = gross / equity if equity else None
     leverage_delta    = delta_notl / equity if equity else None   # Delta 口径，价差不双计
@@ -720,23 +641,8 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     stress_10_ratio   = stress_10 / equity if equity else None
     stress_20_ratio   = stress_20 / equity if equity else None
 
-    lim = _RISK_LIMITS
-    s10 = abs(stress_10_ratio) if stress_10_ratio else 0
-    if s10 >= lim["stress_hard_stop"]:
-        risk_status = "RED_HARD_STOP"
-    elif s10 >= lim["stress_de_risk"]:
-        risk_status = "ORANGE_DE_RISK"
-    elif s10 >= lim["stress_warning"]:
-        risk_status = "YELLOW_WARNING"
-    else:
-        risk_status = "GREEN"
-
-    if drawdown >= lim["drawdown_de_risk"]:
-        dd_status = "RED_MANDATORY_DE_RISK"
-    elif drawdown >= lim["drawdown_freeze"]:
-        dd_status = "ORANGE_FREEZE_NEW_RISK"
-    else:
-        dd_status = "GREEN"
+    risk_status = _classify_stress_status(stress_10_ratio, _RISK_LIMITS)
+    dd_status   = _classify_drawdown_status(drawdown, _RISK_LIMITS)
 
     return {
         "equity":           equity,
