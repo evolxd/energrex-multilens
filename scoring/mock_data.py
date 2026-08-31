@@ -460,11 +460,16 @@ MOCK_STOCKS: dict[str, dict] = {
         "valuation_risk": 0.30,
         "concentration_risk": 0.38,
         "liquidity_risk": 0.10,
+        # 以下4个是绝对值分母，供价格敏感度模拟重算比率用——2026-08-29 yfinance快照，
+        # 与上面已核实的current_price/ev_sales/fcf_yield等比率算法一致（非新编数字）
+        "revenue_ttm": 8.717e9, "fcf_ttm": 2.27e9,
+        "shares_outstanding": 875800000, "forward_eps": 6.241,
         "_data_vintage": "2026-08-29 web_search+yfinance快照交叉核实：价格/市值/PEG/EV-EBITDA/EV-Sales/远期PE/"
-                         "FCF收益率/Q2营收同比/ROIC/负债权益比/数据中心暴露/Q2实际vs一致预期四项/beta/1年最大回撤；"
-                         "毛利率(GAAP口径)与yfinance快照一致未变；fcf_growth/次年营收增速/分析师上修/"
-                         "AI收入利润增长贡献暴露/先进封装/AI订单积压/市场预期分/波动率——本轮未重新核实，标注维持旧估计，"
-                         "非漏查。此前该股票条目缺少_data_vintage字段，本次补上",
+                         "FCF收益率/Q2营收同比/ROIC/负债权益比/数据中心暴露/Q2实际vs一致预期四项/beta/1年最大回撤/"
+                         "绝对值分母(营收/FCF/股数/远期EPS)；毛利率(GAAP口径)与yfinance快照一致未变；"
+                         "fcf_growth/次年营收增速/分析师上修/AI收入利润增长贡献暴露/先进封装/AI订单积压/"
+                         "市场预期分/波动率——本轮未重新核实，标注维持旧估计，非漏查。"
+                         "此前该股票条目缺少_data_vintage字段，本次补上",
     },
 
     "SNOW": {
