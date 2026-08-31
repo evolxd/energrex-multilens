@@ -10,6 +10,7 @@ from account.risk import (
     bs_greeks,
     build_recommendations,
     calculate_option_position_greeks,
+    check_otm_spread_alerts,
     classify_drawdown_status,
     classify_stress_status,
     compute_exit_analysis,
@@ -543,6 +544,74 @@ class ComputeQqqHedgePlanTests(unittest.TestCase):
         )
         self.assertIn("hedge_governance", result)
         self.assertIsInstance(result["hedge_governance"], dict)
+
+
+class CheckOtmSpreadAlertsTests(unittest.TestCase):
+    def _leg(self, symbol, qty, unit_cost, market_value, strike=None, current_price=None):
+        return {
+            "symbol": symbol, "quantity": qty, "strike": strike,
+            "expiry": None, "unit_cost": unit_cost,
+            "market_value": market_value, "current_price": current_price,
+        }
+
+    def test_bear_put_debit_spread_near_zero_triggers_an_alert(self):
+        rows = [
+            self._leg("PLTR260717P00110000", 1, 8.0, 15.0),   # long, higher strike
+            self._leg("PLTR260717P00100000", -1, 3.0, -5.0),  # short, lower strike
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual(len(alerts), 1)
+        alert = alerts[0]
+        self.assertEqual(alert["spread_type"], "Bear Put Spread")
+        self.assertEqual(alert["underlying"], "PLTR")
+        self.assertAlmostEqual(alert["original_cost"], 500.0)
+        self.assertAlmostEqual(alert["current_value"], 10.0)
+        self.assertAlmostEqual(alert["pct_remaining"], 2.0)
+
+    def test_credit_spread_never_alerts_regardless_of_value(self):
+        # Bull Put Spread: long the lower strike, short the higher strike --
+        # sold for a credit, so it losing value is the expected profitable
+        # outcome, not something to warn about.
+        rows = [
+            self._leg("PLTR260717P00090000", 1, 1.0, 0.5),
+            self._leg("PLTR260717P00100000", -1, 3.0, -0.2),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual(alerts, [])
+
+    def test_debit_spread_still_healthy_does_not_alert(self):
+        rows = [
+            self._leg("AAPL260717C00100000", 1, 5.0, 400.0),   # long call, well above 10%
+            self._leg("AAPL260717C00110000", -1, 2.0, -150.0),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual(alerts, [])
+
+    def test_single_leg_without_a_pair_produces_no_alert(self):
+        rows = [self._leg("PLTR260717P00110000", 1, 8.0, 15.0)]
+        self.assertEqual(check_otm_spread_alerts(rows), [])
+
+    def test_missing_market_value_falls_back_to_current_price(self):
+        rows = [
+            self._leg("PLTR260717P00110000", 1, 8.0, None, current_price=0.10),
+            self._leg("PLTR260717P00100000", -1, 3.0, None, current_price=0.05),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        # long mv = 0.10*1*100=10; short mv = 0.05*1*100*(-1)=-5; current=5
+        self.assertEqual(len(alerts), 1)
+        self.assertAlmostEqual(alerts[0]["current_value"], 5.0)
+
+    def test_alerts_sorted_by_lowest_remaining_percent_first(self):
+        rows = [
+            # Spread A: 8% remaining
+            self._leg("AAAA260717P00110000", 1, 8.0, 40.0),
+            self._leg("AAAA260717P00100000", -1, 3.0, 0.0),
+            # Spread B: 2% remaining (more urgent)
+            self._leg("BBBB260717P00110000", 1, 8.0, 10.0),
+            self._leg("BBBB260717P00100000", -1, 3.0, 0.0),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual([a["underlying"] for a in alerts], ["BBBB", "AAAA"])
 
 
 class RiskStatusClassificationTests(unittest.TestCase):

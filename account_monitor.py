@@ -302,6 +302,7 @@ from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
 from account.risk import bs_greeks as _bs_greeks
 from account.risk import build_recommendations as _build_recommendations
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
+from account.risk import check_otm_spread_alerts as _check_otm_spread_alerts_impl
 from account.risk import classify_drawdown_status as _classify_drawdown_status
 from account.risk import classify_stress_status as _classify_stress_status
 from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
@@ -1796,127 +1797,13 @@ def _check_otm_spread_alerts(acct_id: str) -> list[dict]:
     触发条件：价差两腿市值合计 < 原始净权利金的 10%。
     不使用 underlying_price vs strike 的简单比较，避免长期限期权误报。
     """
-    from collections import defaultdict
-    alerts: list[dict] = []
-    today = datetime.date.today()
-
     conn = _db()
     rows = conn.execute(
         "SELECT symbol, quantity, strike, expiry, unit_cost, market_value, current_price "
         "FROM options_positions WHERE account_id=?",
         (acct_id,)).fetchall()
     conn.close()
-
-    # Group legs by (underlying, expiry, option_type)
-    groups: dict = defaultdict(list)
-    for r in rows:
-        sym = (r["symbol"] or "").upper()
-        mo = _OCC_RE.match(sym)
-        if not mo:
-            continue
-        und      = mo.group(1)
-        exp_str  = f"20{mo.group(2)}-{mo.group(3)}-{mo.group(4)}"
-        opt_type = mo.group(5)   # "C" or "P"
-        strike   = float(r["strike"] or 0) or float(mo.group(6)) / 1000
-        qty      = float(r["quantity"] or 0)
-        uc       = float(r["unit_cost"]    or 0)
-        # Use market_value if available; fall back to current_price * |qty| * 100
-        mv = r["market_value"]
-        if mv is None and r["current_price"] is not None:
-            cp = float(r["current_price"])
-            mv = cp * abs(qty) * 100 * (1 if qty > 0 else -1)
-        mv = float(mv) if mv is not None else None
-        groups[(und, exp_str, opt_type)].append({
-            "sym": sym, "qty": qty, "strike": strike,
-            "unit_cost": uc, "market_value": mv,
-        })
-
-    checked: set = set()
-    for (und, exp_str, opt_type), legs in groups.items():
-        longs  = [l for l in legs if l["qty"] > 0]
-        shorts = [l for l in legs if l["qty"] < 0]
-        if not longs or not shorts:
-            continue
-
-        try:
-            exp_date = datetime.date.fromisoformat(exp_str)
-            dte = (exp_date - today).days
-        except Exception:
-            dte = None
-
-        for long_leg in longs:
-            for short_leg in shorts:
-                key = (und, exp_str, opt_type, long_leg["strike"], short_leg["strike"])
-                if key in checked:
-                    continue
-                checked.add(key)
-
-                ls = long_leg["strike"]
-                ss = short_leg["strike"]
-                high_k = max(ls, ss)
-                low_k  = min(ls, ss)
-                qty_used = min(abs(long_leg["qty"]), abs(short_leg["qty"]))
-
-                # Determine spread type and whether it's a debit spread
-                spread_label = ""
-                is_debit     = False
-
-                if opt_type == "P" and ls > ss:
-                    spread_label = "Bear Put Spread"
-                    is_debit     = True   # paid net premium (long higher-strike P)
-                elif opt_type == "P" and ls < ss:
-                    spread_label = "Bull Put Spread"
-                    is_debit     = False  # received net credit
-                elif opt_type == "C" and ls < ss:
-                    spread_label = "Bull Call Spread"
-                    is_debit     = True   # paid net premium (long lower-strike C)
-                elif opt_type == "C" and ls > ss:
-                    spread_label = "Bear Call Spread"
-                    is_debit     = False  # received net credit
-
-                if not spread_label or not is_debit:
-                    continue   # only alert on debit spreads approaching zero
-
-                # Original net cost (debit paid per spread)
-                net_cost_per_share = long_leg["unit_cost"] - abs(short_leg["unit_cost"])
-                original_cost      = max(net_cost_per_share * qty_used * 100, 0.01)
-
-                # Current spread value (sum of signed market_values)
-                lmv = long_leg["market_value"]
-                smv = short_leg["market_value"]
-                if lmv is None or smv is None:
-                    continue   # no market_value data — skip
-                current_value = lmv + smv   # long=positive, short=negative → net
-
-                # Trigger if current value < 10% of original cost
-                pct_remaining = current_value / original_cost * 100 if original_cost > 0 else 100
-                if pct_remaining >= 10.0:
-                    continue
-
-                alerts.append({
-                    "underlying":     und,
-                    "spread_type":    spread_label,
-                    "high_strike":    high_k,
-                    "low_strike":     low_k,
-                    "opt_type":       opt_type,
-                    "expiry":         exp_str,
-                    "dte":            dte,
-                    "original_cost":  round(original_cost, 2),
-                    "current_value":  round(current_value, 2),
-                    "pct_remaining":  round(pct_remaining, 1),
-                    "long_sym":       long_leg["sym"],
-                    "short_sym":      short_leg["sym"],
-                    "message": (
-                        f"{und} {spread_label} ${low_k:.0f}/{high_k:.0f}"
-                        f"{'P' if opt_type=='P' else 'C'} "
-                        f"当前价差市值 ${current_value:.0f}，"
-                        f"仅剩原始成本 ${original_cost:.0f} 的 {pct_remaining:.1f}%，"
-                        f"价差接近归零"
-                    ),
-                })
-
-    alerts.sort(key=lambda x: x["pct_remaining"])   # lowest remaining % first
-    return alerts
+    return _check_otm_spread_alerts_impl(rows)
 
 
 # ─────────────────────────────────────────────────────────────────

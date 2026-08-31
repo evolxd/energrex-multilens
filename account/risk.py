@@ -942,3 +942,119 @@ def compute_qqq_hedge_plan(
         "plan_c": plan_c,
         "hedge_governance": hedge_governance,
     }
+
+
+def check_otm_spread_alerts(rows: list, *, today: datetime.date | None = None) -> list[dict]:
+    """Flag debit spreads (Bear Put / Bull Call) whose combined market value
+    has fallen under 10% of what was originally paid for them.
+
+    `rows` are raw options_positions rows (dict or sqlite3.Row) with
+    symbol/quantity/strike/expiry/unit_cost/market_value/current_price --
+    this groups them into (underlying, expiry, option_type) spreads itself,
+    so it takes the DB read's output directly rather than pre-grouped legs.
+    Credit spreads (Bull Put / Bear Call) are intentionally not alerted on:
+    those were sold for a credit, so their value falling is the expected,
+    profitable outcome, not a warning sign.
+    """
+    from collections import defaultdict
+
+    today = today or datetime.date.today()
+    alerts: list[dict] = []
+
+    groups: dict = defaultdict(list)
+    for r in rows:
+        sym = str(r["symbol"] or "").upper()
+        parsed = parse_occ(sym)
+        if not parsed:
+            continue
+        und = parsed["root"]
+        exp_str = parsed["expiry"]
+        opt_type = parsed["call_put"]
+        strike = float(r["strike"] or 0) or parsed["strike"]
+        qty = float(r["quantity"] or 0)
+        uc = float(r["unit_cost"] or 0)
+
+        mv = r["market_value"]
+        if mv is None and r["current_price"] is not None:
+            cp = float(r["current_price"])
+            mv = cp * abs(qty) * 100 * (1 if qty > 0 else -1)
+        mv = float(mv) if mv is not None else None
+
+        groups[(und, exp_str, opt_type)].append({
+            "sym": sym, "qty": qty, "strike": strike,
+            "unit_cost": uc, "market_value": mv,
+        })
+
+    checked: set = set()
+    for (und, exp_str, opt_type), legs in groups.items():
+        longs = [l for l in legs if l["qty"] > 0]
+        shorts = [l for l in legs if l["qty"] < 0]
+        if not longs or not shorts:
+            continue
+
+        try:
+            dte = (datetime.date.fromisoformat(exp_str) - today).days
+        except Exception:
+            dte = None
+
+        for long_leg in longs:
+            for short_leg in shorts:
+                key = (und, exp_str, opt_type, long_leg["strike"], short_leg["strike"])
+                if key in checked:
+                    continue
+                checked.add(key)
+
+                ls, ss = long_leg["strike"], short_leg["strike"]
+                high_k, low_k = max(ls, ss), min(ls, ss)
+                qty_used = min(abs(long_leg["qty"]), abs(short_leg["qty"]))
+
+                spread_label = ""
+                is_debit = False
+                if opt_type == "P" and ls > ss:
+                    spread_label, is_debit = "Bear Put Spread", True
+                elif opt_type == "P" and ls < ss:
+                    spread_label, is_debit = "Bull Put Spread", False
+                elif opt_type == "C" and ls < ss:
+                    spread_label, is_debit = "Bull Call Spread", True
+                elif opt_type == "C" and ls > ss:
+                    spread_label, is_debit = "Bear Call Spread", False
+
+                if not spread_label or not is_debit:
+                    continue
+
+                net_cost_per_share = long_leg["unit_cost"] - abs(short_leg["unit_cost"])
+                original_cost = max(net_cost_per_share * qty_used * 100, 0.01)
+
+                lmv, smv = long_leg["market_value"], short_leg["market_value"]
+                if lmv is None or smv is None:
+                    continue
+                current_value = lmv + smv
+
+                pct_remaining = current_value / original_cost * 100 if original_cost > 0 else 100
+                if pct_remaining >= 10.0:
+                    continue
+
+                alerts.append({
+                    "underlying":    und,
+                    "spread_type":   spread_label,
+                    "high_strike":   high_k,
+                    "low_strike":    low_k,
+                    "opt_type":      opt_type,
+                    "expiry":        exp_str,
+                    "dte":           dte,
+                    "original_cost": round(original_cost, 2),
+                    "current_value": round(current_value, 2),
+                    "pct_remaining": round(pct_remaining, 1),
+                    "long_sym":      long_leg["sym"],
+                    "short_sym":     short_leg["sym"],
+                    "message": (
+                        f"{und} {spread_label} ${low_k:.0f}/{high_k:.0f}"
+                        f"{'P' if opt_type == 'P' else 'C'} "
+                        f"当前价差市值 ${current_value:.0f}，"
+                        f"仅剩原始成本 ${original_cost:.0f} 的 {pct_remaining:.1f}%，"
+                        f"价差接近归零"
+                    ),
+                })
+
+    alerts.sort(key=lambda x: x["pct_remaining"])
+    return alerts
