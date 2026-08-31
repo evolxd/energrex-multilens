@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 import math
 import datetime
+from pathlib import Path
 
 from scipy.stats import norm
 
@@ -10,6 +13,9 @@ RF_RATE = 0.045
 OPTION_MULTIPLIER = 100
 DELTA_DRIFT_THRESHOLD = 0.10
 VIX_SPIKE_THRESHOLD_PCT = 15.0
+DEFAULT_OPTIONS_COST_RATIO_LIMIT = 0.50
+
+_log = logging.getLogger("energrex.account.risk")
 
 ZERO_GREEKS = {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
 
@@ -231,3 +237,30 @@ def vix_spike_trigger(vix_snapshot: dict, threshold_pct: float = VIX_SPIKE_THRES
         "threshold_pct": threshold_pct,
         "vix": vix_snapshot.get("vix"),
     }
+
+
+def load_options_cost_ratio_limit(
+    config_path: Path | str,
+    *,
+    default: float = DEFAULT_OPTIONS_COST_RATIO_LIMIT,
+) -> float:
+    """Read `options_cost_ratio_limit` from a JSON override file.
+
+    A missing file is the normal case (no override configured) and returns
+    `default` silently. A file that exists but fails to parse is a real
+    configuration error, not a missing-override situation -- it's logged
+    rather than swallowed, so a broken override doesn't silently masquerade
+    as "no override, using default."
+    """
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return float(cfg.get("options_cost_ratio_limit", default))
+    except FileNotFoundError:
+        return default
+    except Exception as exc:  # noqa: BLE001
+        _log.warning(
+            "portfolio_config at %s exists but failed to load (%s); "
+            "falling back to default limit=%s", config_path, exc, default,
+        )
+        return default

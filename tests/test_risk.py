@@ -1,10 +1,15 @@
 import datetime
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from account.risk import (
+    DEFAULT_OPTIONS_COST_RATIO_LIMIT,
     bs_greeks,
     calculate_option_position_greeks,
     delta_drift_trigger,
+    load_options_cost_ratio_limit,
     summarize_portfolio_greeks,
     vix_spike_trigger,
 )
@@ -95,6 +100,28 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(trigger["change_pct"], 16.0)
         self.assertIsNone(vix_spike_trigger({"vix": 20, "change_pct": 5}))
         self.assertIsNone(vix_spike_trigger({"vix": None, "change_pct": None}))
+
+
+class OptionsCostRatioLimitTests(unittest.TestCase):
+    def test_missing_file_returns_default_silently(self):
+        missing = Path(tempfile.mkdtemp()) / "does_not_exist.json"
+        self.assertEqual(
+            load_options_cost_ratio_limit(missing), DEFAULT_OPTIONS_COST_RATIO_LIMIT
+        )
+
+    def test_valid_override_file_is_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "portfolio_config.json"
+            path.write_text(json.dumps({"options_cost_ratio_limit": 0.35}), encoding="utf-8")
+            self.assertEqual(load_options_cost_ratio_limit(path), 0.35)
+
+    def test_malformed_file_falls_back_to_default_without_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "portfolio_config.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            self.assertEqual(
+                load_options_cost_ratio_limit(path), DEFAULT_OPTIONS_COST_RATIO_LIMIT
+            )
 
 
 if __name__ == "__main__":

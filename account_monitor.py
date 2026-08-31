@@ -36,6 +36,13 @@ _DOWNLOADS    = pathlib.Path.home() / "Downloads"
 _FT_DIR       = _ROOT / "data" / "firstrade"
 _FT_DIR.mkdir(parents=True, exist_ok=True)
 _LATEST_CSV   = _FT_DIR / "latest.csv"
+# Repo-relative default so the options-cost-ratio limit override works on any
+# machine; PORTFOLIO_CONFIG_PATH lets one machine point elsewhere without
+# hardcoding a personal path (was hardcoded to one author's Windows profile,
+# so the override silently never loaded anywhere else -- see git history).
+_PORTFOLIO_CONFIG_PATH = pathlib.Path(
+    os.environ.get("PORTFOLIO_CONFIG_PATH", str(_ROOT / "data" / "portfolio_config.json"))
+)
 
 _env = _ROOT / ".env"
 if _env.exists():
@@ -295,6 +302,7 @@ from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
 from account.risk import bs_greeks as _bs_greeks
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
 from account.risk import delta_drift_trigger as _delta_drift_trigger
+from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
 from account.risk import summarize_portfolio_greeks as _summarize_portfolio_greeks
 from account.risk import vix_spike_trigger as _vix_spike_trigger
 from account.marketdata import fetch_option_quote as _fetch_option_quote_md
@@ -755,8 +763,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
 
 
 def _compute_options_cost_ratio(acct_id: str) -> dict:
-    """期权总成本 / 最新账户净值，从 Portfolio_Config.json 读取上限。"""
-    import json as _json
+    """期权总成本 / 最新账户净值，上限来自 _PORTFOLIO_CONFIG_PATH（可用 PORTFOLIO_CONFIG_PATH 环境变量覆盖）。"""
     conn = _db()
     cost_row = conn.execute(
         "SELECT SUM(ABS(quantity) * unit_cost * 100) FROM options_positions "
@@ -772,14 +779,7 @@ def _compute_options_cost_ratio(acct_id: str) -> dict:
     nav        = float(nav_row[0] or 0) if nav_row and nav_row[0] else 0.0
     ratio      = total_cost / nav if nav > 0 else None
 
-    cfg_path = pathlib.Path(r"C:\Users\evolx\Documents\ENERGREX期权量化系统\Portfolio_Config.json")
-    limit = 0.50
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as _f:
-            _cfg = _json.load(_f)
-        limit = float(_cfg.get("options_cost_ratio_limit", 0.50))
-    except Exception:
-        pass
+    limit = _load_options_cost_ratio_limit(_PORTFOLIO_CONFIG_PATH)
 
     if ratio is None:
         status = "gray"
