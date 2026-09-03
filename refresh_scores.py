@@ -521,17 +521,11 @@ def refresh_all(
         log(f"  动量计算成功 {mom_ok}/{len(targets)}")
 
     # ── 宏观：10Y 美债收益率（每次 refresh 只拉一次，供全部 ticker 共用）──
-    # 失败（网络/yfinance问题）不影响主流程 -- calc_wacc() 的
-    # _resolve_risk_free_rate() 在 data 里没有 "_risk_free_rate" 时会自动
-    # 退回 scoring_engine._RISK_FREE_RATE 那个手动常量。
-    live_rf_decimal: float | None = None
-    try:
-        rf_result = macro_data.fetch_treasury_10y_yield()
-        macro_data.save_treasury_snapshot(rf_result)
-        live_rf_decimal = round(rf_result["value_pct"] / 100.0, 6)
-        log(f"  10Y美债收益率：{rf_result['value_pct']}% ({rf_result['date']}) -- 已写入快照供 WACC 使用")
-    except macro_data.MacroDataError as e:
-        log(f"  ⚠️ 10Y美债收益率拉取失败，WACC 沿用手动常量: {e}")
+    # 三级回退见 macro_data.resolve_current_risk_free_rate()：本次实时拉取 →
+    # 上次快照 → calc_wacc() 里 _resolve_risk_free_rate() 自动退回的手动常量。
+    # 任何一级失败都不影响主刷新流程继续跑。
+    live_rf_decimal, rf_log_msg = macro_data.resolve_current_risk_free_rate()
+    log(f"  {rf_log_msg}")
 
     # ── 逐 ticker 评分 ─────────────────────────────────────
     log("⏳ 评分中…")

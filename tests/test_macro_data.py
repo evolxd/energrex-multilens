@@ -217,3 +217,41 @@ def test_get_risk_free_rate_decimal_none_when_value_pct_missing(tmp_path, monkey
     monkeypatch.setattr(macro_data, "_SNAPSHOT_PATH", tmp_path / "macro_snapshot.json")
     macro_data.save_treasury_snapshot({"date": "2026-08-30"})
     assert macro_data.get_risk_free_rate_decimal() is None
+
+
+def test_resolve_current_risk_free_rate_prefers_fresh_fetch(tmp_path, monkeypatch):
+    monkeypatch.setattr(macro_data, "_SNAPSHOT_PATH", tmp_path / "macro_snapshot.json")
+    monkeypatch.setattr(
+        macro_data, "fetch_treasury_10y_yield",
+        lambda: {"metric": "10Y Treasury Yield", "value_pct": 4.5, "date": "2026-09-03", "source": "x"},
+    )
+    decimal, msg = macro_data.resolve_current_risk_free_rate()
+    assert decimal == pytest.approx(0.045)
+    assert "4.5" in msg
+    # the fresh result must also have been persisted as a side effect
+    assert macro_data.load_treasury_snapshot()["value_pct"] == pytest.approx(4.5)
+
+
+def test_resolve_current_risk_free_rate_falls_back_to_snapshot_on_fetch_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(macro_data, "_SNAPSHOT_PATH", tmp_path / "macro_snapshot.json")
+    macro_data.save_treasury_snapshot({"value_pct": 4.79, "date": "2026-09-02"})
+
+    def _boom():
+        raise macro_data.MacroDataError("network down")
+
+    monkeypatch.setattr(macro_data, "fetch_treasury_10y_yield", _boom)
+    decimal, msg = macro_data.resolve_current_risk_free_rate()
+    assert decimal == pytest.approx(0.0479)
+    assert "上次快照" in msg
+
+
+def test_resolve_current_risk_free_rate_none_when_fetch_fails_and_no_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setattr(macro_data, "_SNAPSHOT_PATH", tmp_path / "nope.json")
+
+    def _boom():
+        raise macro_data.MacroDataError("network down")
+
+    monkeypatch.setattr(macro_data, "fetch_treasury_10y_yield", _boom)
+    decimal, msg = macro_data.resolve_current_risk_free_rate()
+    assert decimal is None
+    assert "手动常量" in msg

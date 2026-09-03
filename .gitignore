@@ -58,6 +58,7 @@ data/beta_cache.json
 data/data_validation_report.json
 data/Portfolio_Config.json
 scoring/edgar_cache.json
+scoring/macro_snapshot.json
 
 # Temporary debug / screenshot scripts
 scroll_screenshot.py

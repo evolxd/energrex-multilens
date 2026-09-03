@@ -224,6 +224,31 @@ def get_risk_free_rate_decimal() -> float | None:
         return None
 
 
+def resolve_current_risk_free_rate() -> tuple[float | None, str]:
+    """Three-tier resolution for calc_wacc()'s risk-free rate, with a
+    log-ready message describing which tier was used:
+      1. Fresh fetch_treasury_10y_yield() -- persisted on success.
+      2. The last persisted snapshot, if the fresh fetch itself failed.
+      3. None -- caller (scoring_engine._resolve_risk_free_rate) falls back
+         to the hardcoded _RISK_FREE_RATE constant.
+
+    Centralized here (rather than duplicated inline in refresh_scores.py's
+    two refresh paths) so both get the same fallback behavior and it's
+    unit-testable without spinning up a full refresh run.
+    """
+    try:
+        result = fetch_treasury_10y_yield()
+        save_treasury_snapshot(result)
+        decimal = round(result["value_pct"] / 100.0, 6)
+        return decimal, (f"10Y美债收益率：{result['value_pct']}% ({result['date']}) "
+                          f"-- 已写入快照供 WACC 使用")
+    except MacroDataError as e:
+        cached = get_risk_free_rate_decimal()
+        if cached is not None:
+            return cached, f"⚠️ 10Y美债收益率实时拉取失败，改用上次快照 ({cached * 100:.2f}%): {e}"
+        return None, f"⚠️ 10Y美债收益率拉取失败且无历史快照，WACC 沿用手动常量: {e}"
+
+
 _ALL_FETCHERS = {
     "cpi_yoy":                fetch_cpi_yoy,
     "core_cpi_yoy":            fetch_core_cpi_yoy,
