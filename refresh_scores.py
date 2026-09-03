@@ -44,6 +44,7 @@ sys.path.insert(0, str(_SCORE))
 
 from kelly_snapshot_logger import log_snapshot
 from input_verification import trusted_override_value
+import macro_data
 
 from yfinance_fetcher import (
     fetch_portfolio_live_parallel, merge_live_into_mock,
@@ -519,6 +520,19 @@ def refresh_all(
         mom_ok = sum(1 for v in momentum_bulk.values() if v)
         log(f"  动量计算成功 {mom_ok}/{len(targets)}")
 
+    # ── 宏观：10Y 美债收益率（每次 refresh 只拉一次，供全部 ticker 共用）──
+    # 失败（网络/yfinance问题）不影响主流程 -- calc_wacc() 的
+    # _resolve_risk_free_rate() 在 data 里没有 "_risk_free_rate" 时会自动
+    # 退回 scoring_engine._RISK_FREE_RATE 那个手动常量。
+    live_rf_decimal: float | None = None
+    try:
+        rf_result = macro_data.fetch_treasury_10y_yield()
+        macro_data.save_treasury_snapshot(rf_result)
+        live_rf_decimal = round(rf_result["value_pct"] / 100.0, 6)
+        log(f"  10Y美债收益率：{rf_result['value_pct']}% ({rf_result['date']}) -- 已写入快照供 WACC 使用")
+    except macro_data.MacroDataError as e:
+        log(f"  ⚠️ 10Y美债收益率拉取失败，WACC 沿用手动常量: {e}")
+
     # ── 逐 ticker 评分 ─────────────────────────────────────
     log("⏳ 评分中…")
     ok_cnt, err_cnt = 0, 0
@@ -576,6 +590,10 @@ def refresh_all(
                 log(f"  {ticker} override 覆盖 {len(applied)} 个字段: {applied}")
             if rejected and verbose:
                 log(f"  {ticker} skipped {len(rejected)} untrusted overrides: {rejected}")
+
+        # 宏观：注入本次 refresh 拉到的实时 10Y 收益率（WACC 用，非评分维度本身）
+        if live_rf_decimal is not None:
+            data["_risk_free_rate"] = live_rf_decimal
 
         # 评分
         try:
@@ -754,6 +772,11 @@ def refresh_prices_only(
     prices = fetch_prices_only(targets)
     log(f"  价格获取 {len(prices)}/{len(targets)}")
 
+    # 极速刷新走缓存快照，不重新拉 ^TNX -- 这条路径的意义就是快（~5秒），
+    # 每次都再打一次 yfinance 没必要；WACC 用的是上一次 refresh_all() 存下的
+    # 10Y收益率快照，没有快照时 calc_wacc() 自动退回手动常量。
+    live_rf_decimal = macro_data.get_risk_free_rate_decimal()
+
     _ov_path = _ROOT / "scoring" / "user_overrides.json"
     try:
         import json as _json
@@ -793,6 +816,9 @@ def refresh_prices_only(
             val = trusted_override_value(field, entry)
             if val is not None:
                 data[field] = val
+
+        if live_rf_decimal is not None:
+            data["_risk_free_rate"] = live_rf_decimal
 
         try:
             result = score_ticker(ticker, data)
