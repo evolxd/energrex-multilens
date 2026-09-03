@@ -37,6 +37,7 @@ from bull_put_spread import (              # noqa: E402
     score_bull_put_spread,
     spread_width,
 )
+import macro_calendar                      # noqa: E402
 
 st.set_page_config(page_title="ENERGREX · Bull Put Spread 评分", page_icon="🎯", layout="wide")
 
@@ -127,6 +128,42 @@ exp_labels = {f"{e}  (DTE {d})": e for e, d in exp_with_dte}
 default_labels = [lbl for lbl, e in exp_labels.items() if e in default_selection]
 selected_labels = st.multiselect("到期日", list(exp_labels.keys()), default=default_labels)
 selected_exps = [exp_labels[lbl] for lbl in selected_labels]
+
+
+def _release_risk(expiration: str) -> list[dict]:
+    """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
+    结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
+    scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
+    已实现波动率的日程事件"。"""
+    return macro_calendar.releases_within(today, datetime.date.fromisoformat(expiration))
+
+
+def _release_risk_label(expiration: str) -> str:
+    hits = _release_risk(expiration)
+    if not hits:
+        return "—"
+    parts = []
+    for h in hits:
+        mark = "" if h["confirmed"] else "（日期未核实）"
+        parts.append(f"{h['label']}{mark}")
+    return " · ".join(parts)
+
+
+if selected_exps:
+    st.markdown(
+        f"<div style='color:{_MUTED};font-size:11px;margin:4px 0'>"
+        "⚠️ 发布日风险（不代表发布结果好坏，只提示该窗口内已实现波动率可能放大）："
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    for exp in selected_exps:
+        label = _release_risk_label(exp)
+        color = _MUTED if label == "—" else _WARN
+        st.markdown(
+            f"<div style='font-size:11px;color:{color};margin-left:8px'>"
+            f"{exp}：{label}</div>",
+            unsafe_allow_html=True,
+        )
 
 col_w, col_otm = st.columns(2)
 with col_w:
@@ -223,6 +260,7 @@ if "bps_ranked" in st.session_state and st.session_state.get("bps_ticker_scored"
             "ADR得分": s.score_adr, "Buffer得分": s.score_buffer,
             "ROM得分": s.score_rom, "DTE得分": s.score_dte,
             "总分": s.total_score,
+            "发布日风险": _release_risk_label(c.expiration),
         }
 
     st.markdown(f"#### 排名前十 · {ticker}（共 {len(ranked)} 个候选价差参与评分）")
