@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://energrex.local/schemas/unified-valuation-request-v1.json",
+  "title": "ENERGREX Unified Valuation Request v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_mode",
+    "evidence_snapshot_id",
+    "valuation_case_id",
+    "ticker",
+    "profile",
+    "as_of",
+    "as_of_date",
+    "fields",
+    "scenarios",
+    "realization_months"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "evidence_mode": {"enum": ["LIVE", "ENGINEERING_ONLY"]},
+    "evidence_snapshot_id": {"type": "string"},
+    "valuation_case_id": {"type": "string", "minLength": 1},
+    "ticker": {"type": "string", "minLength": 1},
+    "profile": {
+      "enum": [
+        "MATURE_PROFITABLE",
+        "HIGH_GROWTH",
+        "FINANCIAL",
+        "ASSET_NAV"
+      ]
+    },
+    "as_of": {"type": "string", "format": "date-time"},
+    "as_of_date": {"type": "string", "format": "date"},
+    "fields": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/fieldRecord"}
+    },
+    "scenarios": {
+      "type": "object",
+      "required": ["bear", "base", "bull"],
+      "properties": {
+        "bear": {"$ref": "#/$defs/scenario"},
+        "base": {"$ref": "#/$defs/scenario"},
+        "bull": {"$ref": "#/$defs/scenario"}
+      }
+    },
+    "scenario_probabilities": {
+      "type": "object",
+      "required": ["bear", "base", "bull"],
+      "properties": {
+        "bear": {"type": "number", "minimum": 0, "maximum": 1},
+        "base": {"type": "number", "minimum": 0, "maximum": 1},
+        "bull": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "realization_months": {"type": "integer", "minimum": 1},
+    "dispersion_reconciliation": {"type": "string"}
+  },
+  "$defs": {
+    "fieldRecord": {
+      "type": "object",
+      "required": [
+        "value",
+        "unit",
+        "source",
+        "source_type",
+        "source_family",
+        "origin_family",
+        "lineage_id",
+        "source_locator",
+        "observed_at",
+        "available_at",
+        "retrieved_at",
+        "verification"
+      ],
+      "properties": {
+        "value": {"type": "number"},
+        "unit": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "source_type": {
+          "enum": ["PRIMARY", "MARKET", "CONSENSUS", "MODEL"]
+        },
+        "source_family": {"type": "string", "minLength": 1},
+        "origin_family": {"type": "string", "minLength": 1},
+        "lineage_id": {"type": "string", "minLength": 1},
+        "source_locator": {"type": "string", "minLength": 1},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "available_at": {"type": "string", "format": "date-time"},
+        "retrieved_at": {"type": "string", "format": "date-time"},
+        "verification": {
+          "type": "object",
+          "required": [
+            "status",
+            "secondary_source",
+            "secondary_source_family",
+            "secondary_origin_family",
+            "secondary_lineage_id",
+            "secondary_source_locator",
+            "secondary_extraction_method",
+            "secondary_available_at",
+            "secondary_retrieved_at",
+            "secondary_value",
+            "relative_difference",
+            "tolerance",
+            "cross_check_mode"
+          ],
+          "properties": {
+            "status": {"const": "VERIFIED"},
+            "secondary_source": {"type": "string", "minLength": 1},
+            "secondary_source_family": {"type": "string", "minLength": 1},
+            "secondary_origin_family": {"type": "string", "minLength": 1},
+            "secondary_lineage_id": {"type": "string", "minLength": 1},
+            "secondary_source_locator": {"type": "string", "minLength": 1},
+            "secondary_extraction_method": {"type": "string", "minLength": 1},
+            "secondary_available_at": {"type": "string", "format": "date-time"},
+            "secondary_retrieved_at": {"type": "string", "format": "date-time"},
+            "secondary_value": {"type": "number"},
+            "relative_difference": {"type": "number", "minimum": 0},
+            "tolerance": {"type": "number", "minimum": 0, "maximum": 0.25},
+            "cross_check_mode": {
+              "enum": ["INDEPENDENT_ORIGIN", "INDEPENDENT_EXTRACTION"]
+            }
+          }
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "required": ["assumption_basis"],
+      "properties": {
+        "assumption_basis": {"type": "string", "minLength": 1},
+        "method_weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "exclusiveMinimum": 0}
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
