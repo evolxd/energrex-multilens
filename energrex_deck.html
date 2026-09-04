@@ -1,0 +1,888 @@
+<title>ENERGREX 系统 · A99 分享</title>
+<meta name="description" content="替代 PPT 的本地讲义：ENERGREX 一套系统五道关卡——研究阶段（估值 + 误价）到购买行为阶段（对冲 / 仓位 / 执行 / 验证），第一关六维打分拆到公式，并用多邻国 DUOL 报告走一遍。方向键翻页，F 全屏。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap">
+
+<style>
+  :root{
+    --paper:#F6F2E9;--surface:#FFFFFF;--recess:#ECE5D5;--ink:#20241C;--muted:#6A695B;
+    --hair:#D8CFBA;--pine:#2E6B4A;--pine-ink:#EAF3EC;--sienna:#B4531F;--gold:#BE922F;
+    --shadow:0 2px 4px rgba(32,36,28,.06),0 16px 40px rgba(32,36,28,.08);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#15170F;--surface:#20241A;--recess:#282C20;--ink:#EFEAD9;--muted:#A09E8A;
+      --hair:#39412E;--pine:#67C293;--pine-ink:#12261A;--sienna:#E58A54;--gold:#E0BC63;
+      --shadow:0 2px 4px rgba(0,0,0,.35),0 18px 44px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#15170F;--surface:#20241A;--recess:#282C20;--ink:#EFEAD9;--muted:#A09E8A;
+    --hair:#39412E;--pine:#67C293;--pine-ink:#12261A;--sienna:#E58A54;--gold:#E0BC63;
+    --shadow:0 2px 4px rgba(0,0,0,.35),0 18px 44px rgba(0,0,0,.45);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",ui-sans-serif,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  .progress{position:fixed;top:0;left:0;height:5px;width:5%;background:var(--gold);z-index:50;transition:width .35s ease}
+  .hud{
+    position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;justify-content:space-between;align-items:center;
+    padding:12px clamp(16px,4vw,40px);font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:clamp(.95rem,1.2vw,1.2rem);letter-spacing:.04em;pointer-events:none;
+  }
+  .hud span{background:rgba(18,20,13,.36);color:#F6F2E9;padding:.34em .85em;border-radius:999px;backdrop-filter:blur(4px)}
+
+  .slide{
+    min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+    padding:clamp(30px,4.2vh,60px) clamp(28px,5vw,88px) clamp(80px,9vh,104px);
+    overflow-y:auto;overflow-x:hidden;
+  }
+  .slide[hidden]{display:none}
+  .inner{width:100%;max-width:1360px;margin:0 auto;animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+  .eyebrow{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:clamp(1.12rem,1.5vw,1.5rem);
+    letter-spacing:.22em;text-transform:uppercase;color:var(--pine);margin:0 0 clamp(14px,2.4vh,26px);
+  }
+  h2{
+    font-family:"Noto Serif SC",Georgia,serif;font-weight:800;font-size:clamp(2.1rem,4.7vw,3.75rem);
+    line-height:1.15;margin:0;text-wrap:balance;letter-spacing:.01em;overflow-wrap:break-word;
+  }
+  .rule{width:96px;height:7px;background:var(--gold);border-radius:3px;margin:clamp(12px,1.8vh,22px) 0 clamp(16px,2.4vh,28px)}
+  .lead{font-size:clamp(1.55rem,2.9vw,2.6rem);color:var(--muted);max-width:62ch;margin:0}
+  .lead strong{color:var(--ink);font-weight:700}
+
+  ul.bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:clamp(12px,2.2vh,22px)}
+  ul.bullets li{position:relative;padding-left:1.5em;font-size:clamp(1.5rem,2.75vw,2.35rem)}
+  ul.bullets li::before{content:"";position:absolute;left:0;top:.62em;width:.62em;height:.62em;border-radius:50%;background:var(--pine)}
+  ul.bullets li b{font-weight:700}
+  ul.bullets li .k{color:var(--sienna);font-weight:700}
+  ul.bullets.tight li{font-size:clamp(1.28rem,2.3vw,1.9rem)}
+
+  .note{margin-top:clamp(16px,2.6vh,32px);font-size:clamp(1.34rem,2.35vw,1.95rem);color:var(--ink);border-left:4px solid var(--gold);padding:.35em 0 .35em 1em}
+  .note b{color:var(--sienna)}
+
+  .qa{display:flex;flex-direction:column;gap:clamp(14px,2.6vh,26px);margin-top:clamp(8px,1.6vh,20px)}
+  .qa .line{font-size:clamp(1.42rem,2.7vw,2.25rem)}
+  .qa .line .tag{
+    display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.5em;font-weight:500;
+    letter-spacing:.08em;padding:.34em .75em;border-radius:999px;margin-right:.85em;vertical-align:.18em;
+  }
+  .qa .pick .tag{background:var(--pine);color:#fff}
+  .qa .pick{font-weight:700}
+  .qa .why{color:var(--muted)}
+  .qa .why .tag{background:var(--gold);color:#20241C}
+  .qa .why b{color:var(--ink);font-weight:700}
+
+  .slide.divider{background:var(--pine);color:var(--pine-ink);text-align:center;align-items:center}
+  .slide.divider .eyebrow{color:var(--gold)}
+  .slide.divider h2{font-size:clamp(2.3rem,5.8vw,4.7rem);font-weight:900;color:#fff}
+  .slide.divider .lead{color:var(--pine-ink);opacity:.92;max-width:50ch;margin:clamp(20px,3vh,36px) auto 0;text-align:center}
+  .slide.divider .rule{margin-left:auto;margin-right:auto;background:var(--gold)}
+
+  .cover .kick{font-family:"IBM Plex Mono",ui-monospace,monospace;letter-spacing:.24em;text-transform:uppercase;font-size:clamp(1rem,1.4vw,1.3rem);color:var(--gold);margin:0 0 clamp(18px,3vh,34px)}
+  .cover h1{
+    font-family:"Noto Serif SC",Georgia,serif;font-weight:900;color:#fff;
+    font-size:clamp(2.6rem,7.4vw,5.6rem);line-height:1.1;margin:0;text-wrap:balance;overflow-wrap:break-word;
+  }
+  .cover .sub{margin:clamp(22px,3.6vh,40px) auto 0;max-width:50ch;font-size:clamp(1.5rem,2.7vw,2.2rem);color:var(--pine-ink);opacity:.92}
+  .cover .meta{margin-top:clamp(26px,4vh,48px);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:clamp(1rem,1.3vw,1.3rem);color:var(--pine-ink);opacity:.7}
+
+  .slide.has-diagram h2{font-size:clamp(2.15rem,4.2vw,3.35rem)}
+  .slide.has-diagram .inner{max-width:1640px}
+  figure{margin:clamp(18px,3vh,34px) 0 0;padding:0}
+  figure svg{display:block;width:auto;max-width:100%;max-height:74vh;margin:0 auto;color:var(--ink);fill:var(--ink)}
+  figcaption{margin-top:clamp(12px,2vh,22px);font-size:clamp(1.3rem,2.1vw,1.75rem);color:var(--muted);text-align:center;max-width:76ch;margin-inline:auto}
+  figcaption b{color:var(--ink);font-weight:700}
+  svg text{font-family:"Noto Sans SC","PingFang SC",sans-serif}
+  svg .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:.55em 0;font-size:clamp(1.3rem,2.3vw,1.9rem);font-weight:700;margin-top:clamp(10px,2vh,24px)}
+  .flow .n{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:.55em .95em;box-shadow:var(--shadow)}
+  .flow .n.hl{background:var(--pine);color:#fff;border-color:var(--pine)}
+  .flow .ar{color:var(--pine);padding:0 .5em;font-weight:400;font-size:1.2em}
+
+  .bars{display:flex;flex-direction:column;gap:clamp(9px,1.7vh,16px)}
+  .bar-row{display:grid;grid-template-columns:8.5em 1fr;align-items:center;gap:1em;font-size:clamp(1.32rem,2.3vw,1.9rem)}
+  .bar-row .lab{font-weight:700}
+  .bar-row .track{background:var(--recess);border-radius:999px;height:clamp(28px,3.6vh,42px);position:relative;overflow:hidden}
+  .bar-row .fill{position:absolute;inset:0 auto 0 0;background:var(--pine);border-radius:999px;display:flex;align-items:center;justify-content:flex-end;padding-right:.8em;color:#fff;font-family:"IBM Plex Mono",monospace;font-size:.8em}
+  .finalrow{display:flex;flex-wrap:wrap;align-items:center;gap:clamp(10px,1.6vw,18px);margin-top:clamp(14px,2.4vh,26px);font-size:clamp(1.32rem,2.3vw,1.9rem);font-weight:700}
+  .chip{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:.5em .9em;box-shadow:var(--shadow)}
+  .chip.risk{background:color-mix(in srgb,var(--sienna) 14%,var(--surface));border-color:var(--sienna)}
+  .chip.final{background:var(--pine);color:#fff;border-color:var(--pine)}
+  .finalrow .ar{color:var(--pine);font-size:1.3em}
+
+  .dimhead{display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap}
+  .dimhead .who{font-family:"IBM Plex Mono",monospace;color:var(--pine);font-size:clamp(1.3rem,2.2vw,1.8rem);font-weight:500}
+
+  .src{
+    display:flex;flex-wrap:wrap;gap:.5em .7em;align-items:center;margin-top:clamp(18px,3.2vh,38px);
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:clamp(1.02rem,1.4vw,1.26rem);
+  }
+  .src .lbl{color:var(--muted);letter-spacing:.14em;text-transform:uppercase}
+  .src a{color:var(--pine);text-decoration:none;border:1px solid var(--hair);border-radius:999px;padding:.3em .78em;background:var(--surface);white-space:nowrap}
+  .src a:hover{border-color:var(--pine)}
+  .src a.live{color:var(--sienna)}
+  .slide.divider .src{justify-content:center}
+  .slide.divider .src .lbl{color:var(--pine-ink);opacity:.8}
+  .slide.divider .src a{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.28);color:#fff}
+
+  .index-wrap{overflow-x:auto;margin-top:clamp(12px,2.2vh,26px)}
+  table.index{width:100%;border-collapse:collapse;font-size:clamp(1.1rem,1.78vw,1.4rem)}
+  table.index th,table.index td{text-align:left;padding:.44em .7em;border-bottom:1px solid var(--hair);vertical-align:top}
+  table.index th{font-family:"IBM Plex Mono",ui-monospace,monospace;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.08em;font-size:.82em}
+  table.index td:first-child{white-space:nowrap;font-weight:700}
+  table.index td.n{font-family:"IBM Plex Mono",monospace;white-space:nowrap;text-align:right}
+  table.index .what{color:var(--muted)}
+  table.index a{color:var(--pine);text-decoration:none;font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:500}
+
+  :focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){.inner{animation:none}.progress{transition:none}}
+  @media (max-width:820px){
+    .bar-row{grid-template-columns:6em 1fr}
+  }
+  @media print{
+    .progress,.hud{display:none}
+    .slide{display:flex!important;min-height:auto;page-break-after:always;padding:20mm 16mm;border-bottom:1px solid #ccc}
+    .slide[hidden]{display:flex!important}
+    .inner{animation:none}
+    .slide.divider{background:#2E6B4A!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+
+<div class="progress" id="prog"></div>
+
+<!-- 01 · COVER -->
+<section class="slide divider cover">
+  <div class="inner">
+    <p class="kick">A99 俱乐部 · 投资理财系列 · 分享</p>
+    <h1>ENERGREX<br>一套系统，五道关卡</h1>
+    <p class="sub">从"看懂公司"到"活下来"的一条流水线 · 第一关六维打分拆到公式 · 用多邻国 DUOL 报告走一遍</p>
+    <p class="meta">方向键 / 空格翻页　·　F 全屏　·　Ctrl+P 存 PDF</p>
+  </div>
+</section>
+
+<!-- 02 · 定位 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">一句话</p>
+    <h2>一套系统，一条流水线</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>从<b>原始数据</b>到<b>回头验证</b>的一条线，中间五道关卡</li>
+      <li>前半是<b>研究阶段</b>（关 1–2）：这家公司好不好、市场哪里错了</li>
+      <li>后半是<b>购买行为阶段</b>（关 3–5）：如何表达这个判断、放多大仓位、执行、用真实结果校验</li>
+      <li>贯穿全套的底线：<span class="k">永不自动下单</span> · <span class="k">只给信号强度，不给可执行指令</span> · <span class="k">生存先于增长</span></li>
+    </ul>
+    <p class="note">代码分在两个仓库（<span class="mono">ai_valuation</span> 研究 + <span class="mono">ENERGREX期权量化系统</span> 风控运营），是同一个系统的两半——历史和隔离原因，不是两套东西。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/00_SYSTEM_CORE.md" target="_blank" rel="noopener">docs/00_SYSTEM_CORE.md</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/energrex_system_guide.md" target="_blank" rel="noopener">ai_valuation/energrex_system_guide.md</a>
+    </div>
+  </div>
+</section>
+
+<!-- 03 · 一条流水线 · 两个仓库 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">全貌</p>
+    <h2>一条流水线，物理上分两个仓库</h2>
+    <div class="rule"></div>
+    <div class="flow">
+      <span class="n hl">Open-ENERGREX.ps1</span><span class="ar">→</span>
+      <span class="n">控制中心</span><span class="ar">＋</span>
+      <span class="n">研究工作台 :8501</span>
+    </div>
+    <ul class="bullets tight">
+      <li>一条命令 <span class="mono">Open-ENERGREX.ps1</span> 把两半一起起来</li>
+      <li>研究半（<span class="mono">ai_valuation</span>）产出结构化误价结果 → 运营半按接口 <span class="mono">03_MISPRICING_ENGINE_INTERFACE.md</span> <b>只读、不重算</b></li>
+      <li><b>期权只是"如何表达判断"这一步的工具之一</b>——现股 or 有限风险期权，不是并列的另一套系统</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/03_MISPRICING_ENGINE_INTERFACE.md" target="_blank" rel="noopener">docs/03_MISPRICING_ENGINE_INTERFACE.md</a>
+    </div>
+  </div>
+</section>
+
+<!-- 04 · 五关总览图 -->
+<section class="slide has-diagram">
+  <div class="inner">
+    <p class="eyebrow">系统全貌</p>
+    <h2>五道关卡：从"看懂公司"到"活下来"</h2>
+    <div class="rule"></div>
+    <figure>
+      <svg viewBox="0 0 960 748" role="img" aria-label="同一套系统的五道关卡：关1评分、关2误价发现是研究阶段；关3对冲纪律、关4仓位管理独立决策层、关5执行与验证是购买行为阶段；关5回头校验前四关">
+        <defs>
+          <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+
+        <rect x="270" y="14" width="420" height="52" rx="12" fill="var(--recess)" stroke="var(--hair)"/>
+        <text x="480" y="38" text-anchor="middle" font-size="20" font-weight="700">原始数据</text>
+        <text x="480" y="57" text-anchor="middle" font-size="13.5" fill="var(--muted)" class="mono">财报 · 股价 · 行业信息　＋　真实持仓 · Greeks · 成交</text>
+        <line x1="480" y1="66" x2="480" y2="90" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
+
+        <text x="40" y="108" font-size="14" fill="var(--pine)" class="mono">研究阶段</text>
+        <rect x="120" y="92" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--pine)" stroke-width="2"/>
+        <text x="142" y="126" font-size="21" font-weight="700">关 1 · 评分</text>
+        <text x="142" y="151" font-size="15" fill="var(--muted)">这家公司现在好不好？六维打分，不直接决定买多少</text>
+        <text x="816" y="126" text-anchor="end" font-size="16" font-weight="700" fill="var(--pine)" class="mono">看懂公司</text>
+        <line x1="480" y1="186" x2="480" y2="208" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
+
+        <rect x="120" y="210" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--pine)" stroke-width="1.4"/>
+        <text x="142" y="244" font-size="21" font-weight="700">关 2 · 误价发现</text>
+        <text x="142" y="269" font-size="15" fill="var(--muted)">市场信什么 / 我们信什么 / 为什么 / 什么情况下我们错了</text>
+        <text x="816" y="244" text-anchor="end" font-size="16" font-weight="700" fill="var(--pine)" class="mono">找到错在哪</text>
+        <line x1="480" y1="304" x2="480" y2="326" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
+
+        <text x="40" y="344" font-size="14" fill="var(--sienna)" class="mono">购买行为阶段</text>
+        <rect x="120" y="328" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--sienna)" stroke-width="1.4"/>
+        <text x="142" y="362" font-size="21" font-weight="700">关 3 · 对冲纪律</text>
+        <text x="142" y="387" font-size="15" fill="var(--muted)">看纪律不看情绪 · 无风险触发信号，不允许买保护性期权</text>
+        <text x="816" y="362" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">工具纪律</text>
+        <line x1="480" y1="422" x2="480" y2="444" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
+
+        <rect x="120" y="446" width="720" height="102" rx="14" fill="color-mix(in srgb,var(--sienna) 12%,var(--surface))" stroke="var(--sienna)" stroke-width="2"/>
+        <text x="142" y="480" font-size="21" font-weight="700">关 4 · 仓位管理　<tspan fill="var(--sienna)" font-size="15">独立决策层</tspan></text>
+        <text x="142" y="505" font-size="15" fill="var(--muted)">先问会不会死，再问能赚多少 · 杠杆 / Beta-Delta / 压力 / 回撤 硬红线</text>
+        <text x="142" y="528" font-size="14" fill="var(--sienna)" font-weight="700">评分不驱动仓位</text>
+        <text x="816" y="480" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">活下来</text>
+        <line x1="480" y1="548" x2="480" y2="570" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
+
+        <rect x="120" y="572" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--sienna)" stroke-width="1.4"/>
+        <text x="142" y="606" font-size="21" font-weight="700">关 5 · 执行与验证</text>
+        <text x="142" y="631" font-size="15" fill="var(--muted)">真实成交记录回头校验前四关 · 用真实胜率校准仓位，不拍脑门</text>
+        <text x="816" y="606" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">验</text>
+
+        <path d="M840 619 C902 619 902 139 840 139" fill="none" stroke="var(--gold)" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#d)"/>
+        <text x="912" y="379" text-anchor="middle" font-size="14" fill="var(--gold)" class="mono" transform="rotate(90 912 379)">回头校验前四关</text>
+      </svg>
+      <figcaption><b>图例：</b>看懂公司 → 找到错在哪 → 工具纪律 → 活下来 → 验。<b>关 1–2</b> 是研究阶段，<b>关 3–5</b> 是购买行为阶段。同一套系统，今天重点讲关 1，再串一遍 DUOL。</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 05 · DIVIDER 关1 -->
+<section class="slide divider">
+  <div class="inner">
+    <p class="eyebrow">第一关 · 研究阶段</p>
+    <h2>评分 —— 这家公司现在好不好</h2>
+    <div class="rule"></div>
+    <p class="lead">六个维度打分，加风险扣分和熔断，合成一个 0–100 的 final_score。<br>下面把分数、权重、参数、核对全部拆开。</p>
+  </div>
+</section>
+
+<!-- 06 · 六维 + 权重 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · 顶层结构</p>
+    <h2>六个维度，权重之和 = 1.00</h2>
+    <div class="rule"></div>
+    <div class="bars">
+      <div class="bar-row"><span class="lab">① 估值</span><span class="track"><span class="fill" style="width:80%">20%</span></span></div>
+      <div class="bar-row"><span class="lab">② 成长</span><span class="track"><span class="fill" style="width:100%">25%</span></span></div>
+      <div class="bar-row"><span class="lab">③ 质量</span><span class="track"><span class="fill" style="width:60%">15%</span></span></div>
+      <div class="bar-row"><span class="lab">④ AI 暴露</span><span class="track"><span class="fill" style="width:80%">20%</span></span></div>
+      <div class="bar-row"><span class="lab">⑤ 预期差</span><span class="track"><span class="fill" style="width:40%">10%</span></span></div>
+      <div class="bar-row"><span class="lab">⑥ 动量</span><span class="track"><span class="fill" style="width:40%">10%</span></span></div>
+    </div>
+    <p class="note">为什么<b>统一权重</b>跨公司：要能横向比。为什么<b>不</b>把 AI 权重挪给估值/质量：那会系统性抬高"高质量、低 AI 暴露"公司的排名。<span class="mono">formula.py</span> 里有 assert 强制求和 = 1。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/formula.py" target="_blank" rel="noopener">scoring/formula.py · DIM_WEIGHTS</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/quant_engine.py" target="_blank" rel="noopener">scoring/quant_engine.py</a>
+    </div>
+  </div>
+</section>
+
+<!-- 07 · 子分怎么算 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · 打分原理</p>
+    <h2>每个子分：一条连续的线性映射</h2>
+    <div class="rule"></div>
+    <div class="qa">
+      <div class="line pick"><span class="tag">公式</span><span class="mono">score = clamp( (value − worst) / (best − worst) × 100 , 0 , 100 )</span></div>
+      <div class="line why"><span class="tag">要点</span><b>连续函数，无阶梯跳变</b>（越低越好的指标用 inverse_clamp）。best / worst 锚点不是我拍的——来自机构基准。</div>
+      <div class="line why"><span class="tag">缺字段</span>某个指标查不到 → 该维度内的权重<b>重新归一化</b>，不用 0 硬填。</div>
+    </div>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/SCORING_FORMULA.md" target="_blank" rel="noopener">scoring/SCORING_FORMULA.md</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/quant_audit.py" target="_blank" rel="noopener">python quant_audit.py TICKER · 逐字段展开</a>
+    </div>
+  </div>
+</section>
+
+<!-- 08 · 估值 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · ① 估值 · 权重 20%</p>
+    <h2>五个独立估值锚</h2>
+    <div class="rule"></div>
+    <div class="index-wrap">
+      <table class="index">
+        <thead><tr><th>指标</th><th>是什么</th><th>机构锚点</th></tr></thead>
+        <tbody>
+          <tr><td>PEG</td><td class="what">PE ÷ 增长率</td><td class="what">Peter Lynch，PEG=1</td></tr>
+          <tr><td>EV/EBITDA</td><td class="what">芯片/设备首要；SaaS 因高 SBC 失真，权重低</td><td class="what">MS 2026 芯片报告</td></tr>
+          <tr><td>ERG</td><td class="what">EV/Rev ÷ 增速(%)——SaaS/AI 核心，权重可到 0.5</td><td class="what">Meritech Capital 2026</td></tr>
+          <tr><td>Forward PE</td><td class="what">口径不透明，PEG 替代不了，独立保留</td><td class="what">GS / JPM 锚点</td></tr>
+          <tr><td>FCF Yield</td><td class="what">FCF ÷ 市值，真实现金回报率</td><td class="what">比 E/P 更准</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><b>估值完整性闸门</b>：若同时 Forward PE ≥ 40、EV/Sales ≥ 12、FCF Yield ≤ 2% → 标"高估值待验证"：保留原始分和质量排序，但<b>不进行动候选</b>。这是三个独立锚的一致性检查，不是手动压分。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/SCORING_FORMULA.md" target="_blank" rel="noopener">SCORING_FORMULA.md · ① 估值分 + 阈值表</a>
+    </div>
+  </div>
+</section>
+
+<!-- 09 · 成长 + 质量 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · ② 成长 25% · ③ 质量 15%</p>
+    <h2>成长看趋势，质量看能不能持续</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li><b>② 成长</b>：收入 YoY <span class="mono">0.35</span> · EPS YoY <span class="mono">0.20</span> · FCF 增长 <span class="mono">0.15</span> · NTM 指引 <span class="mono">0.20</span> · 分析师 30 天上调 <span class="mono">0.10</span>（网安优先用 ARR）</li>
+      <li><b>③ 质量</b>：毛利率 · FCF Margin · 营业利润率(Non-GAAP) · <b>Rule of 40</b>（FCF 口径 = 收入增速 + FCF margin）· ROIC · D/E · 收入可预测性 · <b>NRR</b>（SaaS Capital：90% → 135%）</li>
+    </ul>
+    <p class="note">Rule of 40 统一用 FCF 口径、不用 EBITDA；ROIC 用 <b>NOPAT / InvestedCapital</b>，不用净利润当分子（一次性冲销会砸穿净利润，误读成"质量差"）。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/SCORING_FORMULA.md" target="_blank" rel="noopener">SCORING_FORMULA.md · ②③</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/yfinance_fetcher.py" target="_blank" rel="noopener">yfinance_fetcher.py · ROIC=NOPAT/IC</a>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · AI暴露 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · ④ AI 暴露 · 权重 20%</p>
+    <h2>全手动整理，靠"前置分类"决定权重</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>AI 暴露字段<b>无法从 yfinance 自动拿</b>，每季财报后手动更新 <span class="mono">mock_data.py</span></li>
+      <li>先分类：<b>AI 核心型</b>（暴露 ≥ 30%）用真实 AI 曝露评分；<b>AI 赋能 / 传统优质 / AI 待验证</b>一律用<span class="k">中性 50 分</span>，不额外加分</li>
+      <li>为什么中性保护：避免把"AI 收入占比低"误当成"企业质量差"；移走的权重<b>不</b>回填给估值/质量</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/SCORING_FORMULA.md" target="_blank" rel="noopener">SCORING_FORMULA.md · ④ + AI 角色前置分类</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/ai_profile.py" target="_blank" rel="noopener">scoring/ai_profile.py</a>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · 预期差 + 动量 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · ⑤ 预期差 10% · ⑥ 动量 10%</p>
+    <h2>预期差看财报，动量看趋势位置</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li><b>⑤ 预期差</b>：实际收入 vs 预期 <span class="mono">0.30</span> · 实际 EPS vs 预期 <span class="mono">0.25</span> · 指引 vs 市场预期 <span class="mono">0.25</span> · 财报次日涨跌 <span class="mono">0.10</span> · 市场预期高低（反向）<span class="mono">0.10</span></li>
+      <li><b>⑥ 动量</b>：价格 vs 200 日均线 + RSI-14 分段——RSI 45–65 最优（80–100 分），>80 极度超买 → 5 分，<30 极度超卖 → 10–40 分</li>
+    </ul>
+    <p class="note">这两维都需要<b>历史价格序列</b>；拿不到时按中性 50 分处理（DUOL 报告里⑥动量就是这样留空的）。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/quant_engine.py" target="_blank" rel="noopener">quant_engine.py · score_momentum / _score_rsi</a>
+    </div>
+  </div>
+</section>
+
+<!-- 12 · 风险扣分 + 熔断 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · ⑦ 风险扣分 · ⑧ 熔断</p>
+    <h2>先加权，再扣风险，最后过熔断</h2>
+    <div class="rule"></div>
+    <div class="qa">
+      <div class="line pick"><span class="tag">风险扣分</span><span class="mono">(beta·0.25 + 波动率·0.20 + 估值风险·0.25 + 流动性·0.15 + 最大回撤·0.15) × 20</span>，上限 −20</div>
+      <div class="line why"><span class="tag">硬性</span>2026-07 起有回归测试：<b>任一风险输入恶化，扣分只能增加，不能减</b>。</div>
+      <div class="line pick"><span class="tag">熔断</span>(beta &gt; 2.2 <b>且</b> |最大回撤| &gt; 35%) <b>或</b> D/E &gt; 1.8 → final_score <span class="k">× 0.75</span>，评级封顶</div>
+      <div class="line why"><span class="tag">分开报</span><b>company_score</b>（五个基本面维度重新归一，不含动量、不受熔断）是"公司到底怎么样"的读数。INTC：final 20.9 vs company 31.4。</div>
+    </div>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/formula.py" target="_blank" rel="noopener">formula.py · CIRCUIT_* / RISK_MAX_PENALTY</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/score_split.py" target="_blank" rel="noopener">score_split.py · company_score()</a>
+    </div>
+  </div>
+</section>
+
+<!-- 13 · 分数 ≠ 交易指令 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 1 · 输出</p>
+    <h2>分数 = 候选质量，不是买卖指令</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>评级：≥80 强劲 · ≥65 良好 · ≥50 中性 · ≥35 谨慎 · &lt;35 风险高</li>
+      <li>要"可执行"，还得<b>同时</b>过：估值分 ≥ 60 · 数据有效率 ≥ 95% · 无人工复核否决 · 组合约束允许</li>
+      <li><b>评分不确定性</b>：L 字段（手动，±1.5/项）+ M 字段（财务倍数，±0.5/项）→ 置信度 A/B/C/D + score_range 区间</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/decision_policy.py" target="_blank" rel="noopener">decision_policy.py · evaluate_decision()</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/REPORT_STANDARD.md" target="_blank" rel="noopener">REPORT_STANDARD.md</a>
+    </div>
+  </div>
+</section>
+
+<!-- 14 · DIVIDER 数据核对 -->
+<section class="slide divider">
+  <div class="inner">
+    <p class="eyebrow">关 1 的底座</p>
+    <h2>数据怎么拿到、怎么核对</h2>
+    <div class="rule"></div>
+    <p class="lead">"能核实的字段用多方来源交叉核实；查不到、或来源自相矛盾的字段，显式留空——不编数字。"</p>
+  </div>
+</section>
+
+<!-- 15 · 四色 + 交叉核对 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">数据治理</p>
+    <h2>每个字段都带来源标注 + 交叉核对</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>四色：🟢 yfinance 实时 · 🔵 计算推导 · 🟡 手动整理（季报后）· 🔴 付费 API / Mock 静态</li>
+      <li><b>cross_validate_data.py</b>：mock + overrides 逐字段比 yfinance —— &lt;5% 一致 / 5–20% 需确认 / &gt;20% 警告 → <span class="mono">data_validation_report.json</span></li>
+      <li><b>score_validator.py</b>：用 <span class="mono">formula.py</span> 独立重算一遍分，抓 CSV 与实时公式的漂移（差 ≥5 分 = 可能公式错）</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/cross_validate_data.py" target="_blank" rel="noopener">cross_validate_data.py</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/validation/validators/score_validator.py" target="_blank" rel="noopener">validation/validators/score_validator.py</a>
+    </div>
+  </div>
+</section>
+
+<!-- 16 · 留空 + 已知坑 + 漂移 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">数据治理</p>
+    <h2>查不到就留空，已知坑逐个手修</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li><b>ROIC 实为 ROE</b> → 改用 NOPAT / InvestedCapital</li>
+      <li><b>PEG 分母不封顶</b>（GAAP 噪音把增速冲到 90%+，PEG 被除到接近 0，估值分虚高）→ 封顶 60%，记进 bad_fields</li>
+      <li><b>GAAP EBITDA 失真</b>（CRWD/SNOW 高 SBC，EBITDA≈0 或为负）→ 保留 Non-GAAP 手动值</li>
+      <li><b>drift_detector.py</b>：价格没动但 ERG 暗中恶化（增速放缓）→ 侧边栏 <span class="k">⚡critical / △warning</span> 徽标</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/energrex_system_guide.md" target="_blank" rel="noopener">energrex_system_guide.md · §4</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/drift_detector.py" target="_blank" rel="noopener">scoring/drift_detector.py</a>
+    </div>
+  </div>
+</section>
+
+<!-- 17 · DIVIDER 关2 -->
+<section class="slide divider">
+  <div class="inner">
+    <p class="eyebrow">第二关 · 研究阶段</p>
+    <h2>误价发现 —— 找到错在哪</h2>
+    <div class="rule"></div>
+    <p class="lead">不重新算分、不给目标价、不给仓位。只回答一个更窄的问题：<br>一个具体的、可证伪的"市场错了"论点，值不值得立案做正式研究。</p>
+  </div>
+</section>
+
+<!-- 18 · 误价核心契约 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 2 · 核心契约</p>
+    <h2>每个案子必须写成四句话</h2>
+    <div class="rule"></div>
+    <div class="qa">
+      <div class="line pick"><span class="tag">契约</span>Market believes <b>X</b>. We believe <b>Y</b>. Because <b>Z</b>. We are wrong if <b>W</b> occurs.</div>
+      <div class="line why"><span class="tag">路径</span>六选一：伟大生意绊倒 / 回购时间机器 / 隐藏稀缺资产 / 资本配置重估 / <b>隐含预期差</b> / 清算与资产套利</div>
+      <div class="line why"><span class="tag">关卡</span>预筛（未知永不默认 PASS）→ 五道正式关：BUSINESS_TRUTH / SURVIVAL / MISPRICING / VALUE_CAPTURE / PRICE_ODDS</div>
+      <div class="line why"><span class="tag">证据</span>每条 claim 带来源 + 分级 + VERIFIED/PENDING/CONFLICTED；过期或冲突 → 自动把 PASS 打回 NEEDS_EVIDENCE。历史 append-only + SHA-256 哈希链。</div>
+    </div>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/MISPRICING_ENGINE_STANDARD.md" target="_blank" rel="noopener">MISPRICING_ENGINE_STANDARD.md</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/mispricing_engine.py" target="_blank" rel="noopener">scoring/mispricing_engine.py</a>
+    </div>
+  </div>
+</section>
+
+<!-- 19 · 决策边界 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 2 · 决策边界（接口层）</p>
+    <h2>误价引擎只输出五种去向</h2>
+    <div class="rule"></div>
+    <div class="index-wrap">
+      <table class="index">
+        <thead><tr><th>去向</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td>DEEP_RESEARCH · P0/P1</td><td class="what">允许进入五维 + 正式估值 + IDI 流程——<b>不代表可以买</b></td></tr>
+          <tr><td>WATCH · P2</td><td class="what">证据不足，禁止形成行动结论</td></tr>
+          <tr><td>WAIT_FOR_PRICE</td><td class="what">公司逻辑没被否定，只等价格赔率改善</td></tr>
+          <tr><td>REJECT · P3</td><td class="what">至少一道硬门失败，停止研究，除非出现新事实</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">进入购买行为阶段时，系统只<b>读</b>这个结果（<span class="mono">ticker / decision / gates / evidence / monitor_rules / blocking_reasons</span>），再决定要不要用现股或<b>有限风险期权</b>去表达。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/03_MISPRICING_ENGINE_INTERFACE.md" target="_blank" rel="noopener">docs/03_MISPRICING_ENGINE_INTERFACE.md</a>
+    </div>
+  </div>
+</section>
+
+<!-- 20 · DIVIDER 购买行为阶段 -->
+<section class="slide divider">
+  <div class="inner">
+    <p class="eyebrow">第三 / 四 / 五关 · 购买行为阶段</p>
+    <h2>从判断到仓位：先问会不会死</h2>
+    <div class="rule"></div>
+    <p class="lead">研究阶段说完"这家公司、这个误价"之后，才轮到这三关：<b>用什么工具表达、放多大仓位、执行、用真实结果回校</b>。<br>盯的是我的<b>真实持仓</b>，<span class="k">永不下单</span>，只输出建议、预警、看板。</p>
+  </div>
+</section>
+
+<!-- 21 · 每日流水线 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">购买行为阶段 · 日常运维</p>
+    <h2>一条命令跑完，决策按固定顺序</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>交易日收盘后：Firstrade 导出 <span class="mono">export.csv</span> → <span class="mono">Run-ENERGREX-DailyUpdate.ps1</span>（25 个 Update-* 脚本链）</li>
+      <li>决策顺序固定：<b>①数据质量门 → ②账户净值/现金流 → ③持仓分类 → ④Greeks/IV/盘口/OI → ⑤压力 ±10% / ±20% → ⑥回撤（现金流调整 NAV 口径）→ ⑦财报/lockup/事件 → ⑧出报告</b></li>
+      <li>任一步不过 → <span class="k">risk_status = DATA_REVIEW</span>，本日不产出交易建议</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/02_DAILY_RUNBOOK.md" target="_blank" rel="noopener">docs/02_DAILY_RUNBOOK.md</a>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Run-ENERGREX-DailyUpdate.ps1" target="_blank" rel="noopener">Run-ENERGREX-DailyUpdate.ps1</a>
+    </div>
+  </div>
+</section>
+
+<!-- 22 · 数据可信度分级 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">购买行为阶段 · 数据标准</p>
+    <h2>数据打架时，显示 DATA_REVIEW，不出指令</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>可信度分级：<b>券商账户快照 &gt; 券商成交/流水 &gt; 行情 API &gt; 人工复核字段</b></li>
+      <li>回撤口径：必须用<b>现金流调整 NAV</b>（DD_adjusted），不能把入金/出金当成盈亏（raw equity 会算错）</li>
+      <li>DATA_CIRCUIT_BREAKER：标的单日 ±8% / IV 单日 ±20 vol pts / Greeks 缺失 / 源间价差 ≥1.5% / 报价超过 1 个交易日 → <span class="k">禁止方向性加仓建议</span>，只允许减仓 / 对冲 / 等人工</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/01_DATA_STANDARD.md" target="_blank" rel="noopener">docs/01_DATA_STANDARD.md</a>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §1</a>
+    </div>
+  </div>
+</section>
+
+<!-- 23 · 关3 对冲纪律 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 3 · 对冲纪律</p>
+    <h2>保护性期权是临时保险，不是长期资产</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>只在有<b>系统性风险触发信号</b>时才允许买：Beta-Delta 超标 / VIX 冲高 / QQQ 破 MA200 / 事件簇。<span class="k">无触发 = idle hedge 违规</span>，要复核退出</li>
+      <li>宏观风险<b>优先用 QQQ ETF 对冲</b>（<span class="mono">qqq_hedge_shares = −目标 Delta 缩减 / QQQ 价</span>，用 Beta 加权 Delta 口径）</li>
+      <li>IV regime 主控：IV 分位 ≥85% 禁追买 long premium → ≥95% 把 long call 转 debit spread / diagonal；财报前 7 日且 ≥80% 必须评估 IV crush</li>
+      <li>默认结构 debit put spread；单次对冲预算 ≤ 账户净值 1%</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §4</a>
+    </div>
+  </div>
+</section>
+
+<!-- 24 · 关4 仓位管理 硬红线 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 4 · 仓位管理 · 独立决策层</p>
+    <h2>硬红线：回答"错了会不会死"</h2>
+    <div class="rule"></div>
+    <div class="index-wrap">
+      <table class="index">
+        <thead><tr><th>红线</th><th class="n">阈值</th><th>触发后</th></tr></thead>
+        <tbody>
+          <tr><td>杠杆率 gross/净值</td><td class="n">≤ 4.0</td><td class="what">超 → LEVERAGE_BREACH，禁新增风险，先降杠杆</td></tr>
+          <tr><td>组合 Beta 加权 Delta / 净值</td><td class="n">±35%</td><td class="what">持续展示；本画像下不单独强平</td></tr>
+          <tr><td>单标的 Beta 加权 Delta / 净值</td><td class="n">±15%</td><td class="what">超 → Delta Drift 复核</td></tr>
+          <tr><td>±10% 压力情景损失 / 净值</td><td class="n">8 / 12 / 15%</td><td class="what">警告 / 降险复核 / 硬停</td></tr>
+          <tr><td>账户回撤（NAV 口径）</td><td class="n">20 / 30%</td><td class="what">冻结新增风险 / 强制降仓复核</td></tr>
+          <tr><td>短期权到期 DTE</td><td class="n">21 / 14 天</td><td class="what">必须复核 / 必须给动作计划</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">这些红线<b>不需要预测力</b>——哪怕所有评分都是噪声，它们照样保护你。风险画像 <span class="mono">HIGH_CONVICTION_AI_GROWTH</span> 允许高 Beta/Delta 方向性暴露，但主触发器是 IV 极端 / DTE / 回撤 / 数据异常，不是 Delta 本身。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §2–§7</a>
+    </div>
+  </div>
+</section>
+
+<!-- 25 · 关4 Kelly + 评分不驱动仓位 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 4 · 仓位管理 · 上限怎么定</p>
+    <h2>只用 1/3 Kelly，评分暂时不驱动仓位</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>Kelly：<span class="mono">f* = (b·p − q) / b</span>，系统<b>只用 f*/3</b>；p、b 样本不足 → <span class="k">kelly_limit = 0</span> + 强制人工复核</li>
+      <li><b>评分不驱动仓位</b>：权重回测里综合评分的高分组反而<b>跑输</b>低分组（current_final −0.020），且快照历史不足 252 天 → 分数只进<b>影子记录</b>，硬约束决定仓位</li>
+      <li>看板只<b>陈述事实</b>（"AI 芯片占 42%，上限 35%，超限 7%"），不给"建议减仓 NVDA"这种话——那属于影子层</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/POSITION_MODULE_DESIGN.md" target="_blank" rel="noopener">ai_valuation/POSITION_MODULE_DESIGN.md</a>
+      <a href="file:///C:/Users/evolx/ai_valuation/scoring/weight_config_backtest_report.json" target="_blank" rel="noopener">weight_config_backtest_report.json</a>
+    </div>
+  </div>
+</section>
+
+<!-- 26 · 关5 执行与验证 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 5 · 执行与验证</p>
+    <h2>用真实成交回头校验前四关</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>Firstrade 成交 → <span class="mono">discipline_review.html</span> 退出纪律复核：期权 +50% / +100% / −40% / −60%，现股 +25% / −15%——都是<span class="k">复核触发，不是自动单</span></li>
+      <li>已闭合交易 → 算真实胜率 p 和盈亏比 b → 回喂 Kelly（<span class="mono">Update-OptionKellyStats</span> / <span class="mono">Update-KellyStats</span>）</li>
+      <li>整体成绩 <span class="mono">trading_performance.html</span>：滚动 20/50 笔胜率、ENERGREX vs QQQ、pre-earnings runup 回测</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §8 Exit Discipline</a>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/discipline_review.html" target="_blank" rel="noopener">discipline_review.html</a>
+    </div>
+  </div>
+</section>
+
+<!-- 27 · 内部 vs 投资人看板 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">系统 · 对内 / 对外</p>
+    <h2>内部看真相，对外只发脱敏版</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li><b>内部</b>（dashboard / control_center）：真实持仓、Greeks、成本、数据质量红旗——全都能看</li>
+      <li><b>投资人看板</b>（<span class="mono">evolxd.github.io/energrex-investor-public</span>）：ENERGREX vs QQQ、NAV 趋势、压力趋势、交易纪律表现、胜率、主题集中度、数据质量 PASS/REVIEW</li>
+      <li>硬隔离：公开版<span class="k">不得出现</span> API key / 账户号 / 具体持仓与期权代码 / 成本 / Greeks / 交易明细 / 未决数据质量</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/00_SYSTEM_CORE.md" target="_blank" rel="noopener">00_SYSTEM_CORE.md · Surface separation</a>
+    </div>
+  </div>
+</section>
+
+<!-- 28 · DIVIDER 多邻国 -->
+<section class="slide divider">
+  <div class="inner">
+    <p class="eyebrow">实战</p>
+    <h2>用多邻国 DUOL 走一遍</h2>
+    <div class="rule"></div>
+    <p class="lead">发到群里那份报告，就是系统<b>研究阶段</b>的产物：<br>quant_engine.py 真实评分 + 价格敏感度模拟，数据核实截至 2026-08-28。</p>
+  </div>
+</section>
+
+<!-- 29 · DUOL 总分 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">DUOL · 总览</p>
+    <h2>54.5 / 100 · 👀 综合中性</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>没触发熔断（beta 0.88 比大盘还稳）</li>
+      <li>风险扣分只 <b>0.94</b> 分——但这不是"风险很低"，是<span class="k">波动率 / 估值风险 / 流动性 / 1年回撤四项都缺可信数据</span>，只有 beta 是干净的</li>
+      <li>真正拖分的：六维里的<b>成长（34.8）</b></li>
+    </ul>
+    <div class="src">
+      <span class="lbl">报告</span>
+      <a class="live" href="file:///C:/Users/evolx/Downloads/DUOL_estimate_report.pdf" target="_blank" rel="noopener">DUOL_estimate_report.pdf · §01</a>
+    </div>
+  </div>
+</section>
+
+<!-- 30 · DUOL 六维拆解 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">DUOL · §01 六维拆解</p>
+    <h2>分低到底低在哪</h2>
+    <div class="rule"></div>
+    <div class="index-wrap">
+      <table class="index">
+        <thead><tr><th>维度</th><th class="n">权重</th><th class="n">得分</th><th>为什么</th></tr></thead>
+        <tbody>
+          <tr><td>① 估值</td><td class="n">20%</td><td class="n">82.1</td><td class="what">远期 PE 53.4x 比软件中位数贵 173%，但 FCF 收益率 6.1% + 毛利率 72% 撑住</td></tr>
+          <tr><td>② 成长</td><td class="n">25%</td><td class="n">34.8</td><td class="what"><b>拖累项</b>：净利润 YoY −26%（运营费用 + 税务拨备，非一次性），全年营收指引 30%+ → ~16%</td></tr>
+          <tr><td>③ 质量</td><td class="n">15%</td><td class="n">70.7</td><td class="what">现金流质量没问题，但 ROIC 8.0% &lt; 资本成本 8.5%；负债率 0.07 极低是加分</td></tr>
+          <tr><td>④ AI 暴露</td><td class="n">20%</td><td class="n">50.0</td><td class="what">中性默认——这个字段<b>刻意留空</b>，见下页</td></tr>
+          <tr><td>⑤ 预期差</td><td class="n">10%</td><td class="n">47.7</td><td class="what">Q2 双超预期，但 Q3 指引不及、财报当日反跌 15%（买预期卖事实）</td></tr>
+          <tr><td>⑥ 动量</td><td class="n">10%</td><td class="n">50.0</td><td class="what">200 日均线 / RSI 需历史价格序列，本环境拿不到，中性默认</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">结论很直接：这<b>不是</b>"股价太贵"的故事，是"<b>增长在减速</b>"的故事。</p>
+  </div>
+</section>
+
+<!-- 31 · AI暴露为什么留空 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">DUOL · §02</p>
+    <h2>AI 暴露为什么交白卷</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>系统的"AI 暴露 %"是给 NVDA/PLTR 设计的，问的是：<b>你营收里多少是靠卖 AI 产品赚的</b></li>
+      <li>DUOL 的 AI 是<b>双向</b>的——成本端：把推理迁到开源模型，毛利率上调到 ~70%；需求端：ChatGPT / Google 翻译让"背单词、学语法"失去稀缺性</li>
+      <li>一个百分比数字装不下"AI 同时是省钱工具和生存威胁"——<span class="k">宁可留空，也不编一个假装核实过的数字</span></li>
+    </ul>
+    <p class="note">这正是这次 A99 活动的核心辩题：AI 是敌是友。评分框架回答不了，那要靠辩论现场人的判断。</p>
+  </div>
+</section>
+
+<!-- 32 · 价格敏感度 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">DUOL · §03 价格敏感度模拟</p>
+    <h2>股价涨到多少，才不算便宜</h2>
+    <div class="rule"></div>
+    <div class="index-wrap">
+      <table class="index">
+        <thead><tr><th>估值分门槛</th><th class="n">对应价位</th><th class="n">较现价 $146</th></tr></thead>
+        <tbody>
+          <tr><td>低价区上限（估值分 ≥ 80）</td><td class="n">$160.6</td><td class="n">+10%</td></tr>
+          <tr><td>合适区上限（估值分 ≥ 75）</td><td class="n">$198.6</td><td class="n">+36%</td></tr>
+          <tr><td>观察区上限（估值分 ≥ 60）</td><td class="n">$416.2</td><td class="n">+185%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">做法：<b>固定基本面，只移动价格</b>，用同一套引擎重算 PE / EV-Sales / FCF 收益率。即便推到现价 150%（约 $219），final_score 只从 54.5 → 52.6 —— 因为拖分的是成长（25%），估值只占 20%。</p>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/PRICE_BOUNDARY_STANDARD.md" target="_blank" rel="noopener">PRICE_BOUNDARY_STANDARD.md</a>
+    </div>
+  </div>
+</section>
+
+<!-- 33 · 误价引擎判定 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">DUOL · §03a 误价发现引擎</p>
+    <h2>算不算一个可研究的"误价"机会</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>形状匹配 <b>IMPLIED_EXPECTATIONS_GAP</b>：市场对"减速"的反应，是不是比减速本身更极端</li>
+      <li>8 项预筛过了 7（业务好懂、付费方明确、现金流可核实、36 个月无生存风险…）</li>
+      <li>唯独卡在 <span class="k">source_quality_sufficient</span>：ROIC 三个来源报 7.99% / 9.41% / 60.20%；52 周高点 $353 / $468 互相矛盾 → 触发硬性拒绝 → <b>REJECT_P3</b></li>
+    </ul>
+    <p class="note">因为是 REJECT_P3，系统<b>根本不进入购买行为阶段</b>（现股或期权表达都不会去看）——"数据不够干净，先不立案"，不是"这公司没机会"。</p>
+  </div>
+</section>
+
+<!-- 34 · 信息来源 + 结论 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">DUOL · §04–05</p>
+    <h2>每个数字都标了源；54.5 中性在说什么</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li>来源举例：GuruFocus · stockanalysis.com（估值）· Duolingo IR · TIKR（财报）· TopTier Strategy（TTM FCF）· Motley Fool · CNN（52 周低点）· Yahoo Finance（beta）· Zacks · Investing.com（一致预期）· S&amp;P Global / TipRanks（评级）</li>
+      <li><b>结论</b>：不是 AI 在杀死这门生意，也不是股价贵 / 杠杆高——是<b>账面增长在减速</b> + <b>ROIC 8.0% &lt; 资本成本 8.5%</b>，而市场的价格已<b>部分消化</b>了这个减速</li>
+      <li>这个分建立在四个风险字段和 52 周高点仍未核实的基础上，<span class="k">不是数据齐全后的最终分</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 35 · 边界 / 祛魅 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">收尾</p>
+    <h2>这套东西能做什么、不能做什么</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li><b>能</b>：把判断拆成可核对的字段 · 把假设和"数据不够"标出来 · 把真实组合的风险持续量化 · 回头用成交记录验证</li>
+      <li><span class="k">不能</span>：预测股价 · 替你决定买多少 · 自动下单 · 保证不出错</li>
+      <li>一套系统、五道关卡的意义：<b>不是让 AI 更聪明，是让每一次判断错误的破坏半径可控</b></li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/ai_valuation/" target="_blank" rel="noopener">ai_valuation/</a>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/" target="_blank" rel="noopener">ENERGREX期权量化系统/</a>
+    </div>
+  </div>
+</section>
+
+<!-- 36 · 谢谢 -->
+<section class="slide divider">
+  <div class="inner">
+    <p class="eyebrow">收尾</p>
+    <h2>谢谢 · 欢迎指正</h2>
+    <div class="rule"></div>
+    <p class="lead">那份 DUOL 报告，和背后这一套系统、五道关卡的设计逻辑，就是今天的全部。<br><br>Q&amp;A</p>
+  </div>
+</section>
+
+<div class="hud">
+  <span>← → / 空格翻页　·　F 全屏</span>
+  <span id="cnt">01 / 36</span>
+</div>
+
+<script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var prog = document.getElementById('prog');
+  var cnt = document.getElementById('cnt');
+  var i = 0;
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function show(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    for (var k = 0; k < slides.length; k++) slides[k].hidden = (k !== i);
+    prog.style.width = ((i + 1) / slides.length * 100) + '%';
+    cnt.textContent = pad(i + 1) + ' / ' + pad(slides.length);
+    if (history.replaceState) history.replaceState(null, '', '#s' + (i + 1));
+    else location.hash = 's' + (i + 1);
+  }
+  function fromHash(){
+    var m = /^#s(\d+)$/.exec(location.hash || '');
+    return m ? (parseInt(m[1], 10) - 1) : 0;
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Spacebar'){ e.preventDefault(); show(i + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); show(i - 1); }
+    else if (e.key === 'Home'){ e.preventDefault(); show(0); }
+    else if (e.key === 'End'){ e.preventDefault(); show(slides.length - 1); }
+    else if (e.key === 'f' || e.key === 'F'){
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    }
+  });
+  document.addEventListener('click', function(e){
+    if (e.target.closest && e.target.closest('a,button')) return;
+    show(e.clientX > window.innerWidth * 0.4 ? i + 1 : i - 1);
+  });
+  window.addEventListener('hashchange', function(){ show(fromHash()); });
+  show(fromHash());
+</script>

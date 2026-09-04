@@ -111,11 +111,13 @@ def classify_ai_profile(data: dict, category_name: str) -> AIProfile:
     elif exposure >= 0.30 and category_name in CORE_ELIGIBLE_CATEGORIES:
         key, bonus = AI_CORE, 0.0
     elif exposure >= 0.10:
-        key = AI_ENABLED
-        bonus = min(5.0, max(0.0, (exposure - 0.10) / 0.20 * 5.0))
+        # Non-core AI evidence is informative, but often relies on manual
+        # revenue/profit allocation or product-feature proxies. It may prevent
+        # an AI penalty through the neutral baseline, never create a second
+        # additive reward until a separately audited evidence layer exists.
+        key, bonus = AI_ENABLED, 0.0
     else:
-        key = QUALITY_TRADITIONAL
-        bonus = min(3.0, max(0.0, exposure / 0.10 * 3.0))
+        key, bonus = QUALITY_TRADITIONAL, 0.0
 
     weights = dict(PROFILE_WEIGHTS[key])
     if abs(sum(weights.values()) - 1.0) > 1e-9:

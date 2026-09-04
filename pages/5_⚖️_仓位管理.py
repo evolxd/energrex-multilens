@@ -122,8 +122,19 @@ def _load_portfolio():
 
 
 def _chain_of(symbol: str) -> str | None:
+    """
+    Bug fixed 2026-08-27: this imported `from scoring_engine import ...`
+    (flat-module style) but scoring_engine.py lives at scoring/scoring_engine.py,
+    and nothing on this page ever put `scoring/` itself on sys.path -- only
+    the repo root (for `from scoring.position_exposure import ...`, the
+    package-style import). Every call here raised ModuleNotFoundError,
+    silently caught by the bare `except Exception: return None`, so every
+    single ticker -- including well-classified ones like NVDA -- fell into
+    "未分类" forever. The chain/sector concentration limit was measuring
+    "everything", not sectors, since this function was written.
+    """
     try:
-        from scoring_engine import TICKER_CATEGORY
+        from scoring.scoring_engine import TICKER_CATEGORY
 
         cat = TICKER_CATEGORY.get(symbol)
         return cat.value if cat else None

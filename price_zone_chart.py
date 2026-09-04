@@ -158,9 +158,9 @@ def render_price_zone_svg(report: dict) -> str:
         "<style>"
         ".price-zone-svg{display:block;width:100%;height:auto;background:#FAF8F3;}"
         ".price-zone-svg text{font-family:Arial,'Microsoft YaHei',sans-serif;fill:#4F4A40;}"
-        ".price-zone-svg .tick{font-size:11px;}"
-        ".price-zone-svg .zone-label{font-size:13px;font-weight:700;fill:#1E1E1B;}"
-        ".price-zone-svg .current-label{font-size:12px;font-weight:700;fill:#1E1E1B;}"
+        ".price-zone-svg .tick{font-size:14px;}"
+        ".price-zone-svg .zone-label{font-size:17px;font-weight:700;fill:#1E1E1B;}"
+        ".price-zone-svg .current-label{font-size:16px;font-weight:700;fill:#1E1E1B;}"
         ".price-zone-svg .grid-line{stroke:#BEB7A8;stroke-width:.8;stroke-opacity:.45;}"
         "</style>"
         f"<rect x='{left}' y='{top}' width='{plot_width}' height='{plot_height}' fill='#F3F0E8'/>"
@@ -175,4 +175,3 @@ def render_price_zone_svg(report: dict) -> str:
         "估值温度 / Valuation Score</text>"
         "</svg></div>"
     )
-

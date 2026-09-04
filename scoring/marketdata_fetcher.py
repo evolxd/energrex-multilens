@@ -7,6 +7,7 @@ Free plan: candles + quotes available; earnings = 402.
 import os
 import time
 import logging
+import datetime as dt
 from typing import Optional
 import requests
 
@@ -56,6 +57,59 @@ def fetch_quote(ticker: str) -> dict:
     if vol    is not None: out["volume_1d"]           = int(vol)
 
     return out
+
+
+def fetch_price_evidence(ticker: str) -> dict:
+    """Return MarketData.app price evidence only when source time is supplied."""
+    data = _get(f"/stocks/quotes/{ticker}/")
+    time.sleep(_SLEEP)
+    retrieved = dt.datetime.now(dt.timezone.utc)
+    if not data or data.get("s") != "ok":
+        return {"_evidence_error": "MarketData.app quote unavailable"}
+    last = data.get("last", [None])[0]
+    raw_timestamp = (
+        data.get("updated", [None])[0]
+        if isinstance(data.get("updated"), list)
+        else data.get("updated")
+    )
+    if last is None:
+        return {"_evidence_error": "MarketData.app quote lacks last price"}
+    if raw_timestamp is None:
+        return {
+            "_evidence_error": (
+                "MarketData.app quote lacks source timestamp; retrieval time "
+                "cannot substitute for observed_at"
+            )
+        }
+    try:
+        numeric_timestamp = float(raw_timestamp)
+        if numeric_timestamp > 10_000_000_000:
+            numeric_timestamp /= 1000
+        observed = dt.datetime.fromtimestamp(
+            numeric_timestamp,
+            tz=dt.timezone.utc,
+        )
+        if observed > retrieved:
+            return {"_evidence_error": "MarketData.app timestamp is in the future"}
+        return {
+            "field": "current_price",
+            "value": float(last),
+            "unit": "USD/share",
+            "source": "MarketData.app real-time quote",
+            "source_type": "MARKET",
+            "source_family": "MARKETDATA_APP",
+            "origin_family": "MARKETDATA_APP_MARKET_DATA",
+            "lineage_id": f"MARKETDATA:{ticker.upper()}:{raw_timestamp}",
+            "source_locator": (
+                f"https://api.marketdata.app/v1/stocks/quotes/{ticker.upper()}/"
+            ),
+            "observed_at": observed.isoformat(),
+            "available_at": observed.isoformat(),
+            "retrieved_at": retrieved.isoformat(),
+            "extraction_method": "MarketData.app last quote",
+        }
+    except (TypeError, ValueError, OSError) as exc:
+        return {"_evidence_error": f"MarketData.app timestamp invalid: {exc}"}
 
 
 def fetch_quotes_portfolio(tickers: list[str]) -> dict[str, dict]:

@@ -113,9 +113,9 @@ for space:
 If you add a new report section that makes a forward-looking or
 model-derived claim (price boundary, Kelly position size, hedge trigger,
 etc.), it needs its own scoped disclaimer following the pattern already
-used in `PRICE_BOUNDARY_STANDARD.md` ("价格区间不是主观猜测，而是..." /
-"模型局限：...不是对未来股价的预测") — state what the number actually
-measures and what it does not claim to predict.
+used in `PRICE_BOUNDARY_STANDARD.md` ("测算口径：..." /
+"使用边界：...不构成价格预测") — state what the number actually measures
+and what it does not claim to predict, without conversational or defensive wording.
 
 ## 5. Rating and score display
 

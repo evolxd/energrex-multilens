@@ -1628,8 +1628,9 @@ if page == "🏆 排行榜":
                 f" · 风险 <span style='color:#FF8C42'>{_split.risk:.0f}</span></div>"
                 f"{_circuit_html}"
                 f"<div style='font-size:9px;color:#5B6B80;margin-top:3px;"
-                f"border-top:1px solid #1E2D3D;padding-top:2px'>"
-                f"综合 <span style='color:{fs_col}'>{fs:.0f}</span>"
+                f"border-top:1px solid #1E2D3D;padding-top:2px' "
+                f"title='排名依据这个数字，不是上面的公司分'>"
+                f"综合(排序) <span style='color:{fs_col}'>{fs:.0f}</span>"
                 f" · 扣分 -{rp:.1f}</div>"
                 f"</div>"
                 if _co is not None and _split.momentum is not None and _split.risk is not None

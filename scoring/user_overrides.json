@@ -3,44 +3,44 @@
     "ev_ebitda": {
       "value": 25.4,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "fcf_growth_yoy": {
       "value": 0.585,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "analyst_revision_30d": {
       "value": 0.838,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "operating_margin": {
       "value": 0.6528,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "actual_revenue_vs_consensus": {
       "value": 0.0054,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "actual_eps_vs_consensus": {
       "value": 0.0554,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "guidance_vs_consensus": {
       "value": -0.001,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "market_expectation_score": {
       "value": 0.95,
@@ -75,38 +75,38 @@
     "forward_pe": {
       "value": 23.42,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "peg_ratio": {
       "value": 0.63,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "next_year_revenue_growth_est": {
       "value": 0.8137,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "fcf_margin": {
       "value": 0.183,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "roic": {
       "value": 1.5524,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "debt_to_equity": {
       "value": 0.3274,
       "status": "verified",
-      "verified_at": "2026-06-15",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     },
     "net_revenue_retention": {
       "value": 1.0,
@@ -119,6 +119,30 @@
       "status": "verified",
       "verified_at": "2026-06-19",
       "source": ""
+    },
+    "ev_sales": {
+      "value": 20.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.749,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.852,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 2.145,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/NVDA/key-statistics/"
     }
   },
   "AVGO": {
@@ -131,88 +155,88 @@
   },
   "PLTR": {
     "peg_ratio": {
-      "value": 1.87,
+      "value": 0.5,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "ev_ebitda": {
-      "value": 162.63,
+      "value": 150.59,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PLTR/key-statistics/"
     },
     "revenue_growth_yoy": {
-      "value": 0.5618,
+      "value": 0.93,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "eps_growth_yoy": {
-      "value": 1.25,
+      "value": 1.56,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "fcf_growth_yoy": {
-      "value": 1.328,
+      "value": 1.1785,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "next_year_revenue_growth_est": {
-      "value": 0.85,
+      "value": 0.82,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "analyst_revision_30d": {
-      "value": 0.065,
+      "value": 0.082,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "operating_margin": {
-      "value": 0.6,
+      "value": 0.62,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "roic": {
       "value": 0.326,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "debt_to_equity": {
       "value": 0.0,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "net_revenue_retention": {
-      "value": 1.18,
+      "value": 1.28,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "actual_revenue_vs_consensus": {
-      "value": 0.134,
+      "value": 0.072,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "actual_eps_vs_consensus": {
-      "value": 0.0645,
+      "value": 0.206,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "guidance_vs_consensus": {
-      "value": 0.1,
+      "value": 0.065,
       "status": "verified",
-      "verified_at": "2026-06-19",
-      "source": ""
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
     },
     "market_expectation_score": {
       "value": 0.5,
@@ -243,6 +267,30 @@
       "status": "pending",
       "verified_at": null,
       "source": ""
+    },
+    "forward_pe": {
+      "value": 89.29,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PLTR/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 58.18,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PLTR/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.841,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PLTR/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.336,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PLTR/key-statistics/"
     }
   },
   "PANW": {
@@ -905,6 +953,1088 @@
       "status": "pending",
       "verified_at": null,
       "source": ""
+    }
+  },
+  "KLAC": {
+    "forward_pe": {
+      "value": 43.67,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 2.3,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 48.09,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 22.26,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.115,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 0.103,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.18,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.12,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.614,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "operating_margin": {
+      "value": 0.38,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.221,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "roic": {
+      "value": 0.95,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 1.05,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.0091,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.015,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/KLAC/key-statistics/"
+    }
+  },
+  "META": {
+    "forward_pe": {
+      "value": 20.88,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 0.95,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 15.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 7.78,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.331,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 0.609,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.45,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.14,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.8190000000000001,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "operating_margin": {
+      "value": 0.42,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.11900000000000001,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "roic": {
+      "value": 0.32899999999999996,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 0.3561,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "net_revenue_retention": {
+      "value": 1.25,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.06,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/META/key-statistics/"
+    }
+  },
+  "ESTC": {
+    "forward_pe": {
+      "value": 19.19,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 4.17,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 164.7,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 3.28,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.16,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 0.6,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.8,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.16,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.762,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "operating_margin": {
+      "value": -0.0352,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.22,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "roic": {
+      "value": 0.338,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 0.4634,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "net_revenue_retention": {
+      "value": 1.12,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.06,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ESTC/key-statistics/"
+    }
+  },
+  "GTLB": {
+    "forward_pe": {
+      "value": 40.82,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 0.394,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 150.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 4.37,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.231,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 0.8,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 2.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.24,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.868,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "operating_margin": {
+      "value": 0.05,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.311,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "roic": {
+      "value": -0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "net_revenue_retention": {
+      "value": 1.1,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.035,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.18,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.015,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GTLB/key-statistics/"
+    }
+  },
+  "ADI": {
+    "forward_pe": {
+      "value": 26.32,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 0.71,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 31.04,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 15.17,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.37200000000000005,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 1.065,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.08,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.1,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.645,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "operating_margin": {
+      "value": 0.3808,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.304,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "roic": {
+      "value": 0.096,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 0.2581,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.01,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.01,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/ADI/key-statistics/"
+    }
+  },
+  "PATH": {
+    "forward_pe": {
+      "value": 14.9,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 0.43,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 40.16,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 2.94,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.17300000000000001,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 0.52,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.4435,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.095,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.82,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "operating_margin": {
+      "value": 0.22,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.311,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "roic": {
+      "value": -0.0296,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "net_revenue_retention": {
+      "value": 1.09,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.053,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.34,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.03,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/PATH/key-statistics/"
+    },
+    "advanced_packaging_exposure_pct": {
+      "value": 0.0,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    },
+    "cybersecurity_ai_exposure_pct": {
+      "value": 0.0,
+      "status": "pending",
+      "verified_at": null,
+      "source": ""
+    }
+  },
+  "GOOGL": {
+    "forward_pe": {
+      "value": 25.0,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "peg_ratio": {
+      "value": 1.39,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "ev_ebitda": {
+      "value": 19.45,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "ev_sales": {
+      "value": 10.07,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.218,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "eps_growth_yoy": {
+      "value": 0.812,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.22,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.12,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "analyst_revision_30d": {
+      "value": 0.02,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "gross_margin": {
+      "value": 0.604,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "operating_margin": {
+      "value": 0.3612,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "fcf_margin": {
+      "value": 0.336,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "roic": {
+      "value": 0.389,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "debt_to_equity": {
+      "value": 0.2,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "net_revenue_retention": {
+      "value": 1.18,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.134,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.06,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.015,
+      "status": "verified",
+      "verified_at": "2026-07-14",
+      "source": "https://finance.yahoo.com/quote/GOOGL/key-statistics/"
+    }
+  },
+  "TSM": {
+    "forward_pe": {
+      "value": 24.45,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "peg_ratio": {
+      "value": 0.98,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "ev_ebitda": {
+      "value": 18.34,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "ev_sales": {
+      "value": 13.36,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.36,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "eps_growth_yoy": {
+      "value": 0.774,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.4379,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.278,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "analyst_revision_30d": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "gross_margin": {
+      "value": 0.5961,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "operating_margin": {
+      "value": 0.6,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "fcf_margin": {
+      "value": 0.166,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "roic": {
+      "value": 0.325,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "debt_to_equity": {
+      "value": 0.1517,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.0298,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.056,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.0,
+      "status": "verified",
+      "verified_at": "2026-07-31",
+      "source": "yahoo finance"
+    }
+  },
+  "INTC": {
+    "forward_pe": {
+      "value": 49.59,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "peg_ratio": {
+      "value": 1.36,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "ev_ebitda": {
+      "value": 22.0,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "ev_sales": {
+      "value": 3.15,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.072,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "eps_growth_yoy": {
+      "value": -0.4,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "fcf_growth_yoy": {
+      "value": -0.5,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.05,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "analyst_revision_30d": {
+      "value": -0.02,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "gross_margin": {
+      "value": 0.389,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "operating_margin": {
+      "value": 0.0755,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "GAAP TTM computed from quarterly_income_stmt: operating income 4.31B / revenue 57.03B (2025Q3-2026Q2)"
+    },
+    "fcf_margin": {
+      "value": 0.085,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "roic": {
+      "value": -0.028999999999999998,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "debt_to_equity": {
+      "value": 0.45,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": -0.01,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "actual_eps_vs_consensus": {
+      "value": -0.02,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    },
+    "guidance_vs_consensus": {
+      "value": -0.03,
+      "status": "verified",
+      "verified_at": "2026-08-04",
+      "source": "yahoo"
+    }
+  },
+  "CDNS": {
+    "forward_pe": {
+      "value": 43.5,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "peg_ratio": {
+      "value": 2.25,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "ev_ebitda": {
+      "value": 45.9,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "ev_sales": {
+      "value": 15.8,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "revenue_growth_yoy": {
+      "value": 0.242,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "eps_growth_yoy": {
+      "value": 0.279,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "fcf_growth_yoy": {
+      "value": 0.2,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "next_year_revenue_growth_est": {
+      "value": 0.19,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "analyst_revision_30d": {
+      "value": 0.025,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "gross_margin": {
+      "value": 0.8590000000000001,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "operating_margin": {
+      "value": 0.455,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "fcf_margin": {
+      "value": 0.276,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "roic": {
+      "value": 0.207,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "debt_to_equity": {
+      "value": 0.38,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "actual_revenue_vs_consensus": {
+      "value": 0.0044,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "actual_eps_vs_consensus": {
+      "value": 0.0143,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
+    },
+    "guidance_vs_consensus": {
+      "value": 0.0113,
+      "status": "verified",
+      "verified_at": "2026-08-06",
+      "source": "Yahoo Finance / Bloomberg"
     }
   }
 }

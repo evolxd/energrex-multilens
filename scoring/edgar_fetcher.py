@@ -8,20 +8,19 @@ Output: edgar_cache.json  {ticker: {field: {value, confidence, method, fetched_a
 
 import html as _html_module
 import json
+import os
 import re
 import time
 import logging
 import pathlib
-import requests
 from collections import defaultdict
 from datetime import datetime, date
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 _CACHE_PATH = pathlib.Path(__file__).parent / "edgar_cache.json"
 _BASE       = "https://data.sec.gov"
-_HEADERS    = {"User-Agent": "ai-valuation-tool evolxd@gmail.com"}
 _SLEEP      = 0.4   # seconds between EDGAR calls (rate limit: be polite)
 
 # EDGAR CIK identifiers — stable permanent IDs
@@ -36,6 +35,9 @@ TICKER_CIK: dict[str, str] = {
     "CRWD": "0001535527",
     "FTNT": "0001262039",
     "ONTO": "0000704532",   # Onto Innovation Inc. (formerly Rudolph Technologies)
+    "DVA":  "0000927066",
+    "ADBE": "0000796343",
+    "FUTU": "0001754581",
 }
 
 
@@ -43,9 +45,23 @@ TICKER_CIK: dict[str, str] = {
 # EDGAR API helpers
 # ─────────────────────────────────────────────────────────────────────
 
-def _get(url: str, timeout: int = 45) -> Optional[requests.Response]:
+def _sec_headers() -> dict[str, str]:
+    """Build SEC headers without storing personal contact data in source control."""
+    user_agent = os.getenv("SEC_USER_AGENT", "").strip()
+    if not user_agent:
+        raise RuntimeError(
+            "SEC_USER_AGENT is required for live EDGAR requests. Configure a "
+            "descriptive application name and monitored contact address in the "
+            "runtime environment; do not commit personal contact data."
+        )
+    return {"User-Agent": user_agent}
+
+
+def _get(url: str, timeout: int = 45) -> Optional[Any]:
     try:
-        r = requests.get(url, headers=_HEADERS, timeout=timeout)
+        import requests
+
+        r = requests.get(url, headers=_sec_headers(), timeout=timeout)
         r.raise_for_status()
         return r
     except Exception as e:
@@ -56,6 +72,12 @@ def _get(url: str, timeout: int = 45) -> Optional[requests.Response]:
 def fetch_xbrl_facts(cik: str) -> Optional[dict]:
     """Download full XBRL company facts JSON."""
     r = _get(f"{_BASE}/api/xbrl/companyfacts/CIK{cik}.json", timeout=90)
+    return r.json() if r else None
+
+
+def fetch_submissions(cik: str) -> Optional[dict]:
+    """Download filing metadata including accession acceptance timestamps."""
+    r = _get(f"{_BASE}/submissions/CIK{cik}.json", timeout=45)
     return r.json() if r else None
 
 

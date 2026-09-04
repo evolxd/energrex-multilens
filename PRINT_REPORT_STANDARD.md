@@ -27,14 +27,20 @@ repeatable institutional report layout with readable spacing and no clipping.
 
 - The five-factor radar chart and sub-score bar chart may stay in two columns
   on A4, but must remain inside the printable area.
-- Radar chart target height: about 210px for print.
-- Sub-score bar chart target height: about 160px for print.
-- Plotly print zoom target: about 0.72.
+- The dedicated five-factor print row uses a 44% radar / 56% sub-score split.
+- The interactive Plotly row is screen-only. Print must use the native SVG
+  pair returned by `render_print_score_visuals()` so browser print scaling
+  cannot clip radar labels, bar values, or axes.
+- General Plotly print zoom target: about 0.72. The native five-factor SVGs
+  scale through fixed `viewBox` coordinates and do not use Plotly print zoom.
 - The price-zone chart is a native SVG with a fixed `viewBox`; screen and print
   use the same coordinate system. Do not convert it back to Plotly without a
   real native Chrome print-preview regression test.
-- Bar-chart value labels should remain inside the bars or have enough right
-  margin to avoid clipping.
+- Bar-chart value labels should sit outside the bar ends with an explicit
+  0-112 domain and enough right margin to avoid clipping.
+- When a color/value legend is shown, it belongs directly under the sub-score
+  bar chart in the right column. Never place it under the radar chart. Keep
+  direct value labels on the bars so the chart does not rely on color alone.
 - If any chart clips in PDF preview, fix chart width/margins first; do not
   solve it by shrinking the whole browser print scale below 90%.
 

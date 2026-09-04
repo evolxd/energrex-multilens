@@ -17,8 +17,13 @@ yfinance 实时数据接入模块
 
 import yfinance as yf
 import warnings
+import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+from fx_normalize import fetch_rate, needs_normalization, normalize_info
 warnings.filterwarnings("ignore")
 
 # ─────────────────────────────────────────────
@@ -80,6 +85,12 @@ _NO_OVERRIDE: set[str] = {
 }
 
 
+@lru_cache(maxsize=32)
+def _cached_fx_rate(from_currency: str, to_currency: str) -> Optional[float]:
+    """一个批次里只有少数几只外币报表股票，汇率没必要逐只重取。"""
+    return fetch_rate(from_currency, to_currency, yf.Ticker)
+
+
 def _safe(val) -> Optional[float]:
     """过滤 NaN/None/Infinity，返回干净的 float 或 None"""
     if val is None:
@@ -103,6 +114,18 @@ def fetch_live(ticker: str) -> dict:
     try:
         t    = yf.Ticker(ticker)
         info = t.info
+
+        # ── 币种归一化（必须在任何派生计算之前）──────────────
+        # 报价币与财报币可能不同（TSM=USD/TWD，ASML=USD/EUR）。
+        # 不先统一，下面的 fcf_yield = 现金流/市值 就是台币除美元。
+        if needs_normalization(info):
+            _stmt_ccy = info.get("financialCurrency")
+            _quote_ccy = info.get("currency")
+            _rate = _cached_fx_rate(_stmt_ccy, _quote_ccy)
+            info, _fx_report = normalize_info(info, _rate)
+            result["_fx"] = _fx_report
+            if not _fx_report["applied"]:
+                result["_errors"].append(_fx_report["reason"])
 
         # ── 基础 info 字段 ──────────────────────────────
         for yf_key, our_key in _INFO_MAP.items():
@@ -309,3 +332,67 @@ def fetch_prices_only(tickers: list[str]) -> dict[str, float]:
     except Exception as e:
         warnings.warn(f"fetch_prices_only failed: {e}")
     return result
+
+
+def fetch_price_evidence(ticker: str) -> dict:
+    """Return a timestamped Yahoo price observation for formal evidence review.
+
+    This deliberately does not use ``fast_info.previous_close`` as a silent
+    fallback. If the downloaded bar has no timestamp, no observation is
+    produced.
+    """
+    try:
+        raw = yf.download(
+            ticker,
+            period="5d",
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
+            group_by="column",
+        )
+        retrieved = dt.datetime.now(dt.timezone.utc)
+        if raw.empty or "Close" not in raw:
+            return {"_evidence_error": "Yahoo returned no timestamped close"}
+        close = raw["Close"].dropna()
+        if close.empty:
+            return {"_evidence_error": "Yahoo returned no valid close"}
+        value = close.iloc[-1]
+        if hasattr(value, "iloc"):
+            value = value.iloc[0]
+        price = float(value)
+        raw_index = close.index[-1]
+        if hasattr(raw_index, "to_pydatetime"):
+            raw_index = raw_index.to_pydatetime()
+        if isinstance(raw_index, dt.datetime):
+            session_date = raw_index.date()
+        elif isinstance(raw_index, dt.date):
+            session_date = raw_index
+        else:
+            return {"_evidence_error": "Yahoo bar timestamp is not parseable"}
+
+        eastern = ZoneInfo("America/New_York")
+        session_close = dt.datetime.combine(
+            session_date,
+            dt.time(16, 0),
+            tzinfo=eastern,
+        ).astimezone(dt.timezone.utc)
+        # A current-session daily bar can update before the official close.
+        # In that case the observation is the retrieval-time snapshot.
+        observed = min(session_close, retrieved)
+        return {
+            "field": "current_price",
+            "value": price,
+            "unit": "USD/share",
+            "source": "Yahoo Finance timestamped daily price",
+            "source_type": "MARKET",
+            "source_family": "YAHOO_FINANCE",
+            "origin_family": "YAHOO_MARKET_DATA",
+            "lineage_id": f"YAHOO:{ticker.upper()}:{observed.isoformat()}",
+            "source_locator": f"https://finance.yahoo.com/quote/{ticker.upper()}",
+            "observed_at": observed.isoformat(),
+            "available_at": observed.isoformat(),
+            "retrieved_at": retrieved.isoformat(),
+            "extraction_method": "yfinance.download adjusted daily close",
+        }
+    except Exception as exc:
+        return {"_evidence_error": f"Yahoo price evidence failed: {exc}"}

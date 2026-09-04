@@ -13,7 +13,9 @@ Fields covered:
 import os
 import time
 import logging
+import datetime as dt
 from typing import Optional, Callable
+from zoneinfo import ZoneInfo
 import requests
 
 logger = logging.getLogger(__name__)
@@ -184,6 +186,60 @@ def _fetch_price(ticker: str) -> dict:
     if results:
         return {"current_price": results[0].get("c")}
     return {}
+
+
+def fetch_price_evidence(ticker: str) -> dict:
+    """Return a timestamped Polygon adjusted daily-bar observation."""
+    request_started = dt.datetime.now(dt.timezone.utc)
+    end = request_started.date().isoformat()
+    start = (request_started.date() - dt.timedelta(days=10)).isoformat()
+    data = _get(
+        f"{_BASE}/v2/aggs/ticker/{ticker}/range/1/day/{start}/{end}",
+        {"adjusted": "true", "sort": "desc", "limit": 3},
+    )
+    time.sleep(_SLEEP)
+    retrieved = dt.datetime.now(dt.timezone.utc)
+    results = _safe(data, "results") or []
+    if not results:
+        return {"_evidence_error": "Polygon returned no timestamped price bar"}
+    bar = results[0]
+    price = bar.get("c")
+    timestamp_ms = bar.get("t")
+    if price is None or timestamp_ms is None:
+        return {"_evidence_error": "Polygon bar lacks close or timestamp"}
+    try:
+        bar_start = dt.datetime.fromtimestamp(
+            float(timestamp_ms) / 1000,
+            tz=dt.timezone.utc,
+        )
+        eastern = ZoneInfo("America/New_York")
+        session_date = bar_start.astimezone(eastern).date()
+        session_close = dt.datetime.combine(
+            session_date,
+            dt.time(16, 0),
+            tzinfo=eastern,
+        ).astimezone(dt.timezone.utc)
+        observed = min(session_close, retrieved)
+        return {
+            "field": "current_price",
+            "value": float(price),
+            "unit": "USD/share",
+            "source": "Polygon adjusted aggregate bar",
+            "source_type": "MARKET",
+            "source_family": "POLYGON",
+            "origin_family": "POLYGON_MARKET_DATA",
+            "lineage_id": f"POLYGON:{ticker.upper()}:{timestamp_ms}",
+            "source_locator": (
+                f"{_BASE}/v2/aggs/ticker/{ticker.upper()}/range/1/day/"
+                f"{start}/{end}"
+            ),
+            "observed_at": observed.isoformat(),
+            "available_at": observed.isoformat(),
+            "retrieved_at": retrieved.isoformat(),
+            "extraction_method": "Polygon adjusted 1-day aggregate close",
+        }
+    except (TypeError, ValueError, OSError) as exc:
+        return {"_evidence_error": f"Polygon timestamp invalid: {exc}"}
 
 
 def _fetch_reference(ticker: str) -> dict:

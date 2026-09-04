@@ -26,7 +26,7 @@ def test_aapl_like_exposure_routes_to_ai_enabled_without_ai_penalty():
     assert profile.exposure == pytest.approx(0.19)
     assert profile.weights["ai_exposure"] == 0.20
     assert profile.weights["quality"] == 0.15
-    assert profile.bonus == pytest.approx(2.25)
+    assert profile.bonus == 0.0
 
 
 def test_core_ai_company_keeps_ai_as_a_weighted_dimension():
@@ -47,7 +47,7 @@ def test_ai_beneficiary_categories_use_enabled_profile_not_core(category):
     )
     assert profile.key == AI_ENABLED
     assert profile.weights["ai_exposure"] == 0.20
-    assert profile.bonus == 5.0
+    assert profile.bonus == 0.0
 
 
 def test_traditional_company_gets_only_a_small_positive_ai_accelerator():
@@ -57,7 +57,7 @@ def test_traditional_company_gets_only_a_small_positive_ai_accelerator():
     )
     assert profile.key == QUALITY_TRADITIONAL
     assert profile.weights["ai_exposure"] == 0.20
-    assert profile.bonus == pytest.approx(1.50)
+    assert profile.bonus == 0.0
 
 
 def test_missing_ai_evidence_neither_penalizes_nor_rewards():
@@ -103,7 +103,7 @@ def test_ftnt_like_enabled_profile_does_not_receive_quality_weight_transfer():
         dims, 5.23, False,
         dim_weights=profile.weights, positive_adjustment=profile.bonus,
     )
-    assert final == pytest.approx(69.35, abs=0.02)
+    assert final == pytest.approx(65.98, abs=0.02)
     assert final < 70
 
 

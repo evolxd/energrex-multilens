@@ -1,76 +1,68 @@
 {
-  "generated_at": "2026-08-27 10:28:28",
+  "generated_at": "2026-08-27 10:50:54",
   "current_weights_pct_excl_qqq": {
-    "ARM": 4.75898125772078,
-    "AVGO": 0.9795258439988,
-    "META": 1.3739027875856389,
-    "PLTR": 10.305086072133275,
-    "VST": 3.292801764856037,
-    "FCX": 2.8938366054842453,
-    "FUTU": 6.404869750568752,
-    "MU": 26.65008077123016,
-    "NVDA": 3.202434875284376,
-    "SNDK": 9.723756803136197
+    "ARM": 0.5269467363691713,
+    "AVGO": 14.315067917952593,
+    "META": 1.1989040750771556,
+    "PLTR": 1.9475761583842455,
+    "VST": 2.9330687997312674,
+    "NVDA": 5.296970460414436,
+    "SKHY": 8.85977619617476,
+    "SPCX": 8.759001490625854
   },
-  "cash_pct": 44.48,
+  "cash_pct": 33.39,
   "note": "线性近似，未对期权非线性payoff建模——见本文件docstring局限2。",
   "windows": {
     "2022_rate_hike_bear": {
       "covered_tickers": {
         "AVGO": -0.3484,
-        "FCX": -0.4602,
-        "FUTU": -0.3807,
         "META": -0.6256,
-        "MU": -0.4556,
         "NVDA": -0.627,
         "PLTR": -0.5936,
         "VST": -0.206
       },
       "missing_tickers_no_history": [
         "ARM",
-        "SNDK"
+        "SKHY",
+        "SPCX"
       ],
-      "missing_weight_pct": 14.48,
-      "portfolio_drawdown_estimate": -0.4703,
-      "covered_weight_pct": 55.1
+      "missing_weight_pct": 18.15,
+      "portfolio_drawdown_estimate": -0.4211,
+      "covered_weight_pct": 25.69
     },
     "2020_covid_crash": {
       "covered_tickers": {
         "AVGO": -0.3767,
-        "FCX": -0.5545,
-        "FUTU": -0.3781,
         "META": -0.319,
-        "MU": -0.3624,
         "NVDA": -0.3237,
         "VST": -0.4437
       },
       "missing_tickers_no_history": [
         "ARM",
         "PLTR",
-        "SNDK"
+        "SKHY",
+        "SPCX"
       ],
-      "missing_weight_pct": 24.79,
-      "portfolio_drawdown_estimate": -0.3792,
-      "covered_weight_pct": 44.8
+      "missing_weight_pct": 20.09,
+      "portfolio_drawdown_estimate": -0.3703,
+      "covered_weight_pct": 23.74
     },
     "2018_q4_selloff": {
       "covered_tickers": {
         "AVGO": -0.0853,
-        "FCX": -0.2963,
         "META": -0.2363,
-        "MU": -0.3658,
         "NVDA": -0.5604,
         "VST": -0.1729
       },
       "missing_tickers_no_history": [
         "ARM",
-        "FUTU",
         "PLTR",
-        "SNDK"
+        "SKHY",
+        "SPCX"
       ],
-      "missing_weight_pct": 31.19,
-      "portfolio_drawdown_estimate": -0.3485,
-      "covered_weight_pct": 38.39
+      "missing_weight_pct": 20.09,
+      "portfolio_drawdown_estimate": -0.2097,
+      "covered_weight_pct": 23.74
     }
   }
 }

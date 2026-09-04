@@ -199,6 +199,14 @@ def recalculate(
         return None
 
 
+def _parse_count(value) -> int:
+    """Parse integer-like CSV values, including round-tripped strings like 18.0."""
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def validate(
     ticker:        str,
     csv_row:       dict,
@@ -234,7 +242,9 @@ def validate(
 
     # ── Count live fields used in CSV run ────────────────────────────────
     live_count_key = next((k for k in csv_row if "live_fields" in k), None)
-    live_count     = int(csv_row.get(live_count_key, 0) or 0) if live_count_key else 0
+    # CSV round-trips may serialize integer counts as strings such as "18.0".
+    # Parse through float so the validator is idempotent on its own output.
+    live_count = _parse_count(csv_row.get(live_count_key, 0)) if live_count_key else 0
 
     # ── Recalculate with all CSV live fields injected ────────────────────
     live_csv = extract_csv_live_fields(csv_row)
