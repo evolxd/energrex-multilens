@@ -2287,6 +2287,14 @@ elif page == "🔍 单股详情":
             f"一旦市场情绪降温，这类公司回吐涨幅的风险相对更高。"
         )
 
+    # 行业内百分位——跟上面这个"不分行业"的分数是两码事，不合并，见2026-08-28
+    # /grill-me 的设计确认（refresh_scores.py::add_sector_ai_exposure_percentile）。
+    # 注：ai_text 本身在这个页面上从未被渲染过（既有的死代码，不是这次引入的），
+    # 所以这两个变量在下面 _ed_render_summary 那段单独渲染，不依赖 ai_text。
+    _sector_pct = row.get("ai_行业内百分位(同sector_tag内排名)")
+    _sector_note_raw = row.get("ai_行业内百分位_样本量提示")
+    _sector_note = "" if pd.isna(_sector_note_raw) else str(_sector_note_raw)
+
     # 风险
     if row["risk_penalty"] >= 10:
         risk_text = (
@@ -2331,6 +2339,13 @@ elif page == "🔍 单股详情":
     _ed_render_summary(qual_text, "info")
     _risk_level = "error" if row["risk_penalty"] >= 10 else ("warning" if row["risk_penalty"] >= 6 else "success")
     _ed_render_summary(risk_text, _risk_level)
+    if _sector_pct is not None and not pd.isna(_sector_pct):
+        _pct_caveat = f"（{_sector_note}）" if _sector_note else ""
+        _ed_render_summary(
+            f"**行业内对比** — AI暴露在同类公司里排第 {float(_sector_pct):.0f} 百分位"
+            f"{_pct_caveat}，这是跟同行比，不影响上面的综合分。",
+            "info",
+        )
 
     st.divider()
 
