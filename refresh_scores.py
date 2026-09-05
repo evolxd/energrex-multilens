@@ -58,6 +58,41 @@ try:
 except ImportError:
     MOCK_STOCKS: dict = {}
 
+# ── AI暴露：行业内百分位（跟"不分行业"的 final_score 分开，不合并）────────
+# 2026-08-28：用户要两套读数并存——现有 ai_AI暴露得分 continue driving
+# final_score 不变；这里新增一列，只在同一个 sector_tag 组内做百分位排名，
+# 回答一个不同的问题("这个行业里谁的AI暴露最强")，不参与最终分。
+_SECTOR_COL = "sector_板块"
+_AI_EXPOSURE_COL = "ai_AI暴露得分(AI营收/平台/订单占比)"
+_SECTOR_PERCENTILE_COL = "ai_行业内百分位(同sector_tag内排名)"
+_SECTOR_PERCENTILE_NOTE_COL = "ai_行业内百分位_样本量提示"
+
+# CompanyCategory(scoring_engine.py) 的中文标签偶尔会漏进 sector_tag 列
+# （根因还没查，这里只做规范化，不掩盖问题）——语义上能对应到下面某个
+# sector_tag，就映射过去，否则分组会把它们各自算成 n=1 的独立组。
+_SECTOR_LABEL_ALIASES = {
+    "AI软件/SaaS": "SaaS",
+    "网络安全": "Cybersecurity",
+    "AI芯片": "Hardware",
+    "半导体设备": "Hardware",
+}
+_SMALL_GROUP_THRESHOLD = 10  # 低于这个样本量，百分位排名参考价值有限
+
+
+def add_sector_ai_exposure_percentile(df: "pd.DataFrame") -> "pd.DataFrame":
+    """行业内AI暴露百分位——跟 final_score 完全独立的第二套读数。"""
+    if _SECTOR_COL not in df.columns or _AI_EXPOSURE_COL not in df.columns:
+        return df
+    normalized = df[_SECTOR_COL].replace(_SECTOR_LABEL_ALIASES)
+    group_sizes = normalized.map(normalized.value_counts())
+    df[_SECTOR_PERCENTILE_COL] = (
+        df[_AI_EXPOSURE_COL].groupby(normalized).rank(pct=True) * 100
+    ).round(1)
+    df[_SECTOR_PERCENTILE_NOTE_COL] = group_sizes.apply(
+        lambda n: f"样本量小(n={int(n)})，参考价值有限" if n < _SMALL_GROUP_THRESHOLD else ""
+    )
+    return df
+
 # ── 日志 ──────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -711,6 +746,8 @@ def refresh_all(
     # ── 更新刷新时间 ───────────────────────────────────────
     df["last_refreshed"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    df = add_sector_ai_exposure_percentile(df)
+
     # ── 写回 CSV ───────────────────────────────────────────
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     log(f"\n✅ 完成：{ok_cnt} 只成功，{err_cnt} 只失败 → {csv_path.name}")
@@ -866,6 +903,7 @@ def refresh_prices_only(
         df = df.sort_values(final_col, ascending=False).reset_index(drop=True)
 
     df["last_refreshed"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    df = add_sector_ai_exposure_percentile(df)
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     log(f"\n⚡ 极速刷新完成：{ok_cnt} 只 → {csv_path.name}")
 
