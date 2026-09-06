@@ -29,6 +29,9 @@ class CompanyCategory(str, Enum):
     CYBERSECURITY = "网络安全"         # PANW, FTNT, CRWD, ZS, OKTA
     SEMI_EQUIP    = "半导体设备"        # ONTO, ASML, AMAT, LRCX, KLAC, ROK ...
     MEGA_TECH     = "大型科技"          # MSFT, GOOGL, AMZN, META, AAPL, ORCL ...
+    MATERIALS     = "原材料"           # 2026-08-28: 铜矿等，跟AI数据中心/电网建设的
+                                        # 需求叙事相关，但业务性质(采矿)跟上面任何一类
+                                        # 都不一样，硬塞进SEMI_EQUIP会污染那个分组
 
 
 # ─────────────────────────────────────────────
@@ -489,6 +492,10 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "XYL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "YSS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "ZBH": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "SCCO": CompanyCategory.MATERIALS,  # 2026-08-28 铜矿，补FCX盲区时一并加入
+    "FCX":  CompanyCategory.MATERIALS,  # 2026-08-28 真实持仓里一直有，之前完全没覆盖
+    "IE":   CompanyCategory.MATERIALS,  # 2026-08-28 铜矿
+    "CUAI": CompanyCategory.MATERIALS,  # 2026-08-28 铜矿
 }
 
 def get_category(ticker: str) -> CompanyCategory:

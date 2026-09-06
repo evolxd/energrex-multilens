@@ -435,6 +435,10 @@ QUANT_META: dict[str, dict] = {
     "XYL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
     "YSS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
     "ZBH": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
+    "SCCO": {"sector_tag": "Hardware"},  # 2026-08-28 铜矿，补FCX盲区时一并加入,capex_rev待研究
+    "FCX": {"sector_tag": "Hardware"},  # 2026-08-28 真实持仓里一直有，之前完全没覆盖,capex_rev待研究
+    "IE": {"sector_tag": "Hardware"},  # 2026-08-28 铜矿,capex_rev待研究
+    "CUAI": {"sector_tag": "Hardware"},  # 2026-08-28 铜矿,capex_rev待研究
 }
 
 
