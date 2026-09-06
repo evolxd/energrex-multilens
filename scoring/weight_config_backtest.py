@@ -31,11 +31,19 @@ kelly_snapshot_logger 积累的 (日期,ticker,各维度分数,价格) 真实历
 
 用法:
   python scoring/weight_config_backtest.py
+  python scoring/weight_config_backtest.py --optimize        # 额外网格搜索最优权重（step=0.05）
+  python scoring/weight_config_backtest.py --optimize 0.02   # 更细粒度（组合数暴涨，会慢很多）
+
+⚠️ 需要真实网络访问 yfinance.com 才能跑（拉取 LOOKBACK 历史价格）。在网络受限的
+沙箱/云端会话里会直接报 403/连接失败——本仓库这次改动是在这样一个环境里做的，
+没能力实际跑通它、拿到真实数字，只能在这写好代码，交给能访问 yfinance 的机器
+（例如本机）去跑。
 """
 from __future__ import annotations
 
 import datetime
 import json
+import math
 import pathlib
 import sys
 
@@ -167,7 +175,90 @@ def _tertile_stats(df: pd.DataFrame, score_col: str, returns: dict[str, list[flo
     return {"n_tickers": len(valid), "bands": bands, "top_minus_bottom_spread": spread}
 
 
-def run_backtest() -> dict:
+def _simplex_grid(dims: list[str], step: float = 0.05):
+    """Yield every weight dict over `dims` on a step-granularity simplex
+    (each weight a multiple of `step`, all weights summing to exactly 1.0).
+
+    e.g. step=0.05 over 5 dims yields C(1/step + 4, 4) combinations
+    (20040 for step=0.05) -- every way to split 1/step integer units among
+    the 5 dims.
+    """
+    units = round(1.0 / step)
+
+    def rec(remaining_units: int, remaining_dims: list[str]):
+        if len(remaining_dims) == 1:
+            yield {remaining_dims[0]: round(remaining_units * step, 10)}
+            return
+        d0, rest = remaining_dims[0], remaining_dims[1:]
+        for k in range(remaining_units + 1):
+            for tail in rec(remaining_units - k, rest):
+                yield {d0: round(k * step, 10), **tail}
+
+    yield from rec(units, dims)
+
+
+def grid_search_optimal_weights(
+    df: pd.DataFrame,
+    returns: dict[str, list[float]],
+    *,
+    step: float = 0.05,
+    top_n: int = 10,
+) -> list[tuple[dict, float]]:
+    """
+    Grid-search the 5-dim weight simplex (valuation/growth/quality/
+    ai_exposure/expectation_gap; step-granularity; always summing to 1.0)
+    for the combination(s) that maximize the same top-minus-bottom tertile
+    spread metric used to rank the discrete schemes in run_backtest().
+
+    This does NOT turn the backtest into a real causal one -- it shares the
+    exact same (current score, own-trailing-2y pooled quarterly return)
+    proxy and the same survivorship-bias caveat (see METHODOLOGY_CAVEAT).
+    It only widens the search from ~8 hand-picked schemes to every weight
+    combination on the grid.
+
+    Overfitting risk this adds on top of that caveat: with ~90 tickers and
+    thousands of weight combinations tried, the single "best" combination is
+    at real risk of being noise-fit to this particular universe/window
+    rather than a genuinely better weighting -- report and read the top N,
+    not just the winner, and treat a small margin between rank 1 and rank N
+    as evidence the surface is flat (no real optimum), not as N candidates.
+    """
+    dims = ["valuation", "growth", "quality", "ai_exposure", "expectation_gap"]
+    valid = df.dropna(subset=dims)
+    valid = valid[valid["ticker"].isin(returns.keys())].reset_index(drop=True)
+    n = len(valid)
+    if n < N_TERTILES * 3:
+        return []
+
+    X = valid[dims].to_numpy(dtype=float)   # (n_tickers, 5)
+    sum_ret = np.array([sum(returns[t]) for t in valid["ticker"]])
+    cnt_ret = np.array([len(returns[t]) for t in valid["ticker"]])
+
+    combos = list(_simplex_grid(dims, step=step))
+    W = np.array([[w[d] for d in dims] for w in combos])   # (n_combos, 5)
+    scores = X @ W.T                                          # (n_tickers, n_combos)
+
+    edge_top, edge_bot = n // 3, 2 * n // 3
+    results: list[tuple[dict, float]] = []
+    for j in range(scores.shape[1]):
+        order = np.argsort(-scores[:, j])   # descending
+        top_idx, bot_idx = order[:edge_top], order[edge_bot:]
+        top_n_ret, bot_n_ret = cnt_ret[top_idx].sum(), cnt_ret[bot_idx].sum()
+        if top_n_ret == 0 or bot_n_ret == 0:
+            continue
+        # Round each mean to 4dp before subtracting, matching _tertile_stats'
+        # convention exactly (it rounds mean_return per band, then rounds the
+        # spread again) -- otherwise this can disagree with the discrete-scheme
+        # spreads above by 1 in the last digit on values near a rounding edge.
+        top_mean = round(float(sum_ret[top_idx].sum() / top_n_ret), 4)
+        bot_mean = round(float(sum_ret[bot_idx].sum() / bot_n_ret), 4)
+        results.append((combos[j], round(top_mean - bot_mean, 4)))
+
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results[:top_n]
+
+
+def run_backtest(optimize_step: float | None = None) -> dict:
     df = _load_universe()
     df["category_weighted"] = df.apply(_category_weighted_score, axis=1)
     df["equal_weighted"] = df[["valuation", "growth", "quality", "ai_exposure", "expectation_gap"]].mean(axis=1)
@@ -210,6 +301,31 @@ def run_backtest() -> dict:
         "ranked_by_spread":    ranked_by_spread,
         "skipped":             skipped,
     }
+
+    if optimize_step is not None:
+        print(f"\n⏳ 网格搜索最优权重（step={optimize_step}）...")
+        n_combos = math.comb(round(1 / optimize_step) + 4, 4)
+        top_combos = grid_search_optimal_weights(df, returns, step=optimize_step, top_n=10)
+        report["optimize_step"] = optimize_step
+        report["optimizer_caveat"] = (
+            f"在 methodology_caveat 的近似回测基础上叠加的额外风险：全网格搜索了 {n_combos} "
+            f"种权重组合，参与打分的样本股票只有约 {len(df)} 只，"
+            "\"最优\"组合有很大概率是在噪声上过拟合，不是真的更好的权重配置。"
+            "请看前10名之间的spread差距有多小——差距越小，说明这个曲面越平，"
+            "越不能只信第一名。"
+        )
+        report["top_weight_combos"] = [
+            {"weights": w, "top_minus_bottom_spread": s} for w, s in top_combos
+        ]
+        print("\n网格搜索 Top 10 权重组合（仅供近似参考，见 optimizer_caveat）：")
+        for w, s in top_combos:
+            w_str = " / ".join(f"{k}={v:.2f}" for k, v in w.items())
+            print(f"  spread={s:7.4f}  {w_str}")
+        if top_combos:
+            best_spread, worst_of_top = top_combos[0][1], top_combos[-1][1]
+            print(f"\nTop1 vs Top10 spread差距: {round(best_spread - worst_of_top, 4)}"
+                  f"（越小说明曲面越平，最优解越不可信）")
+
     OUT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n已保存: {OUT_PATH}")
     print("\n按头尾分档收益差排名（仅供近似参考，见 methodology_caveat）：")
@@ -227,4 +343,14 @@ def run_backtest() -> dict:
 
 
 if __name__ == "__main__":
-    run_backtest()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="5维评分权重回测（近似方法，见文件顶部注释）")
+    parser.add_argument(
+        "--optimize", type=float, nargs="?", const=0.05, default=None, metavar="STEP",
+        help="额外跑一次网格搜索找 spread 最大的权重组合，STEP 为权重粒度（默认0.05，"
+             "即5%%档位；更小的STEP组合数按 C(1/STEP+4,4) 增长，0.05→20040组合，"
+             "0.02→3162510组合会很慢，不建议低于0.02）",
+    )
+    args = parser.parse_args()
+    run_backtest(optimize_step=args.optimize)

@@ -36,6 +36,13 @@ _DOWNLOADS    = pathlib.Path.home() / "Downloads"
 _FT_DIR       = _ROOT / "data" / "firstrade"
 _FT_DIR.mkdir(parents=True, exist_ok=True)
 _LATEST_CSV   = _FT_DIR / "latest.csv"
+# Repo-relative default so the options-cost-ratio limit override works on any
+# machine; PORTFOLIO_CONFIG_PATH lets one machine point elsewhere without
+# hardcoding a personal path (was hardcoded to one author's Windows profile,
+# so the override silently never loaded anywhere else -- see git history).
+_PORTFOLIO_CONFIG_PATH = pathlib.Path(
+    os.environ.get("PORTFOLIO_CONFIG_PATH", str(_ROOT / "data" / "portfolio_config.json"))
+)
 
 _env = _ROOT / ".env"
 if _env.exists():
@@ -293,8 +300,18 @@ from account.options import parse_occ as _parse_occ
 from account.options import parse_occ_sym as _parse_occ_sym
 from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
 from account.risk import bs_greeks as _bs_greeks
+from account.risk import build_recommendations as _build_recommendations
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
+from account.risk import check_otm_spread_alerts as _check_otm_spread_alerts_impl
+from account.risk import classify_drawdown_status as _classify_drawdown_status
+from account.risk import classify_stress_status as _classify_stress_status
+from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
+from account.risk import compute_portfolio_stress_test as _compute_portfolio_stress_test
+from account.risk import compute_qqq_hedge_plan as _compute_qqq_hedge_plan_impl
+from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.risk import delta_drift_trigger as _delta_drift_trigger
+from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
+from account.risk import score_label as _score_label_impl
 from account.risk import summarize_portfolio_greeks as _summarize_portfolio_greeks
 from account.risk import vix_spike_trigger as _vix_spike_trigger
 from account.marketdata import fetch_option_quote as _fetch_option_quote_md
@@ -305,7 +322,6 @@ from account.marketdata import get_vix_snapshot as _get_vix_snapshot_md
 from account.importers import detect_csv_type as _detect_csv_type
 from account.importers import import_positions_csv as _account_import_positions_csv
 from account.importers import import_transactions_csv as _account_import_transactions_csv
-from account.hedge_governance import evaluate_protective_put_hedges as _evaluate_protective_put_hedges
 from account.importers import parse_date as _parse_date
 from account.importers import parse_money as _parse_money
 from account.importers import process_csv_file as _account_process_csv_file
@@ -602,22 +618,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     for r in _nav_rows:
         _nav_by_d[str(r[0])] = float(r[1])
     _cf_map_dd = {r[0]: float(r[1]) for r in _cf_rows_dd}
-    _dates_dd = sorted(_nav_by_d)
-    drawdown = 0.0
-    if len(_dates_dd) >= 2:
-        _twr_f = _peak_f = 1.0
-        _prev = float(_nav_by_d[_dates_dd[0]])
-        for _d in _dates_dd[1:]:
-            _nav = float(_nav_by_d[_d])
-            _cf  = _cf_map_dd.get(_d, 0.0)
-            _r   = (_nav - _prev - _cf) / _prev if _prev > 0 else 0.0
-            _twr_f *= (1.0 + _r)
-            if _twr_f > _peak_f:
-                _peak_f = _twr_f
-            _dd = _twr_f / _peak_f - 1
-            if _dd < -drawdown:
-                drawdown = abs(_dd)
-            _prev = _nav
+    drawdown = _compute_twr_drawdown(_nav_by_d, _cf_map_dd)
 
     opts = conn.execute(
         "SELECT symbol, quantity, current_price, market_value, strike, expiry "
@@ -641,98 +642,25 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     _price_lookup_syms = underlyings | stock_syms
     und_prices = _fetch_underlying_prices(tuple(sorted(_price_lookup_syms))) if _price_lookup_syms else {}
     _iv_map    = _get_atm_iv_batch(tuple(sorted(underlyings))) if underlyings else {}
-    _today     = datetime.date.today()
 
-    gross       = 0.0
-    delta_notl  = 0.0   # Delta-adjusted notional: Σ|Δ × qty × 100 × S|，spread 两腿自然对冲
-    beta_delta  = 0.0
-    theta_tot   = 0.0
-    vega_tot    = 0.0
-    gamma_tot   = 0.0
-    stress_10   = 0.0
-    stress_20   = 0.0
-    iv_fallback_syms = set()   # 走了默认 IV(0.30) 兜底的标的，用于在快照里留痕
-    nearest_expiry_date = None
-    nearest_expiry_sym  = ""
-
-    for s in stks:
-        sym = str(s["symbol"] or "").upper()
-        q   = float(s["quantity"] or 0)
-        mv  = float(s["market_value"] or 0)
-        db_price   = mv / q if q else 0.0
-        live_price = und_prices.get(sym)
-        # 压力测试的冲击基准价优先用实时报价（跟期权腿的标的价保持同一时间切片）；
-        # 实时报价缺失（比如网络失败）时才退回 DB 里上次同步的市值反推价。
-        s_price = live_price if live_price else db_price
-        b = _BETA_BASE.get(sym, 1.0)   # 用硬编码保守值，不受 yfinance 刷新影响
-        gross      += abs(mv)
-        delta_notl += abs(mv)           # 股票 delta=1
-        beta_delta += q * s_price * 1.0 * b
-        ds10 = -0.10 * s_price
-        ds20 = -0.20 * s_price
-        stress_10 += q * ds10
-        stress_20 += q * ds20
-
-    for o in opts:
-        sym   = (o["symbol"] or "").upper()
-        mo    = _OCC_RE.match(sym)
-        und   = mo.group(1) if mo else sym
-        b     = _BETA_BASE.get(und, 1.0)   # 用硬编码保守值，不受 yfinance 刷新影响
-        q     = float(o["quantity"] or 0)
-        mult  = 100.0
-        price = float(o["current_price"] or 0)
-        mv    = float(o["market_value"] or 0)
-        S     = und_prices.get(und, 0.0)
-
-        # ── 始终用 BS 公式计算 Greeks，不依赖 DB 中可能为 NULL 的列 ──
-        d = g = th = vg = 0.0
-        if mo and S > 0:
-            _K = float(o["strike"] or 0) or float(mo.group(6)) / 1000.0
-            _opt_type = "call" if mo.group(5) == "C" else "put"
-            _iv_entry = _iv_map.get(und)
-            if _iv_entry:
-                _iv = _iv_entry["iv"]
-            else:
-                _iv = 0.30   # MarketData.app / yfinance 均未取到 IV 时的兜底默认值
-                iv_fallback_syms.add(und)   # 留痕：这个标的的 Vega 冲击是用假设值算的，不是真实 IV
-            try:
-                _exp_date = datetime.date.fromisoformat(str(o["expiry"]))
-            except Exception:
-                _exp_date = datetime.date(2000 + int(mo.group(2)), int(mo.group(3)), int(mo.group(4)))
-            _dte = max(0, (_exp_date - _today).days)
-            if _dte > 0 and _K > 0:
-                _gr = _bs_greeks(S, _K, _dte / 365.0, _iv, _opt_type)
-                d, g, th, vg = _gr["delta"], _gr["gamma"], _gr["theta"], _gr["vega"]
-
-        gross      += abs(q * mult * S) if S > 0 else abs(q * mult * price)
-        # Delta-adjusted notional: 价差两腿 delta 符号相反，自然抵消，不双计
-        if S > 0 and abs(d) > 0.001:
-            delta_notl += abs(q * mult * d * S)
-        else:
-            # Delta 未算出（深度 OTM / 到期）：用期权市值代替，避免高估
-            delta_notl += abs(mv) if abs(mv) > 0 else abs(q * mult * price)
-        theta_tot  += q * mult * th
-        vega_tot   += q * mult * vg
-        gamma_tot  += abs(q) * g * mult
-
-        # nearest expiry — OCC groups: 1=und 2=YY 3=MM 4=DD
-        if mo:
-            try:
-                _exp = datetime.date(2000 + int(mo.group(2)), int(mo.group(3)), int(mo.group(4)))
-                if nearest_expiry_date is None or _exp < nearest_expiry_date:
-                    nearest_expiry_date = _exp
-                    nearest_expiry_sym  = und
-            except ValueError:
-                pass
-
-        if S > 0:
-            beta_delta += q * mult * d * S * b
-            ds10 = -0.10 * S
-            ds20 = -0.20 * S
-            pnl10 = q * mult * (d * ds10 + 0.5 * g * ds10 * ds10) + q * mult * vg * 8
-            pnl20 = q * mult * (d * ds20 + 0.5 * g * ds20 * ds20) + q * mult * vg * 16
-            stress_10 += pnl10
-            stress_20 += pnl20
+    stress = _compute_portfolio_stress_test(
+        stks, opts,
+        underlying_prices=und_prices, iv_map=_iv_map, beta_map=_BETA_BASE,
+    )
+    gross, delta_notl, beta_delta = (
+        stress["gross_notional"], stress["delta_notional"], stress["beta_delta"]
+    )
+    theta_tot, vega_tot, gamma_tot = (
+        stress["theta_per_day"], stress["vega_per_pt"], stress["gamma_total"]
+    )
+    stress_10, stress_20 = stress["stress_10"], stress["stress_20"]
+    nearest_expiry_date, nearest_expiry_sym = (
+        stress["nearest_expiry_date"], stress["nearest_expiry_sym"]
+    )
+    # 走了默认 IV(0.30) 兜底的标的，用于在快照里留痕——跟
+    # compute_portfolio_stress_test 内部判断 IV 是否命中同一个条件，
+    # 但只需按 underlying 去重检查一次，不用重新走一遍逐 option 循环。
+    iv_fallback_syms = {und for und in underlyings if not _iv_map.get(und)}
 
     leverage          = gross / equity if equity else None
     leverage_delta    = delta_notl / equity if equity else None   # Delta 口径，价差不双计
@@ -740,23 +668,8 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     stress_10_ratio   = stress_10 / equity if equity else None
     stress_20_ratio   = stress_20 / equity if equity else None
 
-    lim = _RISK_LIMITS
-    s10 = abs(stress_10_ratio) if stress_10_ratio else 0
-    if s10 >= lim["stress_hard_stop"]:
-        risk_status = "RED_HARD_STOP"
-    elif s10 >= lim["stress_de_risk"]:
-        risk_status = "ORANGE_DE_RISK"
-    elif s10 >= lim["stress_warning"]:
-        risk_status = "YELLOW_WARNING"
-    else:
-        risk_status = "GREEN"
-
-    if drawdown >= lim["drawdown_de_risk"]:
-        dd_status = "RED_MANDATORY_DE_RISK"
-    elif drawdown >= lim["drawdown_freeze"]:
-        dd_status = "ORANGE_FREEZE_NEW_RISK"
-    else:
-        dd_status = "GREEN"
+    risk_status = _classify_stress_status(stress_10_ratio, _RISK_LIMITS)
+    dd_status   = _classify_drawdown_status(drawdown, _RISK_LIMITS)
 
     return {
         "equity":           equity,
@@ -787,8 +700,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
 
 
 def _compute_options_cost_ratio(acct_id: str) -> dict:
-    """期权总成本 / 最新账户净值，从 Portfolio_Config.json 读取上限。"""
-    import json as _json
+    """期权总成本 / 最新账户净值，上限来自 _PORTFOLIO_CONFIG_PATH（可用 PORTFOLIO_CONFIG_PATH 环境变量覆盖）。"""
     conn = _db()
     cost_row = conn.execute(
         "SELECT SUM(ABS(quantity) * unit_cost * 100) FROM options_positions "
@@ -804,14 +716,7 @@ def _compute_options_cost_ratio(acct_id: str) -> dict:
     nav        = float(nav_row[0] or 0) if nav_row and nav_row[0] else 0.0
     ratio      = total_cost / nav if nav > 0 else None
 
-    cfg_path = pathlib.Path(r"C:\Users\evolx\Documents\ENERGREX期权量化系统\Portfolio_Config.json")
-    limit = 0.50
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as _f:
-            _cfg = _json.load(_f)
-        limit = float(_cfg.get("options_cost_ratio_limit", 0.50))
-    except Exception:
-        pass
+    limit = _load_options_cost_ratio_limit(_PORTFOLIO_CONFIG_PATH)
 
     if ratio is None:
         status = "gray"
@@ -845,18 +750,7 @@ def _load_ai_scores() -> dict:
         return {}
 
 
-def _score_label(score: float | None) -> str:
-    if score is None:
-        return ""
-    if score >= 80:
-        return f"{score:.0f} ⭐"
-    if score >= 65:
-        return f"{score:.0f} ✅"
-    if score >= 50:
-        return f"{score:.0f} 🟡"
-    if score >= 35:
-        return f"{score:.0f} ⚠️"
-    return f"{score:.0f} 🔴"
+_score_label = _score_label_impl
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1091,8 +985,6 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
         "by_combo":      by_combo,
     }
 
-
-_RF_RATE = 0.045   # 2026 risk-free rate (3-month T-bill proxy)
 
 
 def _md_options_quote(symbol: str) -> dict | None:
@@ -1399,43 +1291,21 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     target_bd_ratio: 目标 Beta-Delta/净值 (小数，如 1.50 = 150%)。
     返回三套方案 (A=标准$35宽, B=宽幅$60, C=保留现有+补充)。
     """
-    import json as _json, math as _math
-    from scipy.stats import norm as _sn
-
-    # ── 当前快照 ──────────────────────────────────────────────────
     snap = _compute_risk_snapshot(acct_id)
     if "error" in snap:
         return {"error": "no_data"}
 
     equity      = snap["equity"]
-    current_bd  = snap["beta_delta"]                   # $ amount
-    current_bdr = (snap["beta_delta_ratio"] or 0)      # fraction (e.g. 3.23)
+    current_bd  = snap["beta_delta"]
+    current_bdr = (snap["beta_delta_ratio"] or 0)
 
-    target_bd    = target_bd_ratio * equity
-    bd_to_hedge  = current_bd - target_bd               # positive ⟹ need to reduce
-
-    # ── QQQ 价格 + IV ─────────────────────────────────────────────
     qqq_price = _fetch_underlying_prices(("QQQ",)).get("QQQ", 0.0)
     if qqq_price <= 0:
         return {"error": "no_qqq_price"}
 
-    _iv_d      = _fetch_ivrank_md("QQQ")
-    qqq_iv_pct = _iv_d.get("iv") or 20.0    # in %
-    qqq_iv     = qqq_iv_pct / 100            # decimal for BS
+    qqq_iv_pct = _fetch_ivrank_md("QQQ").get("iv") or 20.0
     b_qqq      = _BETA_SPY.get("QQQ", 1.31)
 
-    # ── 内联 BS put 定价 ──────────────────────────────────────────
-    def _bs_put_price(S, K, T, sigma):
-        if T <= 1e-6 or sigma <= 1e-6 or S <= 0:
-            return max(K - S, 0.0)
-        try:
-            d1 = (_math.log(S / K) + (_RF_RATE + 0.5 * sigma**2) * T) / (sigma * _math.sqrt(T))
-            d2 = d1 - sigma * _math.sqrt(T)
-            return K * _math.exp(-_RF_RATE * T) * _sn.cdf(-d2) - S * _sn.cdf(-d1)
-        except Exception:
-            return max(K - S, 0.0)
-
-    # ── 现有 QQQ 持仓 ─────────────────────────────────────────────
     conn = _db()
     _q_rows = conn.execute(
         "SELECT symbol, quantity, current_price, delta, market_value "
@@ -1467,116 +1337,16 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     n_existing = sum(int(l["qty"]) for l in existing_legs
                      if l["type"] == "P" and l["qty"] > 0)
 
-    # ── 参考买入行权价（最近 $5 整数）────────────────────────────
-    _long_ks = [l["strike"] for l in existing_legs
-                if l["type"] == "P" and l["qty"] > 0]
-    if _long_ks:
-        ref_buy_k = float(max(_long_ks))
-    else:
-        ref_buy_k = float(round(qqq_price * 0.97 / 5) * 5)
+    ocr_now = _compute_options_cost_ratio(acct_id)
+    current_option_cost = (ocr_now["ratio"] or 0) * equity
 
-    # ── 计划到期：约 90 DTE ───────────────────────────────────────
-    plan_exp     = datetime.date.today() + datetime.timedelta(days=90)
-    plan_dte     = 90
-    plan_occ_exp = plan_exp.strftime("%y%m%d")
-
-    # ── 当前期权成本率（用于执行后估算）─────────────────────────
-    _ocr_now = _compute_options_cost_ratio(acct_id)
-    _cur_cost = (_ocr_now["ratio"] or 0) * equity
-
-    # ── 内联方案计算 ──────────────────────────────────────────────
-    def _plan(buy_k, sell_k):
-        T = plan_dte / 365.0
-        gb = _bs_greeks(qqq_price, buy_k,  T, qqq_iv, "put")
-        gs = _bs_greeks(qqq_price, sell_k, T, qqq_iv, "put")
-        d_buy, th_buy   = gb["delta"], gb["theta"]
-        d_sell, th_sell = gs["delta"], gs["theta"]
-
-        # BD contribution per spread: buy 1 put at buy_k + sell 1 put at sell_k
-        #   buy leg:  +1 × 100 × d_buy  × qqq_price × b_qqq  (negative, d_buy<0)
-        #   sell leg: -1 × 100 × d_sell × qqq_price × b_qqq  (positive, since d_sell<0)
-        #   net = 100 × (d_buy - d_sell) × qqq_price × b_qqq  (negative, reduces BD)
-        bd_ps = 100 * (d_buy - d_sell) * qqq_price * b_qqq
-
-        if bd_to_hedge > 0 and bd_ps < 0:
-            n_total = _math.ceil(bd_to_hedge / (-bd_ps))
-        else:
-            n_total = 0
-
-        p_buy  = _bs_put_price(qqq_price, buy_k,  T, qqq_iv) * 100
-        p_sell = _bs_put_price(qqq_price, sell_k, T, qqq_iv) * 100
-        cost_ps = p_buy - p_sell     # net debit per spread
-
-        post_bdr    = ((current_bd + n_total * bd_ps) / equity * 100) if equity else 0
-        theta_chg   = n_total * (th_buy - th_sell) * 100    # $/day change
-        new_cost_tot = _cur_cost + n_total * cost_ps
-        new_ocr     = (new_cost_tot / equity * 100) if equity else 0
-
-        return {
-            "buy_strike":    buy_k,  "sell_strike": sell_k,
-            "n_total":       n_total,
-            "bd_per_spread": round(bd_ps, 0),
-            "d_long":        round(d_buy,  3),
-            "d_short":       round(d_sell, 3),
-            "cost_per_spread": round(cost_ps, 2),
-            "total_cost":    round(n_total * cost_ps, 0),
-            "post_bd_ratio": round(post_bdr, 1),
-            "theta_change":  round(theta_chg, 2),
-            "new_ocr":       round(new_ocr, 1),
-        }
-
-    plan_a = _plan(ref_buy_k, ref_buy_k - 35)
-    plan_b = _plan(ref_buy_k, ref_buy_k - 60)
-
-    # Plan C: 保留现有 + 补充（用方案A的价差结构）
-    remaining_bd = bd_to_hedge + existing_bd     # still-unhedged BD after existing positions
-    if remaining_bd <= 0:
-        n_add = 0
-    elif plan_a["bd_per_spread"] >= 0:
-        n_add = 0
-    else:
-        n_add = _math.ceil(remaining_bd / (-plan_a["bd_per_spread"]))
-    post_bdc = ((current_bd + existing_bd + n_add * plan_a["bd_per_spread"])
-                / equity * 100) if equity else 0
-    add_cost_c = n_add * plan_a["cost_per_spread"]
-
-    plan_c = {
-        "n_existing":     n_existing,
-        "n_additional":   n_add,
-        "buy_strike":     ref_buy_k,
-        "sell_strike":    ref_buy_k - 35,
-        "cost_per_spread": plan_a["cost_per_spread"],
-        "additional_cost": round(add_cost_c, 0),
-        "post_bd_ratio":  round(post_bdc, 1),
-        "existing_bd":    round(existing_bd, 0),
-    }
-
-    hedge_governance = _evaluate_protective_put_hedges(
-        existing_legs,
-        equity=equity,
-        beta_delta_pct=current_bdr * 100,
-        target_beta_delta_pct=target_bd_ratio * 100,
+    return _compute_qqq_hedge_plan_impl(
+        equity=equity, current_bd=current_bd, current_bdr=current_bdr,
+        target_bd_ratio=target_bd_ratio,
+        qqq_price=qqq_price, qqq_iv_pct=qqq_iv_pct, beta_qqq=b_qqq,
+        existing_legs=existing_legs, existing_bd=existing_bd, n_existing=n_existing,
+        current_option_cost=current_option_cost,
     )
-
-    return {
-        "equity":          equity,
-        "current_bd_ratio": round(current_bdr * 100, 1),
-        "target_bd_ratio":  round(target_bd_ratio * 100, 1),
-        "bd_to_hedge":      round(bd_to_hedge, 0),
-        "qqq_price":        round(qqq_price, 2),
-        "qqq_iv":           round(qqq_iv_pct, 1),
-        "b_qqq":            b_qqq,
-        "existing_legs":    existing_legs,
-        "existing_bd":      round(existing_bd, 0),
-        "n_existing":       n_existing,
-        "plan_dte":         plan_dte,
-        "plan_occ_exp":     plan_occ_exp,
-        "plan_exp_str":     plan_exp.strftime("%Y-%m-%d"),
-        "plan_a":           plan_a,
-        "plan_b":           plan_b,
-        "plan_c":           plan_c,
-        "hedge_governance": hedge_governance,
-    }
 
 
 def _pltr_ivr_signal(iv: float, ivr: float | None) -> tuple[str, str, str]:
@@ -1806,135 +1576,13 @@ def _generate_recommendations(acct_id: str) -> list[dict]:
     基于组合识别结果生成建议（以价差为单位，不拆单腿）。
     同时叠加：IV Regime / 压力测试 / AI评分 / 新机会候选。
     """
-    snap      = _compute_risk_snapshot(acct_id)
-    iv_regime = _compute_iv_regime(acct_id)
-    ai_scores = _load_ai_scores()
-    portfolios = _build_spread_portfolios(acct_id)
-
-    iv_status = iv_regime.get("status", "NO_DATA")
-    stress10  = snap.get("stress_10_ratio") or 0.0
-    leverage  = snap.get("leverage_delta")  or snap.get("leverage") or 0.0  # 优先用 Delta 口径
-    held_und  = {p["underlying"] for p in portfolios}
-
-    _RISK_PRIORITY = {
-        "CRITICAL": "🔴 紧急",
-        "HIGH":     "🟠 高",
-        "MEDIUM":   "🟡 中",
-        "LOW":      "🟢 低",
-    }
-    _RISK_EMOJI = {
-        "CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢",
-    }
-
-    recs = []
-    idx  = 1
-
-    # 1. Portfolio-level recommendations
-    for p in portfolios:
-        und        = p["underlying"]
-        rl         = p["risk_level"]
-        priority   = _RISK_PRIORITY.get(rl, "🟡 中")
-        score      = ai_scores.get(und)
-        ptype      = p["type"]
-        pnl        = p.get("current_pnl") or 0
-        dte_v      = p.get("dte")
-        pnl_pct    = p.get("pnl_pct")
-
-        # Build action string
-        action_parts: list[str] = [p["recommendation"]]
-
-        # AI score supplement
-        if score is not None:
-            action_parts.append(f"AI评分 {_score_label(score)}")
-
-        # IV-driven advice for short vega spreads (credit spreads)
-        is_short_vega = "Credit" in ptype or "Bear Call" in ptype or "Bull Put" in ptype
-        if is_short_vega and iv_status in ("HIGH_IV", "EXTREME_IV"):
-            action_parts.append(f"IV Regime={iv_status}，卖权环境有利，可持有至 80% 利润后平仓")
-        elif "Debit" in ptype or "Bull Call" in ptype or "Bear Put" in ptype:
-            if iv_status == "LOW_IV":
-                action_parts.append("低 IV 环境，买权价差成本低，有利于持有")
-
-        # Portfolio stress supplement
-        if abs(stress10) >= _RISK_LIMITS["stress_hard_stop"]:
-            action_parts.append("⚠️ 组合压力超限(≥15%)，优先减仓")
-
-        # Spread-specific hold/roll/close logic
-        if rl == "LOW" and pnl_pct is not None:
-            if pnl_pct >= 50:
-                action_parts.append("已盈利50%+，可考虑提前平仓锁利")
-            else:
-                action_parts.append("建议继续持有至75%利润或到期2周前评估")
-        elif rl == "MEDIUM" and "Diagonal" in ptype:
-            action_parts.append("关注近月腿到期节点，提前15天制定展期方案")
-
-        trigger_parts = [f"组合类型={ptype}", f"风险={rl}"]
-        if dte_v is not None:
-            trigger_parts.append(f"DTE={dte_v}天")
-        if pnl != 0:
-            trigger_parts.append(f"盈亏=${pnl:+,.0f}")
-
-        recs.append({
-            "序号":   idx,
-            "优先级": priority,
-            "标的":   und,
-            "组合":   ptype,
-            "手数":   p.get("spread_qty", 0),
-            "到期":   p.get("expiry", "—"),
-            "DTE":    dte_v if dte_v is not None else "—",
-            "AI评分": _score_label(score) if score else "—",
-            "行动建议": " ；".join(action_parts),
-            "触发原因": " | ".join(trigger_parts),
-            "最大盈利": f"${p['max_profit']:,.0f}" if p.get("max_profit") is not None else "—",
-            "最大亏损": f"${p['max_loss']:,.0f}"  if p.get("max_loss")   is not None else "无限",
-            "当前盈亏": f"${pnl:+,.0f}",
-            "_sim_action": {
-                "type": "close_underlying", "underlying": und,
-                "label": f"关闭 {und} 全部期权持仓",
-            },
-        })
-        idx += 1
-
-    # 2. Portfolio stress hedge suggestion
-    if abs(stress10) >= _RISK_LIMITS["stress_de_risk"]:
-        recs.append({
-            "序号":   idx, "优先级": "🟠 高", "标的": "QQQ",
-            "组合":   "宏观对冲（建议）", "手数": 0, "到期": "—", "DTE": "—",
-            "AI评分": _score_label(ai_scores.get("QQQ")) if ai_scores.get("QQQ") else "—",
-            "行动建议": "建议买入 QQQ Put Debit Spread 作宏观对冲，最大亏损 = 净权利金",
-            "触发原因": f"-10% 压力损失 {stress10*100:+.1f}% ≥ {_RISK_LIMITS['stress_de_risk']*100:.0f}% 阈值",
-            "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
-            "_sim_action": {"type": "qqq_hedge", "label": "执行 QQQ Put Spread 对冲（方案A）"},
-        })
-        idx += 1
-
-    # 3. New opportunity candidates: high AI score + IV regime fit + risk headroom
-    if not snap.get("error") and leverage < _RISK_LIMITS["max_leverage"] * 0.75:
-        candidates = [(t, s) for t, s in ai_scores.items()
-                      if s >= 70 and t not in held_und]
-        for t, s in sorted(candidates, key=lambda x: -x[1])[:3]:
-            if iv_status in ("HIGH_IV", "EXTREME_IV"):
-                strat  = "卖出 Put Credit Spread（高 IV 收权利金，限定风险）"
-                reason = f"IV Regime={iv_status} 适合卖权；{t} AI评分={s:.0f}"
-            elif iv_status == "LOW_IV":
-                strat  = "买入 Call Debit Spread（低 IV 低成本买权）"
-                reason = f"IV Regime=LOW_IV 适合买权；{t} AI评分={s:.0f}"
-            else:
-                strat  = "观望或小仓 Bull Call Spread（中性 IV）"
-                reason = f"{t} AI评分={s:.0f}，IV 正常区间"
-            recs.append({
-                "序号":   idx, "优先级": "🟢 机会", "标的": t,
-                "组合":   "新开仓候选", "手数": 0, "到期": "—", "DTE": "—",
-                "AI评分": _score_label(s),
-                "行动建议": strat,
-                "触发原因": reason,
-                "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
-                "_sim_action": {"type": "no_sim",
-                                "label": f"新开仓 {t}（需指定具体参数，暂不支持模拟）"},
-            })
-            idx += 1
-
-    return recs
+    return _build_recommendations(
+        portfolios=_build_spread_portfolios(acct_id),
+        risk_snapshot=_compute_risk_snapshot(acct_id),
+        iv_regime=_compute_iv_regime(acct_id),
+        ai_scores=_load_ai_scores(),
+        risk_limits=_RISK_LIMITS,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -2176,127 +1824,13 @@ def _check_otm_spread_alerts(acct_id: str) -> list[dict]:
     触发条件：价差两腿市值合计 < 原始净权利金的 10%。
     不使用 underlying_price vs strike 的简单比较，避免长期限期权误报。
     """
-    from collections import defaultdict
-    alerts: list[dict] = []
-    today = datetime.date.today()
-
     conn = _db()
     rows = conn.execute(
         "SELECT symbol, quantity, strike, expiry, unit_cost, market_value, current_price "
         "FROM options_positions WHERE account_id=?",
         (acct_id,)).fetchall()
     conn.close()
-
-    # Group legs by (underlying, expiry, option_type)
-    groups: dict = defaultdict(list)
-    for r in rows:
-        sym = (r["symbol"] or "").upper()
-        mo = _OCC_RE.match(sym)
-        if not mo:
-            continue
-        und      = mo.group(1)
-        exp_str  = f"20{mo.group(2)}-{mo.group(3)}-{mo.group(4)}"
-        opt_type = mo.group(5)   # "C" or "P"
-        strike   = float(r["strike"] or 0) or float(mo.group(6)) / 1000
-        qty      = float(r["quantity"] or 0)
-        uc       = float(r["unit_cost"]    or 0)
-        # Use market_value if available; fall back to current_price * |qty| * 100
-        mv = r["market_value"]
-        if mv is None and r["current_price"] is not None:
-            cp = float(r["current_price"])
-            mv = cp * abs(qty) * 100 * (1 if qty > 0 else -1)
-        mv = float(mv) if mv is not None else None
-        groups[(und, exp_str, opt_type)].append({
-            "sym": sym, "qty": qty, "strike": strike,
-            "unit_cost": uc, "market_value": mv,
-        })
-
-    checked: set = set()
-    for (und, exp_str, opt_type), legs in groups.items():
-        longs  = [l for l in legs if l["qty"] > 0]
-        shorts = [l for l in legs if l["qty"] < 0]
-        if not longs or not shorts:
-            continue
-
-        try:
-            exp_date = datetime.date.fromisoformat(exp_str)
-            dte = (exp_date - today).days
-        except Exception:
-            dte = None
-
-        for long_leg in longs:
-            for short_leg in shorts:
-                key = (und, exp_str, opt_type, long_leg["strike"], short_leg["strike"])
-                if key in checked:
-                    continue
-                checked.add(key)
-
-                ls = long_leg["strike"]
-                ss = short_leg["strike"]
-                high_k = max(ls, ss)
-                low_k  = min(ls, ss)
-                qty_used = min(abs(long_leg["qty"]), abs(short_leg["qty"]))
-
-                # Determine spread type and whether it's a debit spread
-                spread_label = ""
-                is_debit     = False
-
-                if opt_type == "P" and ls > ss:
-                    spread_label = "Bear Put Spread"
-                    is_debit     = True   # paid net premium (long higher-strike P)
-                elif opt_type == "P" and ls < ss:
-                    spread_label = "Bull Put Spread"
-                    is_debit     = False  # received net credit
-                elif opt_type == "C" and ls < ss:
-                    spread_label = "Bull Call Spread"
-                    is_debit     = True   # paid net premium (long lower-strike C)
-                elif opt_type == "C" and ls > ss:
-                    spread_label = "Bear Call Spread"
-                    is_debit     = False  # received net credit
-
-                if not spread_label or not is_debit:
-                    continue   # only alert on debit spreads approaching zero
-
-                # Original net cost (debit paid per spread)
-                net_cost_per_share = long_leg["unit_cost"] - abs(short_leg["unit_cost"])
-                original_cost      = max(net_cost_per_share * qty_used * 100, 0.01)
-
-                # Current spread value (sum of signed market_values)
-                lmv = long_leg["market_value"]
-                smv = short_leg["market_value"]
-                if lmv is None or smv is None:
-                    continue   # no market_value data — skip
-                current_value = lmv + smv   # long=positive, short=negative → net
-
-                # Trigger if current value < 10% of original cost
-                pct_remaining = current_value / original_cost * 100 if original_cost > 0 else 100
-                if pct_remaining >= 10.0:
-                    continue
-
-                alerts.append({
-                    "underlying":     und,
-                    "spread_type":    spread_label,
-                    "high_strike":    high_k,
-                    "low_strike":     low_k,
-                    "opt_type":       opt_type,
-                    "expiry":         exp_str,
-                    "dte":            dte,
-                    "original_cost":  round(original_cost, 2),
-                    "current_value":  round(current_value, 2),
-                    "pct_remaining":  round(pct_remaining, 1),
-                    "long_sym":       long_leg["sym"],
-                    "short_sym":      short_leg["sym"],
-                    "message": (
-                        f"{und} {spread_label} ${low_k:.0f}/{high_k:.0f}"
-                        f"{'P' if opt_type=='P' else 'C'} "
-                        f"当前价差市值 ${current_value:.0f}，"
-                        f"仅剩原始成本 ${original_cost:.0f} 的 {pct_remaining:.1f}%，"
-                        f"价差接近归零"
-                    ),
-                })
-
-    alerts.sort(key=lambda x: x["pct_remaining"])   # lowest remaining % first
-    return alerts
+    return _check_otm_spread_alerts_impl(rows)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -2753,184 +2287,9 @@ def _compute_exit_analysis(acct_id: str) -> dict:
     underlyings = {p["underlying"] for p in portfolios}
     und_prices  = _fetch_underlying_prices(tuple(sorted(underlyings))) if underlyings else {}
 
-    today = datetime.date.today()
-    enriched_list = []
-
-    for port in portfolios:
-        und       = port["underlying"]
-        und_price = und_prices.get(und)
-
-        # ── Cost basis & equity % ────────────────────────────────
-        cost_basis = abs(port.get("max_loss") or port.get("net_total") or 0)
-        equity_pct = round(cost_basis / net_equity * 100, 1) if net_equity > 0 else 0.0
-
-        # ── P&L % (fill in if missing) ───────────────────────────
-        pnl_pct = port.get("pnl_pct")
-        if pnl_pct is None and cost_basis > 0.01:
-            pnl_pct = round(port["current_pnl"] / cost_basis * 100, 1)
-
-        # ── DTE info ─────────────────────────────────────────────
-        min_dte     = port["dte"]
-        short_legs  = [l for l in port["legs"] if (l.get("qty") or 0) < 0]
-        short_dtes  = [l["dte"] for l in short_legs]
-        min_short_dte = min(short_dtes) if short_dtes else None
-        has_short     = bool(short_legs)
-
-        # ── Thesis broken detection (uses yfinance price) ────────
-        thesis_broken = False
-        thesis_note   = ""
-        if und_price:
-            ptype = port.get("type", "")
-            high_k = port.get("high_strike") or 0
-            low_k  = port.get("low_strike")  or 0
-            if "Bear Put" in ptype and high_k and und_price > high_k:
-                thesis_broken = True
-                otm = (und_price - high_k) / high_k * 100
-                thesis_note = (f"{und} 现价 ${und_price:.2f} 高于价差上沿 "
-                               f"${high_k:.0f}（超出 {otm:.1f}%），看跌假设已被推翻")
-            elif "Bull Call" in ptype and low_k and und_price < low_k:
-                thesis_broken = True
-                otm = (low_k - und_price) / low_k * 100
-                thesis_note = (f"{und} 现价 ${und_price:.2f} 低于价差下沿 "
-                               f"${low_k:.0f}（偏离 {otm:.1f}%），看涨假设受挫")
-            elif "Bear Call" in ptype and high_k and und_price > high_k:
-                thesis_broken = True
-                otm = (und_price - high_k) / high_k * 100
-                thesis_note = (f"{und} 现价 ${und_price:.2f} 高于上沿 "
-                               f"${high_k:.0f}（超出 {otm:.1f}%），空头承压")
-            elif "Bull Put" in ptype and low_k and und_price < low_k:
-                thesis_broken = True
-                otm = (low_k - und_price) / low_k * 100
-                thesis_note = (f"{und} 现价 ${und_price:.2f} 低于下沿 "
-                               f"${low_k:.0f}（偏离 {otm:.1f}%），多头压力加大")
-            elif "Naked Long Put" in ptype:
-                strike_k = port["legs"][0].get("strike") or 0
-                if strike_k and und_price > strike_k * 1.1:
-                    otm = (und_price - strike_k) / strike_k * 100
-                    thesis_broken = True
-                    thesis_note = (f"{und} 现价 ${und_price:.2f} 高于行权价 "
-                                   f"${strike_k:.0f}（{otm:.0f}% OTM），看跌假设未兑现")
-            elif "Naked Long Call" in ptype:
-                strike_k = port["legs"][0].get("strike") or 0
-                if strike_k and und_price < strike_k * 0.9:
-                    otm = (strike_k - und_price) / strike_k * 100
-                    thesis_broken = True
-                    thesis_note = (f"{und} 现价 ${und_price:.2f} 低于行权价 "
-                                   f"${strike_k:.0f}（{otm:.0f}% OTM），看涨动能不足")
-
-        # ── Urgency score (for sorting) ──────────────────────────
-        urgency = 0
-        if min_dte is not None:
-            if min_dte <= 7:    urgency += 5
-            elif min_dte <= 14: urgency += 3
-            elif min_dte <= 21: urgency += 1
-        if pnl_pct is not None:
-            if pnl_pct <= -60:  urgency += 6   # extreme loss → highest priority
-            elif pnl_pct <= -45: urgency += 4
-            elif pnl_pct <= -30: urgency += 2
-            elif pnl_pct >= 45:  urgency += 2
-            elif pnl_pct >= 30:  urgency += 1
-        if equity_pct > 30: urgency += 3
-        elif equity_pct > 20: urgency += 1
-        if thesis_broken:   urgency += 4
-
-        # ── Action label & color ─────────────────────────────────
-        _p = pnl_pct or 0
-        if min_dte is not None and min_dte <= 7:
-            action, action_color = "🚨 立即处理", "#FF4B4B"
-        elif _p <= -60:
-            # Extreme loss: stop regardless of DTE
-            action, action_color = "🛑 止损", "#FF4B4B"
-        elif thesis_broken and _p <= -20:
-            action, action_color = "📉 重新评估", "#FF4B4B"
-        elif pnl_pct is not None and pnl_pct >= 50:
-            action, action_color = "⚡ 止盈", "#00C853"
-        elif pnl_pct is not None and pnl_pct <= -50 and (min_dte or 999) < 30:
-            action, action_color = "🛑 止损", "#FF4B4B"
-        elif has_short and min_short_dte is not None and min_short_dte <= 21:
-            action, action_color = "🔄 滚仓", "#FFB700"
-        elif thesis_broken:
-            action, action_color = "⚠️ 方向反转", "#FFB700"
-        elif pnl_pct is not None and pnl_pct <= -40:
-            action, action_color = "👀 关注", "#FFB700"
-        else:
-            action, action_color = "✅ 持有", "#6B6B6B"
-
-        # ── Why text (layered explanation) ───────────────────────
-        why_parts = []
-
-        if thesis_broken and thesis_note:
-            why_parts.append(f"【方向】{thesis_note}")
-
-        if pnl_pct is not None:
-            dist_stop = pnl_pct - (-50)
-            dist_tp   = 50 - pnl_pct
-            if pnl_pct >= 50:
-                why_parts.append(f"【盈亏】已触发止盈线 +50%，建议锁利或展期")
-            elif pnl_pct <= -50:
-                why_parts.append(f"【盈亏】已触发止损线，亏损 {abs(pnl_pct):.0f}%")
-            elif dist_stop < 15:
-                why_parts.append(f"【盈亏】亏损 {pnl_pct:+.0f}%，距止损线 -50% 仅剩 {dist_stop:.0f}%，需密切关注")
-            elif dist_tp < 12:
-                why_parts.append(f"【盈亏】盈利 {pnl_pct:+.0f}%，距止盈线 +50% 还差 {dist_tp:.0f}%")
-            else:
-                why_parts.append(f"【盈亏】{pnl_pct:+.0f}%（止盈 +50% / 止损 -50%，当前安全区间）")
-
-        if equity_pct > 25:
-            why_parts.append(f"【风险】持仓成本占净值 {equity_pct:.0f}%，集中度偏高（建议单仓 ≤25%净值）")
-        elif equity_pct > 15:
-            why_parts.append(f"【风险】持仓成本占净值 {equity_pct:.0f}%")
-
-        if min_dte is not None:
-            if min_dte <= 7:
-                why_parts.append(f"【时间】DTE={min_dte}天，时间价值极速衰减，立即决策")
-            elif min_dte <= 14:
-                why_parts.append(f"【时间】DTE={min_dte}天，Theta加速衰减，建议本周决策")
-            elif min_dte <= 21:
-                why_parts.append(f"【时间】DTE={min_dte}天，建议2周内决策")
-
-        if not why_parts:
-            why_parts.append("各项指标正常，无需立即行动")
-
-        enriched_list.append({
-            **port,
-            "cost_basis":     cost_basis,
-            "equity_pct":     equity_pct,
-            "pnl_pct":        pnl_pct,
-            "min_dte":        min_dte,
-            "min_short_dte":  min_short_dte,
-            "has_short":      has_short,
-            "und_price":      und_price,
-            "thesis_broken":  thesis_broken,
-            "thesis_note":    thesis_note,
-            "urgency":        urgency,
-            "action":         action,
-            "action_color":   action_color,
-            "why":            " ；".join(why_parts),
-        })
-
-    enriched_list.sort(key=lambda x: -x["urgency"])
-
-    # ── Portfolio-level summary ──────────────────────────────────
-    total_cost = sum(p["cost_basis"] for p in enriched_list)
-    cost_pct   = round(total_cost / net_equity * 100, 1) if net_equity > 0 else 0.0
-
-    by_und: dict[str, float] = {}
-    for p in enriched_list:
-        by_und[p["underlying"]] = by_und.get(p["underlying"], 0) + p["cost_basis"]
-
-    top_unds = sorted(by_und.items(), key=lambda x: -x[1])[:3]
-
-    return {
-        "portfolios": enriched_list,
-        "summary": {
-            "total_cost": round(total_cost, 2),
-            "net_equity": net_equity,
-            "cost_pct":   cost_pct,
-            "top_unds":   top_unds,
-            "n_broken":   sum(1 for p in enriched_list if p["thesis_broken"]),
-        },
-    }
+    return _compute_exit_analysis_impl(
+        portfolios, net_equity=net_equity, underlying_prices=und_prices,
+    )
 
 
 def _load_positions_xlsx(acct_id: str) -> pd.DataFrame:

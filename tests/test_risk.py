@@ -1,10 +1,25 @@
 import datetime
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from account.risk import (
+    DEFAULT_OPTIONS_COST_RATIO_LIMIT,
+    DEFAULT_RISK_LIMITS,
     bs_greeks,
+    build_recommendations,
     calculate_option_position_greeks,
+    check_otm_spread_alerts,
+    classify_drawdown_status,
+    classify_stress_status,
+    compute_exit_analysis,
+    compute_portfolio_stress_test,
+    compute_qqq_hedge_plan,
+    compute_twr_drawdown,
     delta_drift_trigger,
+    load_options_cost_ratio_limit,
+    score_label,
     summarize_portfolio_greeks,
     vix_spike_trigger,
 )
@@ -95,6 +110,533 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(trigger["change_pct"], 16.0)
         self.assertIsNone(vix_spike_trigger({"vix": 20, "change_pct": 5}))
         self.assertIsNone(vix_spike_trigger({"vix": None, "change_pct": None}))
+
+
+class OptionsCostRatioLimitTests(unittest.TestCase):
+    def test_missing_file_returns_default_silently(self):
+        missing = Path(tempfile.mkdtemp()) / "does_not_exist.json"
+        self.assertEqual(
+            load_options_cost_ratio_limit(missing), DEFAULT_OPTIONS_COST_RATIO_LIMIT
+        )
+
+    def test_valid_override_file_is_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "portfolio_config.json"
+            path.write_text(json.dumps({"options_cost_ratio_limit": 0.35}), encoding="utf-8")
+            self.assertEqual(load_options_cost_ratio_limit(path), 0.35)
+
+    def test_malformed_file_falls_back_to_default_without_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "portfolio_config.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            self.assertEqual(
+                load_options_cost_ratio_limit(path), DEFAULT_OPTIONS_COST_RATIO_LIMIT
+            )
+
+
+class TwrDrawdownTests(unittest.TestCase):
+    def test_fewer_than_two_observations_has_no_drawdown(self):
+        self.assertEqual(compute_twr_drawdown({}), 0.0)
+        self.assertEqual(compute_twr_drawdown({"2026-06-01": 100000}), 0.0)
+
+    def test_pure_loss_registers_as_drawdown(self):
+        nav = {"2026-06-01": 100000, "2026-06-02": 90000}
+        self.assertAlmostEqual(compute_twr_drawdown(nav), 0.10, places=6)
+
+    def test_partial_recovery_keeps_the_worse_drawdown(self):
+        nav = {"2026-06-01": 100000, "2026-06-02": 90000, "2026-06-03": 99000}
+        # -10% then +10% off the new base recovers most of the loss, but the
+        # worst drawdown along the path (-10%) is what should be reported,
+        # not the smaller current gap to the running peak.
+        self.assertAlmostEqual(compute_twr_drawdown(nav), 0.10, places=6)
+
+    def test_deposit_on_a_flat_day_is_not_counted_as_a_gain(self):
+        # NAV rose by exactly the deposit amount -- zero real return, so this
+        # must not register as a recovery/gain that resets the peak upward.
+        nav = {"2026-06-01": 100000, "2026-06-02": 110000}
+        cashflow = {"2026-06-02": 10000}
+        self.assertAlmostEqual(compute_twr_drawdown(nav, cashflow), 0.0, places=6)
+
+    def test_withdrawal_on_a_flat_day_is_not_counted_as_a_loss(self):
+        nav = {"2026-06-01": 100000, "2026-06-02": 90000}
+        cashflow = {"2026-06-02": -10000}
+        self.assertAlmostEqual(compute_twr_drawdown(nav, cashflow), 0.0, places=6)
+
+
+class PortfolioStressTestTests(unittest.TestCase):
+    def test_stock_and_option_positions_aggregate_correctly(self):
+        stocks = [{"symbol": "AAPL", "quantity": 100, "market_value": 15000.0}]
+        options = [{
+            "symbol": "AAPL260717C00150000",
+            "quantity": 1,
+            "current_price": 5.0,
+            "market_value": 500.0,
+            "strike": 150.0,
+            "expiry": "2026-07-17",
+        }]
+
+        result = compute_portfolio_stress_test(
+            stocks, options,
+            underlying_prices={"AAPL": 150.0},
+            iv_map={"AAPL": {"iv": 0.30, "src": "test"}},
+            beta_map={"AAPL": 1.2},
+            today=datetime.date(2026, 6, 17),
+        )
+
+        # Independently derived from the same Black-Scholes call this
+        # function uses internally (dte=30, S=K=150, iv=0.30) -- this test
+        # is exercising the position-loop assembly (signs, which total each
+        # term feeds, per-position aggregation), not bs_greeks itself, which
+        # test_bs_greeks_known_deterministic_case already locks down.
+        greeks = bs_greeks(150.0, 150.0, 30 / 365, 0.30, "call")
+        d, g, th, vg = greeks["delta"], greeks["gamma"], greeks["theta"], greeks["vega"]
+        opt_delta_notl = abs(1 * 100 * d * 150.0)
+        ds10, ds20 = -0.10 * 150.0, -0.20 * 150.0
+        opt_pnl10 = 1 * 100 * (d * ds10 + 0.5 * g * ds10 * ds10) + 1 * 100 * vg * 8
+        opt_pnl20 = 1 * 100 * (d * ds20 + 0.5 * g * ds20 * ds20) + 1 * 100 * vg * 16
+
+        self.assertAlmostEqual(result["gross_notional"], 30000.0, places=2)
+        self.assertAlmostEqual(result["delta_notional"], 15000.0 + opt_delta_notl, places=2)
+        self.assertAlmostEqual(result["beta_delta"], 100 * 150 * 1.2 + 100 * d * 150.0 * 1.2, places=2)
+        self.assertAlmostEqual(result["theta_per_day"], 100 * th, places=4)
+        self.assertAlmostEqual(result["vega_per_pt"], 100 * vg, places=4)
+        self.assertAlmostEqual(result["gamma_total"], 100 * g, places=4)
+        self.assertAlmostEqual(result["stress_10"], 100 * (-0.10 * 150.0) + opt_pnl10, places=2)
+        self.assertAlmostEqual(result["stress_20"], 100 * (-0.20 * 150.0) + opt_pnl20, places=2)
+        self.assertEqual(result["nearest_expiry_date"], datetime.date(2026, 7, 17))
+        self.assertEqual(result["nearest_expiry_sym"], "AAPL")
+
+    def test_unknown_underlying_price_falls_back_to_market_value_for_delta_notional(self):
+        options = [{
+            "symbol": "ZZZZ260717C00100000",
+            "quantity": 2,
+            "current_price": 3.0,
+            "market_value": 600.0,
+            "strike": 100.0,
+            "expiry": "2026-07-17",
+        }]
+        result = compute_portfolio_stress_test(
+            [], options, underlying_prices={}, iv_map={}, beta_map={},
+            today=datetime.date(2026, 6, 17),
+        )
+        # No spot price for ZZZZ -> can't price Greeks -> delta_notional and
+        # gross both fall back to using market value / current_price rather
+        # than silently under- or over-stating exposure as zero.
+        self.assertAlmostEqual(result["delta_notional"], 600.0, places=2)
+        self.assertAlmostEqual(result["gross_notional"], 2 * 100 * 3.0, places=2)
+        self.assertEqual(result["stress_10"], 0.0)
+
+    def test_empty_portfolio_returns_zeros(self):
+        result = compute_portfolio_stress_test(
+            [], [], underlying_prices={}, iv_map={}, beta_map={},
+        )
+        self.assertEqual(result["gross_notional"], 0.0)
+        self.assertEqual(result["delta_notional"], 0.0)
+        self.assertIsNone(result["nearest_expiry_date"])
+
+
+class ScoreLabelTests(unittest.TestCase):
+    def test_bands(self):
+        self.assertEqual(score_label(None), "")
+        self.assertEqual(score_label(85), "85 ⭐")
+        self.assertEqual(score_label(70), "70 ✅")
+        self.assertEqual(score_label(55), "55 🟡")
+        self.assertEqual(score_label(40), "40 ⚠️")
+        self.assertEqual(score_label(10), "10 🔴")
+
+
+class BuildRecommendationsTests(unittest.TestCase):
+    def _portfolio(self, **overrides):
+        base = {
+            "underlying": "PLTR",
+            "risk_level": "LOW",
+            "type": "Bull Call Debit Spread",
+            "recommendation": "持有至到期",
+            "current_pnl": 0.0,
+            "dte": 30,
+            "pnl_pct": 20.0,
+            "spread_qty": 1,
+            "expiry": "2026-07-17",
+            "max_profit": 1000.0,
+            "max_loss": 500.0,
+        }
+        base.update(overrides)
+        return base
+
+    def _snapshot(self, **overrides):
+        base = {"stress_10_ratio": 0.02, "leverage_delta": 1.0, "leverage": 1.0}
+        base.update(overrides)
+        return base
+
+    def test_low_risk_high_profit_spread_suggests_locking_in_gains(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio(pnl_pct=60.0)],
+            risk_snapshot=self._snapshot(),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertEqual(len(recs), 1)
+        self.assertIn("已盈利50%+", recs[0]["行动建议"])
+        self.assertEqual(recs[0]["标的"], "PLTR")
+
+    def test_low_risk_moderate_profit_suggests_holding(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio(pnl_pct=20.0)],
+            risk_snapshot=self._snapshot(),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertIn("建议继续持有", recs[0]["行动建议"])
+
+    def test_stress_hard_stop_adds_deleverage_warning_to_every_position(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio()],
+            risk_snapshot=self._snapshot(stress_10_ratio=0.16),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertIn("组合压力超限", recs[0]["行动建议"])
+
+    def test_stress_de_risk_appends_qqq_hedge_row(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio()],
+            risk_snapshot=self._snapshot(stress_10_ratio=0.13),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        hedge_rows = [r for r in recs if r["标的"] == "QQQ"]
+        self.assertEqual(len(hedge_rows), 1)
+        self.assertEqual(hedge_rows[0]["组合"], "宏观对冲（建议）")
+
+    def test_no_hedge_row_when_stress_below_de_risk_threshold(self):
+        recs = build_recommendations(
+            portfolios=[self._portfolio()],
+            risk_snapshot=self._snapshot(stress_10_ratio=0.05),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={},
+        )
+        self.assertFalse(any(r["标的"] == "QQQ" for r in recs))
+
+    def test_new_opportunity_candidates_exclude_held_underlyings_and_cap_at_three(self):
+        ai_scores = {"PLTR": 90, "AAAA": 85, "BBBB": 80, "CCCC": 75, "DDDD": 71, "EEEE": 60}
+        recs = build_recommendations(
+            portfolios=[self._portfolio(underlying="PLTR")],  # PLTR already held
+            risk_snapshot=self._snapshot(leverage_delta=0.5),  # well under headroom limit
+            iv_regime={"status": "NORMAL"},
+            ai_scores=ai_scores,
+        )
+        candidate_rows = [r for r in recs if r["组合"] == "新开仓候选"]
+        self.assertEqual(len(candidate_rows), 3)
+        self.assertNotIn("PLTR", [r["标的"] for r in candidate_rows])
+        # Highest scores first, EEEE (60) excluded for being below the 70 cutoff
+        self.assertEqual([r["标的"] for r in candidate_rows], ["AAAA", "BBBB", "CCCC"])
+
+    def test_no_new_candidates_when_leverage_exceeds_headroom(self):
+        recs = build_recommendations(
+            portfolios=[],
+            risk_snapshot=self._snapshot(leverage_delta=3.5),  # >= 4.0 * 0.75
+            iv_regime={"status": "NORMAL"},
+            ai_scores={"AAAA": 90},
+        )
+        self.assertFalse(any(r["组合"] == "新开仓候选" for r in recs))
+
+    def test_risk_snapshot_error_suppresses_new_candidates(self):
+        recs = build_recommendations(
+            portfolios=[],
+            risk_snapshot={"error": "no_equity"},
+            iv_regime={"status": "NORMAL"},
+            ai_scores={"AAAA": 90},
+        )
+        self.assertEqual(recs, [])
+
+    def test_high_iv_favors_credit_spread_for_new_candidates(self):
+        recs = build_recommendations(
+            portfolios=[],
+            risk_snapshot=self._snapshot(),
+            iv_regime={"status": "HIGH_IV"},
+            ai_scores={"AAAA": 90},
+        )
+        self.assertIn("Put Credit Spread", recs[0]["行动建议"])
+
+
+class ComputeExitAnalysisTests(unittest.TestCase):
+    def _portfolio(self, **overrides):
+        base = {
+            "underlying": "PLTR",
+            "type": "Bull Call Debit Spread",
+            "max_loss": 1000.0,
+            "current_pnl": 100.0,
+            "pnl_pct": None,
+            "dte": 30,
+            "legs": [
+                {"qty": 1, "dte": 30, "strike": 100},
+                {"qty": -1, "dte": 30, "strike": 110},
+            ],
+            "high_strike": 110,
+            "low_strike": 100,
+        }
+        base.update(overrides)
+        return base
+
+    def test_empty_portfolios_returns_empty_result(self):
+        result = compute_exit_analysis([], net_equity=100000, underlying_prices={})
+        self.assertEqual(result, {"portfolios": [], "summary": {}})
+
+    def test_missing_pnl_pct_is_filled_in_from_cost_basis(self):
+        result = compute_exit_analysis(
+            [self._portfolio(max_loss=1000.0, current_pnl=250.0, pnl_pct=None)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertAlmostEqual(result["portfolios"][0]["pnl_pct"], 25.0)
+
+    def test_equity_pct_uses_cost_basis_over_net_equity(self):
+        result = compute_exit_analysis(
+            [self._portfolio(max_loss=20000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertAlmostEqual(result["portfolios"][0]["equity_pct"], 20.0)
+
+    def test_bull_call_thesis_broken_when_price_drops_below_low_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("看涨假设受挫", row["thesis_note"])
+
+    def test_bull_call_thesis_intact_when_price_holds_above_low_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 105.0},
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_near_expiry_forces_immediate_action_regardless_of_pnl(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=5, pnl_pct=10.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🚨 立即处理")
+
+    def test_extreme_loss_forces_stop_loss_regardless_of_dte(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-65.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🛑 止损")
+
+    def test_large_gain_triggers_take_profit(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=55.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "⚡ 止盈")
+
+    def test_healthy_position_defaults_to_hold(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=5.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        row = result["portfolios"][0]
+        self.assertEqual(row["action"], "✅ 持有")
+        self.assertIn("当前安全区间", row["why"])
+
+    def test_results_sorted_by_urgency_descending(self):
+        calm = self._portfolio(underlying="AAA", dte=60, pnl_pct=5.0)
+        urgent = self._portfolio(underlying="BBB", dte=3, pnl_pct=-70.0)
+        result = compute_exit_analysis(
+            [calm, urgent], net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual([p["underlying"] for p in result["portfolios"]], ["BBB", "AAA"])
+
+    def test_summary_aggregates_cost_and_broken_thesis_count(self):
+        result = compute_exit_analysis(
+            [
+                self._portfolio(underlying="AAA", max_loss=1000.0),
+                self._portfolio(underlying="BBB", max_loss=2000.0,
+                                 type="Bull Call Debit Spread", low_strike=100, high_strike=110),
+            ],
+            net_equity=100000,
+            underlying_prices={"BBB": 50.0},  # breaks BBB's bull call thesis
+        )
+        summary = result["summary"]
+        self.assertAlmostEqual(summary["total_cost"], 3000.0)
+        self.assertAlmostEqual(summary["cost_pct"], 3.0)
+        self.assertEqual(summary["n_broken"], 1)
+        self.assertEqual(summary["top_unds"][0], ("BBB", 2000.0))
+
+
+class ComputeQqqHedgePlanTests(unittest.TestCase):
+    def test_bd_to_hedge_and_reference_strike_with_no_existing_legs(self):
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=10000.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertAlmostEqual(result["bd_to_hedge"], 150000.0)
+        # No existing long puts -> reference strike falls back to 97% of spot,
+        # rounded to the nearest $5.
+        self.assertAlmostEqual(result["plan_a"]["buy_strike"], 485.0)
+        self.assertAlmostEqual(result["plan_a"]["sell_strike"], 450.0)
+        self.assertAlmostEqual(result["plan_b"]["sell_strike"], 425.0)
+        self.assertEqual(result["plan_exp_str"], "2026-08-30")
+
+    def test_no_hedge_needed_when_already_under_target(self):
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=600000, current_bdr=1.2, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=0.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertLess(result["bd_to_hedge"], 0)
+        self.assertEqual(result["plan_a"]["n_total"], 0)
+        self.assertEqual(result["plan_b"]["n_total"], 0)
+
+    def test_existing_long_put_strike_becomes_the_reference_strike(self):
+        legs = [{
+            "sym": "QQQ260830P00470000", "qty": 2, "type": "P",
+            "strike": 470.0, "expiry": "2026-08-30",
+            "delta": -0.3, "price": 10.0, "market_value": 2000.0,
+        }]
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-50000.0, n_existing=2,
+            current_option_cost=2000.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertAlmostEqual(result["plan_a"]["buy_strike"], 470.0)
+        self.assertEqual(result["plan_c"]["n_existing"], 2)
+        self.assertAlmostEqual(result["existing_bd"], -50000.0)
+
+    def test_plan_c_reduces_additional_contracts_when_existing_hedge_already_helps(self):
+        legs = [{
+            "sym": "QQQ260830P00470000", "qty": 2, "type": "P",
+            "strike": 470.0, "expiry": "2026-08-30",
+            "delta": -0.3, "price": 10.0, "market_value": 2000.0,
+        }]
+        with_existing = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-50000.0, n_existing=2,
+            current_option_cost=2000.0, today=datetime.date(2026, 6, 1),
+        )
+        without_existing = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=0.0, today=datetime.date(2026, 6, 1),
+        )
+        # Existing short-Delta hedge already offsets some beta-weighted Delta,
+        # so fewer additional spreads should be needed to reach the same target.
+        self.assertLess(
+            with_existing["plan_c"]["n_additional"],
+            without_existing["plan_c"]["n_additional"],
+        )
+
+    def test_result_includes_hedge_governance_evaluation(self):
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=0.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertIn("hedge_governance", result)
+        self.assertIsInstance(result["hedge_governance"], dict)
+
+
+class CheckOtmSpreadAlertsTests(unittest.TestCase):
+    def _leg(self, symbol, qty, unit_cost, market_value, strike=None, current_price=None):
+        return {
+            "symbol": symbol, "quantity": qty, "strike": strike,
+            "expiry": None, "unit_cost": unit_cost,
+            "market_value": market_value, "current_price": current_price,
+        }
+
+    def test_bear_put_debit_spread_near_zero_triggers_an_alert(self):
+        rows = [
+            self._leg("PLTR260717P00110000", 1, 8.0, 15.0),   # long, higher strike
+            self._leg("PLTR260717P00100000", -1, 3.0, -5.0),  # short, lower strike
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual(len(alerts), 1)
+        alert = alerts[0]
+        self.assertEqual(alert["spread_type"], "Bear Put Spread")
+        self.assertEqual(alert["underlying"], "PLTR")
+        self.assertAlmostEqual(alert["original_cost"], 500.0)
+        self.assertAlmostEqual(alert["current_value"], 10.0)
+        self.assertAlmostEqual(alert["pct_remaining"], 2.0)
+
+    def test_credit_spread_never_alerts_regardless_of_value(self):
+        # Bull Put Spread: long the lower strike, short the higher strike --
+        # sold for a credit, so it losing value is the expected profitable
+        # outcome, not something to warn about.
+        rows = [
+            self._leg("PLTR260717P00090000", 1, 1.0, 0.5),
+            self._leg("PLTR260717P00100000", -1, 3.0, -0.2),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual(alerts, [])
+
+    def test_debit_spread_still_healthy_does_not_alert(self):
+        rows = [
+            self._leg("AAPL260717C00100000", 1, 5.0, 400.0),   # long call, well above 10%
+            self._leg("AAPL260717C00110000", -1, 2.0, -150.0),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual(alerts, [])
+
+    def test_single_leg_without_a_pair_produces_no_alert(self):
+        rows = [self._leg("PLTR260717P00110000", 1, 8.0, 15.0)]
+        self.assertEqual(check_otm_spread_alerts(rows), [])
+
+    def test_missing_market_value_falls_back_to_current_price(self):
+        rows = [
+            self._leg("PLTR260717P00110000", 1, 8.0, None, current_price=0.10),
+            self._leg("PLTR260717P00100000", -1, 3.0, None, current_price=0.05),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        # long mv = 0.10*1*100=10; short mv = 0.05*1*100*(-1)=-5; current=5
+        self.assertEqual(len(alerts), 1)
+        self.assertAlmostEqual(alerts[0]["current_value"], 5.0)
+
+    def test_alerts_sorted_by_lowest_remaining_percent_first(self):
+        rows = [
+            # Spread A: 8% remaining
+            self._leg("AAAA260717P00110000", 1, 8.0, 40.0),
+            self._leg("AAAA260717P00100000", -1, 3.0, 0.0),
+            # Spread B: 2% remaining (more urgent)
+            self._leg("BBBB260717P00110000", 1, 8.0, 10.0),
+            self._leg("BBBB260717P00100000", -1, 3.0, 0.0),
+        ]
+        alerts = check_otm_spread_alerts(rows, today=datetime.date(2026, 6, 1))
+        self.assertEqual([a["underlying"] for a in alerts], ["BBBB", "AAAA"])
+
+
+class RiskStatusClassificationTests(unittest.TestCase):
+    def test_stress_status_thresholds(self):
+        self.assertEqual(classify_stress_status(0.05), "GREEN")
+        self.assertEqual(classify_stress_status(0.08), "YELLOW_WARNING")
+        self.assertEqual(classify_stress_status(0.12), "ORANGE_DE_RISK")
+        self.assertEqual(classify_stress_status(0.15), "RED_HARD_STOP")
+        self.assertEqual(classify_stress_status(None), "GREEN")
+
+    def test_stress_status_uses_magnitude_not_sign(self):
+        self.assertEqual(
+            classify_stress_status(-0.16), classify_stress_status(0.16)
+        )
+        self.assertEqual(classify_stress_status(-0.16), "RED_HARD_STOP")
+
+    def test_drawdown_status_thresholds(self):
+        self.assertEqual(classify_drawdown_status(0.10), "GREEN")
+        self.assertEqual(classify_drawdown_status(0.20), "ORANGE_FREEZE_NEW_RISK")
+        self.assertEqual(classify_drawdown_status(0.30), "RED_MANDATORY_DE_RISK")
+
+    def test_custom_limits_override_defaults(self):
+        tight = {**DEFAULT_RISK_LIMITS, "stress_warning": 0.01, "stress_de_risk": 0.02,
+                 "stress_hard_stop": 0.03}
+        self.assertEqual(classify_stress_status(0.015, tight), "YELLOW_WARNING")
 
 
 if __name__ == "__main__":

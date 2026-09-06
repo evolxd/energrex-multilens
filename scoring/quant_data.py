@@ -51,7 +51,6 @@ QUANT_META: dict[str, dict] = {
     "NET":  {"sector_tag": "SaaS"},
     "MDB":  {"sector_tag": "SaaS"},
     "GTLB": {"sector_tag": "SaaS"},
-    "DUOL": {"sector_tag": "SaaS"},  # 语言学习SaaS，不在常驻观察池，仅一次性案例分析用
     "DT":   {"sector_tag": "SaaS"},
     "CDNS": {"sector_tag": "SaaS"},
     "SNPS": {"sector_tag": "SaaS"},
@@ -61,6 +60,8 @@ QUANT_META: dict[str, dict] = {
     "TEAM": {"sector_tag": "SaaS"},
     "APP":  {"sector_tag": "SaaS"},
     "ESTC": {"sector_tag": "SaaS"},
+    "DUOL": {"sector_tag": "SaaS"},   # Duolingo，订阅制App，资本结构上是SaaS不是Hardware；
+                                      # 语言学习SaaS，不在常驻观察池，仅一次性案例分析用
     # ── 网络安全 (independent sector) ────────────────────────────────
     "PANW": {"sector_tag": "Cybersecurity"},
     "CRWD": {"sector_tag": "Cybersecurity"},

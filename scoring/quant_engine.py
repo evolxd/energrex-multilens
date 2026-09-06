@@ -190,6 +190,7 @@ class ScoreResult:
     ai_profile_basis:    str
     ai_raw_exposure_score: float
     applied_weights:     dict[str, float]
+    global_score:        float
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -713,6 +714,54 @@ def score_risk_penalty(data: dict, de_ratio: float | None) -> tuple[AuditDimensi
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Global Score: sector-agnostic cross-portfolio comparison metric
+#
+# Design: "全局得分 / 行业得分 双轨评分设计" (confirmed with user 2026-09-03).
+# global_score is a genuinely separate number from final_score, not an
+# alternate view of it:
+#   - final_score  = 6-dim weighted sum, minus risk_penalty, × circuit
+#                    multiplier when the breaker fires. Unchanged by this
+#                    function; still the only number used for rating,
+#                    decision_policy, Kelly sizing, etc.
+#   - sector_score = NOT a new formula at all -- it IS final_score, just
+#                    relabeled in the UI when a sector filter is active.
+#   - global_score = this function's output. Drops ai_exposure entirely
+#                    (a sector-specific dimension that isn't comparable
+#                    across, say, a semiconductor-equipment name and a
+#                    cybersecurity name) and is NOT reduced by
+#                    risk_penalty and NOT scaled by the circuit-breaker
+#                    multiplier -- both of those are safety/actionability
+#                    adjustments for final_score's trade-decision role,
+#                    not part of a pure cross-sector quality comparison.
+#
+# Renormalization derivation: every AI profile in ai_profile.PROFILE_WEIGHTS
+# uses the same 6-dim split -- valuation=0.20, growth=0.25, quality=0.15,
+# ai_exposure=0.20, expectation_gap=0.10, momentum=0.10 (sums to 1.00).
+# Dropping ai_exposure's 0.20 leaves 0.80 of weight on the other 5 dims;
+# dividing each remaining weight by 0.80 rescales them back to sum to 1.00
+# while preserving their relative proportions to each other:
+#   valuation:        0.20 / 0.80 = 0.2500  (25.0%)
+#   growth:           0.25 / 0.80 = 0.3125  (31.2%)
+#   quality:          0.15 / 0.80 = 0.1875  (18.7%)
+#   expectation_gap:  0.10 / 0.80 = 0.1250  (12.5%)
+#   momentum:         0.10 / 0.80 = 0.1250  (12.5%)
+# Verified against the design doc's Section 2 empirical table: NVDA and
+# ISRG's global_score computed this way match the doc's 83.4 / 48.9 exactly.
+#
+# weights is taken from the ScoreResult actually produced for this ticker
+# (ai_profile.weights) rather than re-reading PROFILE_WEIGHTS directly, so
+# this stays correct even if a future profile ever diverges from the
+# current "all four profiles share one weight table" state.
+def compute_global_score(dim_scores: dict[str, float], weights: dict[str, float]) -> float:
+    remaining = {k: w for k, w in weights.items() if k != "ai_exposure"}
+    total_w = sum(remaining.values())
+    if total_w == 0:
+        return 50.0
+    score = sum(dim_scores.get(k, 50.0) * (w / total_w) for k, w in remaining.items())
+    return round(min(100.0, max(0.0, score)), 2)
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Master scoring entry point
 # ─────────────────────────────────────────────────────────────────────
 
@@ -804,4 +853,5 @@ def score_ticker(ticker: str, data: dict) -> ScoreResult:
         ai_profile_basis=ai_profile.basis,
         ai_raw_exposure_score=round(ai_raw_exposure_score, 2),
         applied_weights=ai_profile.weights,
+        global_score=compute_global_score(dim_scores_dict, ai_profile.weights),
     )

@@ -405,46 +405,76 @@ MOCK_STOCKS: dict[str, dict] = {
 
     "MRVL": {
         "company_name": "Marvell Technology",
-        "current_price": 252.6,
-        "market_cap": 2.21e11,
-        "peg_ratio": 1.63,
-        "ev_ebitda": 82.0,
-        "ev_sales": 25.5,
-        "ps_ratio": 26.0,
-        "forward_pe": 40.9,
-        "fcf_yield": 0.0103,
-        "revenue_growth_yoy": 0.276,
-        "eps_growth_yoy": 0.75,            # 保留手动Non-GAAP；yfinance GAAP=-80.4%不适用
-        "fcf_growth_yoy": 0.65,
-        "next_year_revenue_growth_est": 0.38,
-        "analyst_revision_30d": 0.12,
+        "current_price": 211.52,  # 2026-08-31核实：用户提供的实时行情App截图(美东10:27)，昨收$216.62/今开$216.27/
+                                  # 当日区间$210.79~$218.22，当日跌2.35%~2.40%；此前218.60是2026-08-29的价格，
+                                  # 两天内又跌了约3.2%——本环境的yfinance/SEC均被出站代理拦截，这次是用户主动提供的
+                                  # 实时数据源，比web_search快照更新更准，取代旧值
+        "market_cap": 1.85249e11,  # $211.52 × 8.758亿股，用户截图App显示185.4亿~185.5亿(美元)交叉印证一致
+        "peg_ratio": 0.452,        # 随新价重算：远期PE33.89/(EPS增速75%×100)=0.452，方法与2026-08-29版本一致(未加60%封顶，
+                                   # 因为要跟yfinance原始口径对齐)，不是新查的数字，是同一算法换新价重算
+        "ev_ebitda": 68.84,        # 随新价重算：EV$186.68B / TTM EBITDA $2.712B，修正自2026-08-29版本的63.0
+        "ev_sales": 21.42,         # 随新价重算，修正自2026-08-29版本的22.13
+        "ps_ratio": 21.42,
+        "forward_pe": 33.89,       # $211.52 / 远期EPS 6.241，修正自2026-08-29版本的35.03
+        "fcf_yield": 0.01225,      # TTM FCF $2.27B / 新市值$185.25B，修正自2026-08-29版本的0.012
+        "revenue_growth_yoy": 0.366,  # Q2(季度截至2026-07)实际同比+36.6%（营收$2.739B创纪录），管理层/多来源一致；
+                                      # yfinance自动字段给27.6%，判断是TTM混合值(被更早季度较低增速拉低)，非当季真实趋势，不采用
+        "eps_growth_yoy": 0.75,       # 保留手动Non-GAAP；yfinance GAAP=-80.4%不适用；与yfinance该字段75.0%一致，本轮未变
+        "fcf_growth_yoy": 0.65,       # 本轮未重新核实，维持旧估计
+        "next_year_revenue_growth_est": 0.38,  # 本轮未重新核实，维持旧估计
+        "analyst_revision_30d": 0.12,           # 本轮未重新核实，维持旧估计
         "arr_growth_yoy": None,
-        "gross_margin": 0.515,
-        "fcf_margin": 0.260,
-        "operating_margin": 0.22,
-        "roic": 0.20,
-        "debt_to_equity": 0.21,        # 传统债 $4.1B / 股东权益 $19.4B，无converts（修正自 0.55）
+        "gross_margin": 0.515,     # GAAP产品毛利率(本字段口径要求)，2026-08-29 yfinance快照与旧值一致；
+                                   # 注意管理层披露的Q2 Non-GAAP毛利率58.9%是另一口径，不适用于本字段
+        "fcf_margin": 0.260,       # 本轮未重新核实，维持旧估计
+        "operating_margin": 0.22,  # 本字段口径要求Non-GAAP；本轮只查到GAAP营业利润$459.7M/营收$2.739B=16.8%，
+                                   # 口径不对不采用，维持旧Non-GAAP估计未变
+        "roic": 0.0965,    # 2026-08-29核实：GuruFocus给9.65%(TTM)，另有6.87%/16.0%[yfinance]两个口径不同的数字，
+                           # 量级差异不算离谱(6.87%~16%)但确有分歧，取有具体机构名的GuruFocus口径；
+                           # 明确修正自旧值0.20——旧值20%和所有新查到的口径都对不上，判定为错误
+        "debt_to_equity": 0.27,   # 2026-08-29核实(financecharts, 数据日期2026-08-21)，比旧值0.21新，取更新口径
         "revenue_predictability_score": 0.52,
         "net_revenue_retention": None,
-        "ai_revenue_exposure_pct": 0.72,
-        "ai_profit_exposure_pct": 0.75,
-        "ai_growth_contribution_pct": 0.82,
-        "datacenter_exposure_pct": 0.74,
-        "advanced_packaging_exposure_pct": 0.40,
-        "ai_order_backlog_exposure": 0.70,
+        "ai_revenue_exposure_pct": 0.72,   # 本轮未重新核实——数据中心占比已从74%升到79%(见datacenter_exposure_pct)，
+                                           # 但AI专属占比(区别于数据中心整体)没有查到更精确的独立数字，维持旧估计
+        "ai_profit_exposure_pct": 0.75,          # 本轮未重新核实，维持旧估计
+        "ai_growth_contribution_pct": 0.82,      # 本轮未重新核实，维持旧估计
+        "datacenter_exposure_pct": 0.79,   # 2026-08-29核实：Q2数据中心营收$2.172B/总营收$2.739B=79.3%，
+                                           # 去年同期为74%，多来源一致，修正自旧值0.74
+        "advanced_packaging_exposure_pct": 0.40,  # 本轮未重新核实，维持旧估计
+        "ai_order_backlog_exposure": 0.70,        # 本轮未重新核实，维持旧估计
         "cybersecurity_ai_exposure_pct": None,
         "software_ai_platform_exposure_pct": None,
-        "actual_revenue_vs_consensus": 0.03,
-        "actual_eps_vs_consensus": 0.05,
-        "guidance_vs_consensus": 0.04,
-        "earnings_reaction_score": 0.10,
-        "market_expectation_score": 0.50,
-        "beta": 2.28,
-        "volatility_30d": 0.45,
-        "max_drawdown_1y": 0.40,
+        "actual_revenue_vs_consensus": 0.0107,   # Q2实际营收$2.739B vs 一致预期$2.71B，超预期约1.1%，多来源一致
+        "actual_eps_vs_consensus": 0.0108,       # Q2调整后EPS$0.94 vs 一致预期$0.93，超预期约1.1%
+        "guidance_vs_consensus": 0.040,          # Q3营收指引$3.15B vs 一致预期约$3.03B，指引超预期约4.0%；
+                                                  # 但真正引发股价下跌的是Q3非GAAP毛利率指引57.5%~58.5%
+                                                  # (环比Q2的58.9%走低)，营收指引其实是超预期的，这个字段的
+                                                  # 单一数字装不下"营收指引超预期但毛利率指引不及预期"这个矛盾
+        "earnings_reaction_score": -0.101,   # 财报当日(2026-08-28)股价跌10.1%收$217.10——营收EPS双超预期、
+                                              # Q3营收指引也超预期，仍因毛利率指引走低(产品结构转向低毛利定制芯片)重挫，
+                                              # 多来源一致确认跌幅
+        "market_expectation_score": 0.50,   # 本轮未重新核实，维持中性
+        "beta": 2.25,        # 2026-08-29 yfinance快照2.246，取整数位一致，修正自旧值2.28（差异很小）
+        "volatility_30d": 0.45,   # 本轮未重新核实，维持旧估计
+        "max_drawdown_1y": 0.484,  # 2026-08-29 yfinance快照(滚动峰谷回撤算法)，修正自旧值0.40；
+                                   # 52周区间$61.44~$329.88(多来源一致，且52周高点与3年高点重合，
+                                   # 不存在DUOL那次"历史最高价当52周高点"的误标风险)
         "valuation_risk": 0.30,
         "concentration_risk": 0.38,
         "liquidity_risk": 0.10,
+        # 以下4个是绝对值分母，供价格敏感度模拟重算比率用——2026-08-29 yfinance快照，
+        # 与上面已核实的current_price/ev_sales/fcf_yield等比率算法一致（非新编数字）
+        "revenue_ttm": 8.717e9, "fcf_ttm": 2.27e9,
+        "shares_outstanding": 875800000, "forward_eps": 6.241,
+        "_data_vintage": "2026-08-29 web_search+yfinance快照交叉核实：市值/EV-EBITDA/EV-Sales/远期PE/PEG/"
+                         "FCF收益率/Q2营收同比/ROIC/负债权益比/数据中心暴露/Q2实际vs一致预期四项/beta/1年最大回撤/"
+                         "绝对值分母(营收/FCF/股数/远期EPS)；2026-08-31用户提供实时行情App截图更新current_price及随价格"
+                         "重算的PEG/EV-EBITDA/EV-Sales/远期PE/FCF收益率（算法不变，仅换新价，非重新独立核实这几个比率）；"
+                         "毛利率(GAAP口径)与yfinance快照一致未变；fcf_growth/次年营收增速/分析师上修/"
+                         "AI收入利润增长贡献暴露/先进封装/AI订单积压/市场预期分/波动率——本轮未重新核实，标注维持旧估计，"
+                         "非漏查。截图中的RSI(多周期)/EMA/MACD/BOLL指标不是系统需要的RSI-14或200日均线口径，"
+                         "未强行套用，动量维度继续留空。此前该股票条目缺少_data_vintage字段，2026-08-29补上",
     },
 
     "SNOW": {
@@ -2190,6 +2220,70 @@ _EXTENDED_STOCKS_D: dict[str, dict] = {
         "beta": 1.30, "volatility_30d": 0.35, "max_drawdown_1y": 0.35,
         "valuation_risk": 0.28, "concentration_risk": 0.35, "liquidity_risk": 0.18,
         "_data_vintage": "2026-06-11 initial estimate",
+    },
+    "DUOL": {
+        "company_name": "Duolingo, Inc.", "current_price": 146.04, "market_cap": 6.04e9,
+        "peg_ratio": None,      # 2026-08-28复核仍不采用：外部聚合结果给0.92，但反推是用被压低的trailing PE(17.23，处于历史89%分位低位，
+                                # 疑似有一次性损益扭曲，跟INTC那次的处理逻辑一样不采信)算的，跟本系统forward_pe(53.43)+16.1%指引增速换算出的
+                                # PEG≈3.3量级完全对不上，判定为口径不可比，不强行套用
+        "ev_ebitda": 52.0,      # 2026-08-28 web_search核实（聚合口径，未逐一核对EV/EBITDA分子分母的精确取数日期，置信度中等）
+        # ev_sales/ps_ratio 用 market_cap/TTM营收 近似（Duolingo现金充裕、负债很少，
+        # EV≈市值的近似合理，但不是精确EV算出来的，别当成跟其他票同等精度的数字）
+        "ev_sales": 5.49, "ps_ratio": 5.49,
+        "forward_pe": 53.43,    # 2026-08-22核实，仍比软件板块中位数19.53x贵173.6%
+        "fcf_yield": 0.061,     # TTM FCF $369.73M / 市值 $6.04B
+        "revenue_growth_yoy": 0.18,   # Q2 2026同比，非TTM（TTM同比35%但那是被更早高增速拉高的混合值，Q2单季才是当前真实趋势）
+        "eps_growth_yoy": -0.26,      # 净利润同比-26%，管理层披露原因是运营费用+税务拨备上升，非一次性科目
+        "fcf_growth_yoy": None,       # 2026-08-28搜索到三个互相矛盾的数字（40%/36.33%/21.5%年化），口径来源不明确，未采用
+        "next_year_revenue_growth_est": 0.161,  # FY2026全年指引营收增速约16.1%
+        "analyst_revision_30d": None,
+        "arr_growth_yoy": None,   # Duolingo是订阅制App不是企业SaaS，不适用标准ARR口径，没有强行套用bookings数字
+        "gross_margin": 0.7223,   # TTM实际值，2026-08核实
+        "fcf_margin": 0.336,      # TTM FCF $369.73M / TTM营收 $1.10B
+        "operating_margin": 0.257,  # 用FY26指引的调整后EBITDA利润率近似，不是精确GAAP营业利润率，口径不同别直接跟其他票比
+        "roic": 0.0799,   # GuruFocus TTM口径7.99%（对照WACC 17.14%，即ROIC<WACC，资本回报跑输资本成本）；
+                          # 另有9.41%~60.20%等相差数量级的口径被判定为不可比,未采用
+        "debt_to_equity": 0.07,   # 总负债$91.87M / 股东权益$1.3B≈0.07，AlphaQuery/macrotrends 2026-08-28核实，杠杆极低
+        "revenue_predictability_score": None,
+        "net_revenue_retention": None,   # 同上，B2C订阅制不套用企业SaaS的NRR口径
+        # 以下4个是绝对值分母，供价格敏感度模拟(app.py价格温度带)重算比率用——
+        # 不是新查的数据，是从上面已核实的比率反推算出来的（revenue_ttm=TTM营收
+        # $1.10B、fcf_ttm=TTM FCF $369.73M 都是直接来源；shares/forward_eps
+        # 是 market_cap/price 和 price/forward_pe 反算，算法一致不是编的)
+        "revenue_ttm": 1.10e9, "fcf_ttm": 369.73e6,
+        "shares_outstanding": 41358532, "forward_eps": 2.733,
+        # AI暴露这几个字段全部留空，不是漏查——Duolingo的"AI故事"跟这套系统给
+        # NVDA/PLTR这类公司设计的"AI收入占比"框架对不上：它不是靠卖AI产品赚钱，
+        # 是①用AI(Duolingo Max)当产品功能、②把AI推理迁移到开源模型上砍自己的
+        # 成本、③同时正被ChatGPT/Google翻译这类免费AI工具威胁自己的核心产品
+        # 价值——是"AI机遇与AI冲击同时存在"，不是一个百分比数字能装下的。
+        "ai_revenue_exposure_pct": None, "ai_profit_exposure_pct": None,
+        "ai_growth_contribution_pct": None, "datacenter_exposure_pct": None,
+        "advanced_packaging_exposure_pct": None, "ai_order_backlog_exposure": None,
+        "cybersecurity_ai_exposure_pct": None, "software_ai_platform_exposure_pct": None,
+        # 以下4个是2026-08-06 Q2财报当天的真实数据（多来源交叉核实）：
+        "actual_revenue_vs_consensus": 0.0102,   # 实际营收$298.45M vs 一致预期$295.44M，超预期约1.0%
+        "actual_eps_vs_consensus": 0.082,        # 实际调整后EPS$0.66 vs Zacks一致预期$0.61，超预期8.2%
+                                                  # （另有$0.58/$0.62两个来源版本，13.8%和6.5%两种口径，
+                                                  # Zacks数字有具体机构名+能精确对上8.2%的官方口径，取这个）
+        "guidance_vs_consensus": -0.0066,        # Q3指引营收$302M vs 一致预期约$304M，指引低于预期约0.66%
+        "earnings_reaction_score": -0.15,        # 财报当日(8/6)股价跌约15%——营收与EPS双超预期，仍因Q3指引不及预期重挫，
+                                                  # 属于"买预期卖事实"式的负面反应，多来源交叉一致
+        "market_expectation_score": None,   # 无直接可比的量化口径，未强行套用
+        "beta": 0.88,   # Yahoo Finance 5年月度beta，2026-08-28核实（Investing.com给0.85，量级一致，取Yahoo）
+        "volatility_30d": None,   # 搜到的0.5582是6/18的旧值(早于8/6财报暴跌，已过时)，另一个"3.47%"数量级明显不是同一口径，未采用
+        "max_drawdown_1y": None,   # 2026-08-29撤回：此前用$540.30算的-83.75%是错的——$540.30/$544.93是2025-05-14的
+                                   # 历史最高价，不是52周高点，到今天已经滚出52周窗口了。真正的52周高点目前查到
+                                   # $353.00和$468.00两个互相矛盾的版本(不同网站的历史快照，抓取时间不同)，
+                                   # yfinance/stockanalysis.com/Yahoo Finance在当前环境全部被出站代理拦截，
+                                   # 拿不到可信OHLC序列去自己算，明确判定为未核实，不用有问题的旧值顶着
+        "valuation_risk": None, "concentration_risk": None, "liquidity_risk": None,   # 这三项按CLAUDE.md定义是主观人工评估值，非可网上核实的客观数字，不代为填写
+        "_data_vintage": "2026-08-28 web_search补充核实：ev_ebitda/roic/debt_to_equity/beta/"
+                         "Q2财报vs一致预期四项(actual_revenue/eps/guidance/earnings_reaction)；"
+                         "2026-08-29撤回max_drawdown_1y(52周高点数据源冲突，见字段注释)；"
+                         "peg_ratio/fcf_growth_yoy因来源自相矛盾或口径不可比，明确判定不采用，非漏查；"
+                         "AI暴露字段、市场预期分、volatility_30d、动量类字段(价格历史依赖)、"
+                         "valuation/concentration/liquidity_risk(主观人工评估)仍未核实/不适用，显式留空",
     },
 }
 MOCK_STOCKS.update(_EXTENDED_STOCKS_D)

@@ -19,7 +19,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, safe_val
-from quant_engine import score_ticker
+from quant_engine import score_ticker, compute_global_score
 from basis_check import basis_conflicts, basis_conflict_reason
 from score_split import split_scores
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
@@ -39,6 +39,17 @@ _ROOT          = pathlib.Path(__file__).parent
 _CSV_VALIDATED = _ROOT / "results_validated.csv"
 _CSV_RAW       = _ROOT / "results.csv"
 OVERRIDES_PATH = _ROOT / "scoring" / "user_overrides.json"
+
+# global_score's 5-dim renormalized weights (quant_engine.compute_global_score)
+# need the profile weight table that was applied when each row was scored.
+# The CSV only stores the resulting per-dim scores, not the full merge_data()
+# dict needed to re-derive a ticker's AIProfile via classify_ai_profile() --
+# but every profile in ai_profile.PROFILE_WEIGHTS uses this identical 6-dim
+# split, so reusing it directly here is exact, not an approximation.
+_GLOBAL_SCORE_WEIGHTS = {
+    "valuation": 0.20, "growth": 0.25, "quality": 0.15,
+    "ai_exposure": 0.20, "expectation_gap": 0.10, "momentum": 0.10,
+}
 
 
 def _row_raw_number(row: pd.Series, prefix: str, *, pct: bool = False) -> float | None:
@@ -174,6 +185,32 @@ def load_from_csv(policy_version: int) -> pd.DataFrame:
         suggested_position_pct(s) if actionable else None
         for s, actionable in zip(df["final_score"], df["decision_actionable"])
     ]
+
+    # global_score: sector-agnostic 5-dim score, drops ai_exposure, NOT
+    # reduced by risk_penalty or the circuit multiplier. A genuinely separate
+    # number from final_score -- see quant_engine.compute_global_score's
+    # docstring for the weight-renormalization derivation.
+    df["global_score"] = df.apply(
+        lambda r: compute_global_score(
+            {
+                "valuation": r.get("valuation_score", 50.0),
+                "growth": r.get("growth_score", 50.0),
+                "quality": r.get("quality_score", 50.0),
+                "ai_exposure": r.get("ai_exposure_score", 50.0),
+                "expectation_gap": r.get("expectation_gap_score", 50.0),
+                "momentum": r.get("momentum_score", 50.0),
+            },
+            _GLOBAL_SCORE_WEIGHTS,
+        ),
+        axis=1,
+    )
+
+    # ticker_category: scoring_engine.TICKER_CATEGORY membership (AI芯片 /
+    # AI软件/SaaS / 网络安全 / 半导体设备 / 大型科技) -- distinct from the
+    # existing "category" column above, which is quant_engine's sector_tag
+    # baseline (Hardware/SaaS/Cybersecurity). Two separate, non-identical
+    # taxonomies; this one is what the 行业得分 (sector_score) filter uses.
+    df["ticker_category"] = df["ticker"].apply(lambda t: get_category(t).value)
 
     df = df.sort_values(
         ["decision_actionable", "final_score"], ascending=[False, False]
@@ -1488,6 +1525,28 @@ if page == "🏆 排行榜":
             st.session_state.filter_rating = None
             st.rerun()
 
+    # ── 全局得分 / 行业得分 双轨视图切换 ──────────────────
+    # sector_score is not a new formula -- it IS final_score, relabeled when
+    # a TICKER_CATEGORY sector is selected, and scoped to that sector's
+    # membership only. Default view shows global_score (sector-agnostic,
+    # excludes ai_exposure) across the whole (possibly rating-filtered) set.
+    _sector_opts = ["🌐 全局得分（不筛选行业）"] + sorted(df_view["ticker_category"].dropna().unique().tolist())
+    _sector_sel = st.selectbox(
+        "评分视图",
+        _sector_opts,
+        key="sector_score_view",
+        help="默认显示全局得分（global_score：5维重新加权，剔除AI暴露维度，不受risk_penalty"
+             "和熔断乘数影响，可跨行业比较）。选择具体行业后，只显示该行业内的股票（按 "
+             "scoring_engine.TICKER_CATEGORY 归属），主分数标签切换为「行业得分」——"
+             "这就是既有的 final_score，未新增计算路径，只是换个标签展示。",
+    )
+    _sector_filter_active = _sector_sel != _sector_opts[0]
+    if _sector_filter_active:
+        df_view = df_view[df_view["ticker_category"] == _sector_sel]
+        _score_view_label = "行业得分"   # = final_score, relabeled + sector-scoped
+    else:
+        _score_view_label = "综合"       # unchanged final_score label
+
     # ── 主排行榜表格 ─────────────────────────────────────
     _total_filtered = len(df_view)
     _show_n = top_n if top_n < _total_filtered else _total_filtered
@@ -1524,6 +1583,7 @@ if page == "🏆 排行榜":
         rank    = int(row.name)
         r_color = rating_color(row["rating"])
         fs      = row["final_score"]
+        gs      = row.get("global_score", fs)
         fs_col  = score_color(fs)
         rp      = row["risk_penalty"]
         hr      = str(row.get("human_review_required", "FALSE")).upper()
@@ -1630,15 +1690,18 @@ if page == "🏆 排行榜":
                 f"<div style='font-size:9px;color:#5B6B80;margin-top:3px;"
                 f"border-top:1px solid #1E2D3D;padding-top:2px' "
                 f"title='排名依据这个数字，不是上面的公司分'>"
-                f"综合(排序) <span style='color:{fs_col}'>{fs:.0f}</span>"
+                f"{_score_view_label} <span style='color:{fs_col}'>{fs:.0f}</span>"
                 f" · 扣分 -{rp:.1f}</div>"
+                f"<div style='font-size:9px;color:#5B6B80;margin-top:1px'>"
+                f"全局 <span style='color:#8B9BB4'>{gs:.0f}</span></div>"
                 f"</div>"
                 if _co is not None and _split.momentum is not None and _split.risk is not None
                 else
                 f"<div style='text-align:center;padding:6px 0'>"
                 f"<div style='font-size:34px;font-weight:900;color:{fs_col};line-height:1'>{fs:.0f}</div>"
-                f"<div style='font-size:9px;color:#8B9BB4'>/100</div>"
+                f"<div style='font-size:9px;color:#8B9BB4'>/100 · {_score_view_label}</div>"
                 f"<div style='font-size:9px;color:#FF4B6E;margin-top:1px'>-{rp:.1f}</div>"
+                f"<div style='font-size:9px;color:#5B6B80;margin-top:1px'>全局 {gs:.0f}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )

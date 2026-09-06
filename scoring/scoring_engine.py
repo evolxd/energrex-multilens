@@ -94,6 +94,7 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "ZM":   CompanyCategory.AI_SOFTWARE,
     "DOCU": CompanyCategory.AI_SOFTWARE,
     "NTNX": CompanyCategory.AI_SOFTWARE,
+    "DUOL": CompanyCategory.AI_SOFTWARE,   # Duolingo，AI个性化辅导(Duolingo Max)+AI压缩自身推理成本，也直面AI翻译/聊天机器人对核心产品的替代威胁
     "AFRM": CompanyCategory.AI_SOFTWARE,
     "ACN":  CompanyCategory.AI_SOFTWARE,
     "EXLS": CompanyCategory.AI_SOFTWARE,
@@ -614,8 +615,23 @@ def safe_val(value, default=0.0) -> float:
 # ─────────────────────────────────────────────
 # Damodaran 估值纪律框架 — 常量与辅助函数
 # ─────────────────────────────────────────────
-_RISK_FREE_RATE      = 0.043   # 10Y US Treasury，2026年6月
+_RISK_FREE_RATE      = 0.043   # 10Y US Treasury，2026年6月 -- fallback only,
+                                # see _resolve_risk_free_rate() below; this
+                                # constant is never auto-refreshed, so it
+                                # drifts stale between manual edits.
 _EQUITY_RISK_PREMIUM = 0.048   # Damodaran 隐含 ERP，2026年1月
+
+
+def _resolve_risk_free_rate(data: dict) -> float:
+    """Prefer a live-fetched 10Y yield if the caller injected one under
+    data["_risk_free_rate"] (refresh_scores.py does this via
+    scoring/macro_data.py::fetch_treasury_10y_yield() when that succeeds),
+    else fall back to the hardcoded _RISK_FREE_RATE constant above.
+
+    Backward compatible by construction: any caller/test that doesn't set
+    this key gets byte-identical behavior to before this function existed.
+    """
+    return safe_val(data.get("_risk_free_rate"), _RISK_FREE_RATE)
 
 _MATURE_EV_SALES: dict[str, float] = {
     "AI芯片":      5.0,
@@ -632,7 +648,8 @@ def calc_wacc(data: dict, category: CompanyCategory) -> float:
     绝大多数 AI 公司净现金，WACC ≈ Ke = Rf + β × ERP
     """
     beta           = safe_val(data.get("beta"), 1.2)
-    cost_of_equity = _RISK_FREE_RATE + beta * _EQUITY_RISK_PREMIUM
+    rf             = _resolve_risk_free_rate(data)
+    cost_of_equity = rf + beta * _EQUITY_RISK_PREMIUM
 
     net_debt = safe_val(data.get("net_debt"), 0.0)
     mkt_cap  = safe_val(data.get("market_cap"))
@@ -643,7 +660,7 @@ def calc_wacc(data: dict, category: CompanyCategory) -> float:
     total_capital    = mkt_cap + net_debt
     w_eq             = mkt_cap / total_capital
     w_dt             = net_debt / total_capital
-    cost_of_debt_at  = (_RISK_FREE_RATE + 0.015) * (1 - 0.21)
+    cost_of_debt_at  = (rf + 0.015) * (1 - 0.21)
 
     return round(float(w_eq * cost_of_equity + w_dt * cost_of_debt_at), 4)
 
@@ -675,7 +692,7 @@ def calc_damodaran_report(ticker: str, data: dict, category: CompanyCategory) ->
     wacc           = safe_val(data.get("_wacc")) or calc_wacc(data, category)
     roic           = safe_val(data.get("roic"), 0.15)
     beta           = safe_val(data.get("beta"), 1.2)
-    cost_of_equity = round(_RISK_FREE_RATE + beta * _EQUITY_RISK_PREMIUM, 4)
+    cost_of_equity = round(_resolve_risk_free_rate(data) + beta * _EQUITY_RISK_PREMIUM, 4)
     excess_return  = round(roic - wacc, 4)
 
     implied_cagr = calc_implied_rev_cagr(data, category)

@@ -10,7 +10,7 @@ ENERGREX — 期权量化分析模块
   5. 最活跃期权合约排名
 """
 
-import os, pathlib, datetime
+import os, sys, pathlib, datetime
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -30,6 +30,17 @@ if _env.exists():
 _MD_BASE = "https://api.marketdata.app/v1"
 _MD_KEY  = os.environ.get("MARKETDATA_API_KEY", "")
 
+# fetch_expirations/fetch_chain and their MarketData.app plumbing moved to
+# scoring/options_chain.py so the Bull Put Spread scorer page can reuse them
+# without importing this whole module (which executes a full Streamlit page
+# as a side effect of import).
+sys.path.insert(0, str(_ROOT / "scoring"))
+from options_chain import (          # noqa: E402
+    _md_get, _parse_chain,
+    fetch_chain_marketdata as fetch_chain,
+    fetch_expirations_marketdata as fetch_expirations,
+)
+
 # ── 配色（与 app.py 统一的深色终端风格） ─────────────────
 _BG     = "#0A1628"
 _SURF   = "#0F1923"
@@ -48,109 +59,6 @@ def _rgba(hex6: str, alpha_hex: str) -> str:
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     a = round(int(alpha_hex, 16) / 255, 3)
     return f"rgba({r},{g},{b},{a})"
-
-# ════════════════════════════════════════════════════════
-# API 工具层
-# ════════════════════════════════════════════════════════
-
-def _md_get(path: str, params: dict | None = None, timeout: int = 20) -> dict | None:
-    """向 MarketData.app 发起 GET 请求，正确处理 203/404/402。"""
-    if not _MD_KEY:
-        return {"s": "error", "errmsg": "MARKETDATA_API_KEY 未配置"}
-    p = {"token": _MD_KEY}
-    if params:
-        p.update(params)
-    try:
-        r = requests.get(f"{_MD_BASE}{path}", params=p, timeout=timeout)
-        # 402 = 超出计划配额
-        if r.status_code == 402:
-            return {"s": "no_data", "errmsg": "402 — 此接口超出当前 API 计划配额"}
-        # 404 = API 用来表示"该查询无数据"（合法响应，返回 JSON）
-        if r.status_code == 404:
-            return r.json()
-        # 203 = 正常成功响应（与 200 语义相同）
-        r.raise_for_status()
-        return r.json()
-    except requests.exceptions.Timeout:
-        return {"s": "error", "errmsg": "请求超时（>20s）"}
-    except requests.exceptions.RequestException as e:
-        return {"s": "error", "errmsg": str(e)}
-
-
-def _ts_to_date(ts) -> str:
-    """将 Unix timestamp（int）转为 YYYY-MM-DD 字符串。"""
-    try:
-        return datetime.datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d")
-    except Exception:
-        return str(ts)
-
-
-def _parse_chain(data: dict) -> pd.DataFrame:
-    """将 MarketData.app 期权链响应（并行数组）解析为 DataFrame。"""
-    n = len(data.get("strike", []))
-    if n == 0:
-        return pd.DataFrame()
-
-    def arr(key, default=None):
-        v = data.get(key, [default] * n)
-        return v if len(v) == n else [default] * n
-
-    df = pd.DataFrame({
-        "symbol":  arr("optionSymbol"),
-        "exp_ts":  arr("expiration"),          # Unix timestamp (int)
-        "dte":     arr("dte"),
-        "side":    arr("side"),
-        "strike":  arr("strike"),
-        "bid":     arr("bid"),
-        "ask":     arr("ask"),
-        "mid":     arr("mid"),
-        "last":    arr("last"),
-        "volume":  arr("volume"),
-        "oi":      arr("openInterest"),
-        "iv":      arr("iv"),
-        "delta":   arr("delta"),
-        "gamma":   arr("gamma"),
-        "theta":   arr("theta"),
-        "vega":    arr("vega"),
-        "itm":     arr("inTheMoney"),
-        "und_px":  arr("underlyingPrice"),
-    })
-
-    # 数值列转换
-    for c in ["strike", "bid", "ask", "mid", "last", "iv",
-              "delta", "gamma", "theta", "vega", "und_px"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    for c in ["volume", "oi", "dte"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
-
-    # Unix timestamp → 日期字符串
-    df["exp"] = df["exp_ts"].apply(
-        lambda v: _ts_to_date(v) if pd.notna(v) and v else "—")
-    df["iv_pct"] = (df["iv"] * 100).round(2)
-
-    return df.drop(columns=["exp_ts"])
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_expirations(ticker: str) -> list[str]:
-    """拉取可用到期日列表（字符串格式 YYYY-MM-DD）。"""
-    data = _md_get(f"/options/expirations/{ticker.upper()}/")
-    if not data or data.get("s") != "ok":
-        return []
-    return sorted(data.get("expirations", []))
-
-
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_chain(ticker: str, expiration: str, strike_limit: int = 40) -> pd.DataFrame:
-    """拉取指定到期日的完整期权链（Call + Put）。"""
-    data = _md_get(
-        f"/options/chain/{ticker.upper()}/",
-        {"expiration": expiration, "strikeLimit": strike_limit},
-    )
-    if not data or data.get("s") != "ok":
-        return pd.DataFrame()
-    return _parse_chain(data)
-
 
 @st.cache_data(ttl=120, show_spinner=False)
 def fetch_surface(ticker: str, days: int = 90) -> pd.DataFrame:
