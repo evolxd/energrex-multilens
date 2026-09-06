@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pandas as pd
+
 
 @dataclass(frozen=True)
 class BullPutCandidate:
@@ -144,6 +146,64 @@ def score_bull_put_spread(c: BullPutCandidate) -> BullPutScore:
         breakeven_win_rate=bewr, score_adr=s_adr, score_buffer=s_buf,
         score_rom=s_rom, score_dte=s_dte, total_score=total,
     )
+
+
+def generate_put_candidates_from_chain(
+    ticker: str,
+    chain: pd.DataFrame,
+    expiration: str,
+    dte: int,
+    widths: list[float],
+    otm_lo_pct: float,
+    otm_hi_pct: float,
+) -> list[BullPutCandidate]:
+    """Build every (short_strike, width) candidate from one expiration's put
+    chain. Extracted from bull_put_spread_module.py's inline loop so the
+    single-ticker manual page and any batch/universe screener share the
+    exact same candidate-construction rule instead of two copies drifting
+    apart over time.
+
+    `chain` must be a MarketData.app-shaped put-side DataFrame (columns:
+    strike/bid/ask/und_px) for one ticker+expiration, e.g. the "put" rows
+    of scoring/options_chain.py's fetch_chain_marketdata() output.
+
+    Net credit assumption: short leg sold at bid, long leg bought at ask —
+    a conservative, actually-fillable estimate, not the more flattering but
+    not-necessarily-tradeable mid price.
+    """
+    if chain.empty:
+        return []
+    stock_price_s = pd.to_numeric(chain["und_px"], errors="coerce").dropna()
+    if stock_price_s.empty:
+        return []
+    stock_price = float(stock_price_s.iloc[0])
+
+    strikes = chain.set_index("strike")[["bid", "ask"]].sort_index()
+    short_lo = stock_price * (1 - otm_hi_pct / 100)
+    short_hi = stock_price * (1 - otm_lo_pct / 100)
+    short_candidates = strikes[(strikes.index >= short_lo) & (strikes.index <= short_hi)]
+
+    out: list[BullPutCandidate] = []
+    for short_strike, short_row in short_candidates.iterrows():
+        short_bid = short_row["bid"]
+        if pd.isna(short_bid) or short_bid <= 0:
+            continue
+        for width in widths:
+            long_strike = round(short_strike - width, 2)
+            if long_strike not in strikes.index:
+                continue
+            long_ask = strikes.loc[long_strike, "ask"]
+            if pd.isna(long_ask) or long_ask <= 0:
+                continue
+            net_credit = round(float(short_bid) - float(long_ask), 4)
+            if net_credit <= 0:
+                continue
+            out.append(BullPutCandidate(
+                ticker=ticker, expiration=expiration, dte=dte,
+                short_strike=float(short_strike), long_strike=float(long_strike),
+                net_credit=net_credit, stock_price=stock_price,
+            ))
+    return out
 
 
 def rank_candidates(candidates: list[BullPutCandidate], top_n: int | None = 10) -> list[BullPutScore]:

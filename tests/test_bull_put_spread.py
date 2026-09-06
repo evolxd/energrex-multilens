@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scoring"))
@@ -12,6 +13,7 @@ from bull_put_spread import (
     compute_buffer_pct,
     compute_risk_reward,
     compute_rom,
+    generate_put_candidates_from_chain,
     is_valid_bull_put,
     max_loss,
     rank_candidates,
@@ -112,6 +114,60 @@ def test_rank_candidates_sorts_descending_and_drops_invalid():
     assert ranked[0].candidate is good_high
     assert ranked[1].candidate is good_low
     assert ranked[0].total_score >= ranked[1].total_score
+
+
+def _fake_put_chain(stock_price, rows):
+    """rows: list of (strike, bid, ask)."""
+    return pd.DataFrame(
+        [{"strike": s, "bid": b, "ask": a, "und_px": stock_price} for s, b, a in rows]
+    )
+
+
+def test_generate_put_candidates_builds_short_bid_long_ask_credit():
+    chain = _fake_put_chain(180.0, [
+        (175.0, 3.20, 3.40),   # OTM ~2.8%, inside default-style OTM window
+        (170.0, 1.50, 1.70),
+        (165.0, 0.80, 0.95),
+    ])
+    cands = generate_put_candidates_from_chain(
+        "NVDA", chain, "2026-10-16", 35, widths=[5.0], otm_lo_pct=1, otm_hi_pct=10,
+    )
+    # short=175/long=170: credit = short.bid(3.20) - long.ask(1.70) = 1.50
+    match = [c for c in cands if c.short_strike == 175.0 and c.long_strike == 170.0]
+    assert len(match) == 1
+    assert match[0].net_credit == pytest.approx(1.50)
+    assert match[0].stock_price == pytest.approx(180.0)
+    assert match[0].ticker == "NVDA" and match[0].expiration == "2026-10-16" and match[0].dte == 35
+
+
+def test_generate_put_candidates_skips_missing_long_strike_and_zero_bid():
+    chain = _fake_put_chain(100.0, [
+        (95.0, 0.0, 0.10),     # short bid is 0 -> skipped
+        (90.0, 1.00, 1.20),    # would-be long for a different short, has no partner here
+    ])
+    cands = generate_put_candidates_from_chain(
+        "T", chain, "2026-10-16", 30, widths=[5.0], otm_lo_pct=1, otm_hi_pct=15,
+    )
+    assert cands == []
+
+
+def test_generate_put_candidates_respects_otm_window():
+    chain = _fake_put_chain(100.0, [
+        (99.0, 2.0, 2.2),   # 1% OTM -- outside a (5,15) window
+        (85.0, 0.5, 0.6),   # 15% OTM -- inside
+        (80.0, 0.2, 0.3),   # long leg for the 85 short
+    ])
+    cands = generate_put_candidates_from_chain(
+        "T", chain, "2026-10-16", 40, widths=[5.0], otm_lo_pct=5, otm_hi_pct=15,
+    )
+    assert all(c.short_strike != 99.0 for c in cands)
+    assert any(c.short_strike == 85.0 for c in cands)
+
+
+def test_generate_put_candidates_empty_chain_returns_empty():
+    assert generate_put_candidates_from_chain(
+        "T", pd.DataFrame(), "2026-10-16", 30, widths=[5.0], otm_lo_pct=1, otm_hi_pct=15,
+    ) == []
 
 
 def test_rank_candidates_respects_top_n():

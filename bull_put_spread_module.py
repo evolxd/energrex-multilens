@@ -32,6 +32,7 @@ from bull_put_spread import (              # noqa: E402
     compute_breakeven_win_rate,
     compute_buffer_pct,
     compute_rom,
+    generate_put_candidates_from_chain,
     max_loss,
     rank_candidates,
     score_bull_put_spread,
@@ -198,36 +199,14 @@ if st.button("🚀 生成 & 评分", type="primary"):
             if puts.empty:
                 fetch_errors.append(f"{exp}: 没有 put 数据")
                 continue
-            stock_price = pd.to_numeric(puts["und_px"], errors="coerce").dropna()
-            if stock_price.empty:
+            if pd.to_numeric(puts["und_px"], errors="coerce").dropna().empty:
                 fetch_errors.append(f"{exp}: 缺少现价 (underlyingPrice)")
                 continue
-            stock_price = float(stock_price.iloc[0])
             dte = int(puts["dte"].iloc[0]) if "dte" in puts.columns else _dte(exp)
 
-            strikes = puts.set_index("strike")[["bid", "ask"]].sort_index()
-            short_lo, short_hi = stock_price * (1 - otm_hi / 100), stock_price * (1 - otm_lo / 100)
-            short_candidates = strikes[(strikes.index >= short_lo) & (strikes.index <= short_hi)]
-
-            for short_strike, short_row in short_candidates.iterrows():
-                short_bid = short_row["bid"]
-                if pd.isna(short_bid) or short_bid <= 0:
-                    continue
-                for width in widths:
-                    long_strike = round(short_strike - width, 2)
-                    if long_strike not in strikes.index:
-                        continue
-                    long_ask = strikes.loc[long_strike, "ask"]
-                    if pd.isna(long_ask) or long_ask <= 0:
-                        continue
-                    net_credit = round(float(short_bid) - float(long_ask), 4)
-                    if net_credit <= 0:
-                        continue
-                    all_candidates.append(BullPutCandidate(
-                        ticker=ticker, expiration=exp, dte=dte,
-                        short_strike=float(short_strike), long_strike=float(long_strike),
-                        net_credit=net_credit, stock_price=stock_price,
-                    ))
+            all_candidates.extend(generate_put_candidates_from_chain(
+                ticker, puts, exp, dte, widths, otm_lo, otm_hi,
+            ))
 
     if fetch_errors:
         with st.expander(f"⚠️ {len(fetch_errors)} 个到期日拉取时有问题", expanded=False):
