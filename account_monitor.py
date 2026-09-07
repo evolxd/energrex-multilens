@@ -412,7 +412,9 @@ def _fifo_match_options(acct_id: str) -> dict:
         realized=result["realized"],
         fifo_costs=result["fifo_costs"],
     )
-    return result["summary"]
+    # summary=单腿口径（历史字段，别处可能还在用）；combo_summary=整单口径
+    # （价差两腿合并算一笔），跟"交易绩效"Tab 头部指标现在用的是同一套口径。
+    return {**result["summary"], "combo_summary": result["combo_summary"]}
 
 
 
@@ -911,22 +913,47 @@ def _get_event_calendar(acct_id: str, window_days: int = 30) -> list[dict]:
 # Module B: 交易绩效分析
 # ─────────────────────────────────────────────────────────────────
 def _compute_performance_stats(acct_id: str) -> dict | None:
-    """从 option_realized_trades 计算全套绩效指标。数据为空返回 None。"""
-    df = _load_realized_trades(acct_id)
-    if df.empty:
+    """从 option_realized_trades 计算全套绩效指标。数据为空返回 None。
+
+    2026-09-06 起，胜率/盈亏/滚动统计的口径从"按单腿"改成"按整单（价差
+    两腿合并）"——用户本人指出长期做价差的人被单腿口径伤到了：保护腿在
+    整单盈利时被单独记一次"败"，跟专业机构衡量价差策略表现的方式不符。
+    配对逻辑在 account/fifo.py 的 group_realized_trades_into_combos，写
+    入 option_realized_trades 的 combo_id/combo_strategy 两列（这两列
+    schema 里早就有，之前从来没人写进去）。单腿明细还在，就是不再是
+    "总已实现盈亏/胜率"这些头部指标的口径。
+    """
+    df_legs = _load_realized_trades(acct_id)
+    if df_legs.empty:
         return None
 
+    df_legs["pnl"] = pd.to_numeric(df_legs["realized_pnl"], errors="coerce").fillna(0)
+    # combo_id 为空的（老数据，重跑一次"运行 FIFO 分析"就会补上）退化成
+    # "自己是自己的整单"，不阻断显示。
+    _missing = df_legs["combo_id"].isna()
+    if _missing.any():
+        df_legs.loc[_missing, "combo_id"] = "legacy_single_" + df_legs.index[_missing].astype(str)
+    df_legs["combo_strategy"] = df_legs["combo_strategy"].fillna(df_legs["strategy_type"])
+
+    df = df_legs.groupby("combo_id", as_index=False).agg(
+        underlying=("underlying", "first"),
+        combo_strategy=("combo_strategy", "first"),
+        open_date=("open_date", "min"),
+        close_date=("close_date", "max"),
+        pnl=("pnl", "sum"),
+        legs=("combo_id", "count"),
+    )
+
     df = df.sort_values("close_date").reset_index(drop=True)
-    df["pnl"]  = pd.to_numeric(df["realized_pnl"], errors="coerce").fillna(0)
-    df["win"]  = (df["pnl"] > 0).astype(int)
-    df["trade_num"]      = range(1, len(df) + 1)
-    df["cumulative_pnl"] = df["pnl"].cumsum()
-    df["rolling20_wr"]   = df["win"].rolling(20, min_periods=1).mean()
-    df["rolling20_avg"]  = df["pnl"].rolling(20, min_periods=1).mean()
-    df["rolling50_wr"]   = df["win"].rolling(50, min_periods=1).mean()
-    df["rolling50_avg"]  = df["pnl"].rolling(50, min_periods=1).mean()
-    df["pnl_peak"]       = df["cumulative_pnl"].cummax()
-    df["drawdown"]       = df["cumulative_pnl"] - df["pnl_peak"]
+    df["win"]             = (df["pnl"] > 0).astype(int)
+    df["trade_num"]       = range(1, len(df) + 1)
+    df["cumulative_pnl"]  = df["pnl"].cumsum()
+    df["rolling20_wr"]    = df["win"].rolling(20, min_periods=1).mean()
+    df["rolling20_avg"]   = df["pnl"].rolling(20, min_periods=1).mean()
+    df["rolling50_wr"]    = df["win"].rolling(50, min_periods=1).mean()
+    df["rolling50_avg"]   = df["pnl"].rolling(50, min_periods=1).mean()
+    df["pnl_peak"]        = df["cumulative_pnl"].cummax()
+    df["drawdown"]        = df["cumulative_pnl"] - df["pnl_peak"]
 
     wins   = df.loc[df["pnl"] > 0, "pnl"]
     losses = df.loc[df["pnl"] < 0, "pnl"]
@@ -934,10 +961,13 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
     avg_loss = float(losses.mean()) if len(losses) else 0.0
     pf = abs(avg_win / avg_loss) if avg_loss else None
 
-    by_strat = {}
-    for strat, grp in df.groupby("strategy_type"):
+    # 按整单的策略类型分组（credit/debit spread，或没配对上的裸腿）——
+    # 这才是原来"按组合策略分组"那张表一直显示不出东西的原因：
+    # combo_strategy 之前从来没被写进过 DB。
+    by_combo = {}
+    for cs, grp in df.groupby("combo_strategy"):
         w = (grp["pnl"] > 0).sum()
-        by_strat[str(strat)] = {
+        by_combo[str(cs)] = {
             "count": len(grp), "win_rate": w / len(grp),
             "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
         }
@@ -950,16 +980,16 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
             "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
         }
 
-    by_combo = {}
-    if "combo_strategy" in df.columns:
-        for cs, grp in df.groupby("combo_strategy"):
-            w = (grp["pnl"] > 0).sum()
-            by_combo[str(cs)] = {
-                "count": len(grp), "win_rate": w / len(grp),
-                "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
-            }
+    # 单腿口径分组——保留下来给想看细节的人参考，不再是头部指标。
+    by_strat = {}
+    for strat, grp in df_legs.groupby("strategy_type"):
+        w = (grp["pnl"] > 0).sum()
+        by_strat[str(strat)] = {
+            "count": len(grp), "win_rate": w / len(grp),
+            "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
+        }
 
-    # EWMA 加权胜率（λ=0.94，近期权重高）
+    # EWMA 加权胜率（λ=0.94，近期权重高，按整单）
     _lam = 0.94
     _n   = len(df)
     _w   = np.array([_lam ** (_n - 1 - i) for i in range(_n)], dtype=float)
@@ -967,7 +997,8 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
     ewma_wr = float((_w * df["win"].values).sum())
 
     return {
-        "df":            df,
+        "df":            df,       # 整单口径——驱动上面所有头部指标/图表
+        "df_legs":       df_legs,  # 单腿明细——给"逐笔交易明细"表用
         "total_pnl":     float(df["pnl"].sum()),
         "count":         len(df),
         "win_rate":      float(df["win"].mean()),
@@ -2597,10 +2628,12 @@ class _ExportCsvHandler(FileSystemEventHandler if _WATCHDOG_OK else object):
                 # 这里补上自动重算，跟手动按钮调的是同一个函数。
                 try:
                     _fifo_r = _fifo_match_options("account_1")
+                    _combo_n = _fifo_r.get("combo_summary", {}).get(
+                        "combo_count", _fifo_r.get("realized_count", 0))
                     ws["last_fifo_time"] = datetime.datetime.now(_ET)
-                    ws["last_fifo_realized"] = _fifo_r.get("realized_count", 0)
+                    ws["last_fifo_realized"] = _combo_n
                     _log.info(f"Auto FIFO re-match after CSV import: "
-                              f"{_fifo_r.get('realized_count', 0)} realized")
+                              f"{_combo_n} realized (combo-level)")
                 except Exception as _fe:
                     _log.exception(f"Auto FIFO re-match failed: {_fe}")
                     ws["errors"].append(f"自动 FIFO 重算失败: {_fe}")
@@ -3905,7 +3938,8 @@ with st.sidebar:
                 try:
                     _fifo_r = _fifo_match_options("account_1")
                     ws["last_fifo_time"] = datetime.datetime.now(_ET)
-                    ws["last_fifo_realized"] = _fifo_r.get("realized_count", 0)
+                    ws["last_fifo_realized"] = _fifo_r.get("combo_summary", {}).get(
+                        "combo_count", _fifo_r.get("realized_count", 0))
                 except Exception as _fe:
                     st.warning(f"成交已导入，但自动重算已实现盈亏失败：{_fe}"
                                "——去「交易绩效」Tab 手动点「运行 FIFO 分析」。")
@@ -4800,9 +4834,10 @@ with _pos_tabs[1]:
                      help="重新计算 FIFO 成本匹配和已实现盈亏（不需要 API Key）"):
             with st.spinner("FIFO 成本匹配…"):
                 _fifo_r = _fifo_match_options(_perf_acct_id)
-            st.success(f"FIFO 完成：{_fifo_r['realized_count']} 笔已实现，"
-                       f"已实现 ${_fifo_r['total_realized_pnl']:+,.2f}，"
-                       f"胜率 {_fifo_r['wins']}/{_fifo_r['realized_count']}")
+            _combo_r = _fifo_r["combo_summary"]
+            st.success(f"FIFO 完成：{_combo_r['combo_count']} 笔已实现（整单口径，"
+                       f"价差两腿合并算一笔），已实现 ${_combo_r['total_realized_pnl']:+,.2f}，"
+                       f"胜率 {_combo_r['wins']}/{_combo_r['combo_count']}")
             st.rerun()
 
     _stats = _compute_performance_stats(_perf_acct_id)
@@ -4831,9 +4866,9 @@ with _pos_tabs[1]:
         _p1, _p2, _p3, _p4, _p5, _p6, _p7 = st.columns(7)
         _kpi(_p1, "总已实现盈亏",
              f"${_stats['total_pnl']:+,.0f}", _pnl_color)
-        _kpi(_p2, "交易次数",
+        _kpi(_p2, "整单交易次数",
              str(_stats["count"]))
-        _kpi(_p3, "整体胜率",
+        _kpi(_p3, "整单胜率",
              f"{_stats['win_rate']*100:.1f}%")
         _kpi(_p4, "盈亏比", _pf_val,
              _GREEN if _stats["profit_factor"] and _stats["profit_factor"] >= 1 else _RED)
@@ -4851,7 +4886,11 @@ with _pos_tabs[1]:
             f"<div style='color:{_MUTED};font-size:11px;margin-top:6px'>"
             f"⚠️ 以上只是**已平仓期权交易**的原始美元盈亏（数据截至 {_last_close or '—'}），"
             f"不包含当前持仓的未实现盈亏、股票持仓、或出入金——不是账户整体表现。"
-            f"账户整体、剔除出入金影响的收益率见本页下方「投资收益率 vs QQQ」。"
+            f"账户整体、剔除出入金影响的收益率见本页下方「投资收益率 vs QQQ」。<br>"
+            f"↳ 口径：价差两腿合并算一笔（同标的+同到期日+同一天开仓+相反方向+数量相等），"
+            f"胜负按整单净盈亏判定，不是按单腿——保护腿在整单盈利时本来就该\"看起来亏钱\"，"
+            f"不该单独记一次败。没配对上的单腿（真裸仓，或数量/日期对不上的）按原样单独算一笔。"
+            f"单腿明细见下方「逐笔交易明细」。"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -4864,7 +4903,7 @@ with _pos_tabs[1]:
             mode="lines+markers", name="累计盈亏",
             line=dict(color=_GREEN if _stats["total_pnl"] >= 0 else _RED, width=2.5),
             marker=dict(size=5),
-            customdata=_df_c[["underlying", "strategy_type"]],
+            customdata=_df_c[["underlying", "combo_strategy"]],
             hovertemplate="第%{x}笔 %{customdata[0]} %{customdata[1]}<br>累计 $%{y:+,.2f}<extra></extra>",
         ))
         _fig_cum.add_hline(y=0, line=dict(color=_BORDER, width=1, dash="dot"))
@@ -4962,10 +5001,13 @@ with _pos_tabs[1]:
             st.dataframe(_combo_rows, use_container_width=True, hide_index=True,
                          height=min(60 + len(_combo_rows) * 38, 400))
 
-        # ── 交易明细 ──
+        # ── 交易明细（单腿，供想看细节的人核对；上面头部指标是整单口径，
+        #    这里笔数不等于头部"交易次数"是正常的——一个价差两条腿在这
+        #    张表里是两行）──
         st.divider()
-        with st.expander(f"📋 逐笔交易明细（共 {_stats['count']} 笔）", expanded=False):
-            _df_detail = _stats["df"].copy()
+        _df_legs_detail = _stats.get("df_legs", _stats["df"])
+        with st.expander(f"📋 逐笔交易明细（单腿，共 {len(_df_legs_detail)} 笔）", expanded=False):
+            _df_detail = _df_legs_detail.copy()
             # 筛选器
             _flt_col1, _flt_col2, _flt_col3 = st.columns(3)
             _und_opts = ["全部"] + sorted(_df_detail["underlying"].dropna().unique().tolist())

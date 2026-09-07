@@ -215,8 +215,9 @@ def replace_realized_trades_and_fifo_costs(
                 INSERT INTO option_realized_trades
                   (account_id, underlying, symbol, strategy_type, lot_direction,
                    open_date, close_date, holding_days, quantity, open_cash, close_cash,
-                   realized_pnl, return_on_risk, win_loss, option_type, expiry, strike, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   realized_pnl, return_on_risk, win_loss, option_type, expiry, strike,
+                   created_at, combo_id, combo_strategy)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     acct_id,
@@ -237,6 +238,11 @@ def replace_realized_trades_and_fifo_costs(
                     row["expiry"],
                     row["strike"],
                     now,
+                    # 价差两腿合并成一笔"整单"用的配对结果——见
+                    # account/fifo.py group_realized_trades_into_combos。
+                    # 这两列 schema 里早就有，一直没人写进去，一直是空的。
+                    row.get("combo_id"),
+                    row.get("combo_strategy"),
                 ),
             )
 
@@ -281,7 +287,7 @@ def replace_realized_trades_and_fifo_costs(
 def load_realized_trades(acct_id: str) -> pd.DataFrame:
     conn = db()
     df = pd.read_sql_query(
-        "SELECT underlying, symbol, strategy_type, combo_strategy, lot_direction, "
+        "SELECT underlying, symbol, strategy_type, combo_id, combo_strategy, lot_direction, "
         "open_date, close_date, holding_days, quantity, open_cash, close_cash, "
         "realized_pnl, return_on_risk, win_loss, option_type, expiry, strike "
         "FROM option_realized_trades "
