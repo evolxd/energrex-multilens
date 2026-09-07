@@ -15,8 +15,8 @@ pages/7_🌐_期权价差全市场筛选.py，那是另一个独立工具。
 到期日范围：用户明确要求"9-12月的交割日"（日历月份窗口，不是天数窗口），
 默认预选落在这个窗口内的到期日，可自行增减。
 
-数据源：MarketData.app（复用 scoring/options_chain.py，跟"期权分析"页、
-Bull Put Spread 页同一套数据）。
+数据源：MarketData.app 或 Firstrade（复用 scoring/options_chain.py，跟
+"期权分析"页、Bull Put Spread 页同一套数据/同一套 CDP 接入方式）。
 """
 import datetime
 import sys
@@ -29,7 +29,9 @@ _ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(_ROOT / "scoring"))
 
 from options_chain import (               # noqa: E402
+    fetch_chain_firstrade,
     fetch_chain_marketdata,
+    fetch_expirations_firstrade,
     fetch_expirations_marketdata,
 )
 from bull_call_spread import (             # noqa: E402
@@ -53,18 +55,36 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-ticker = st.text_input("标的代码", placeholder="NVDA", key="bcs_ticker").strip().upper()
+col_src, col_ticker = st.columns([1, 2])
+with col_src:
+    source = st.selectbox("期权链数据源", ["MarketData.app（已接入）", "Firstrade（已接入 · 需本机 CDP 已登录）"])
+with col_ticker:
+    ticker = st.text_input("标的代码", placeholder="NVDA", key="bcs_ticker").strip().upper()
+
+if source.startswith("Firstrade"):
+    fetch_expirations, fetch_chain = fetch_expirations_firstrade, fetch_chain_firstrade
+    st.caption(
+        "走 Firstrade 真实内部接口（2026-09-06 现场抓包确认），需要本机有一个 "
+        "`start_chrome.bat` 启动、CDP 9222、已登录 Firstrade 的 Chrome 在跑——"
+        "跟 `account_monitor.py` 抓真实持仓用的是同一个自动化 profile。"
+    )
+else:
+    fetch_expirations, fetch_chain = fetch_expirations_marketdata, fetch_chain_marketdata
 
 if not ticker:
     st.info("输入一个标的代码开始。")
     st.stop()
 
 with st.spinner(f"拉取 {ticker} 可用到期日…"):
-    expirations = fetch_expirations_marketdata(ticker)
+    expirations = fetch_expirations(ticker)
 
 if not expirations:
-    st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权、或 MarketData.app "
-              "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
+    if source.startswith("Firstrade"):
+        st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或者 CDP 9222 "
+                  "那个 Chrome（`start_chrome.bat`）没启动/没登录 Firstrade。")
+    else:
+        st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或 MarketData.app "
+                  "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
     st.stop()
 
 today = datetime.date.today()
@@ -161,7 +181,7 @@ if st.button("🚀 生成 & 评分", type="primary"):
 
     with st.spinner("拉取期权链并生成候选价差…"):
         for exp in selected_exps:
-            chain = fetch_chain_marketdata(ticker, exp)
+            chain = fetch_chain(ticker, exp)
             if chain.empty:
                 fetch_errors.append(f"{exp}: 期权链为空")
                 continue

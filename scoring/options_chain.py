@@ -131,36 +131,216 @@ def fetch_chain_marketdata(ticker: str, expiration: str, strike_limit: int = 40)
     return _parse_chain(data)
 
 
+
+# ── Firstrade（CDP 附着已登录 Chrome，走真实内部 JSON 接口）──────────────
+#
+# 接口是 2026-09-06 现场用 Chrome DevTools Network 面板 + Claude in Chrome
+# 的 javascript_tool 反复试出来的（不是猜的、Firstrade 也没有公开文档）：
+#
+#   GET  /app/api/option-chain?m=get_exp_dates&root_symbol={TICKER}
+#        -> [{"expDate":"20260918","dayLeft":12,"expType":"M"|"W"}, ...]
+#
+#   GET  /app/api/option-chain?m=get_oc&root_symbol={TICKER}
+#            &exp_date={YYYYMMDD}&chains_range=A
+#        -> [{"strike":25,"class":"C"|"P","optSymbol":"PLTR260918C00025000",
+#             "bid":...,"ask":...,"last":...,"vol":...,"openInt":...}, ...]
+#        （没有 IV/greeks —— 那是下面单独一个接口）
+#
+#   POST /app/api/option-greeks   body {"type":"chain",
+#            "root_symbol":{TICKER},"exp_date":{YYYYMMDD},"chains_range":"A"}
+#        -> [{"symbol":"PLTR260918C00025000","iv":"3.406359",
+#             "delta":"0.999695","gamma":...,"theta":...,"vega":...,
+#             "rho":...}, ...]
+#
+# 两边用 optSymbol/symbol 关联。这两个接口都需要已登录的 session cookie，
+# 只能走 CDP 附着已登录 Chrome 这条路（跟 account_monitor.py 抓余额/持仓
+# 用的是同一个 9222 端口和附着方式），不能像 MarketData.app 那样裸
+# requests + API key 调 —— 所以这里独立实现一份 CDP 附着逻辑，而不是导入
+# account_monitor.py（那个文件顶层就会触发一次 Streamlit 页面渲染）。
+#
+# und_px（标的现价）没有复用 Firstrade 自己的报价接口 —— 那个接口 URL 里
+# 要求带 account 号做参数，没必要让这两个函数依赖某个具体账户；直接用
+# yfinance 取现价，跟这个代码库其它地方取现价的方式一致。
+#
+# 已用真实 PLTR 期权链验证过端到端可用（見 2026-09-06 的 commit）。
+
+_CDP_ADDR        = "localhost:9222"
+_FT_ORIGIN       = "https://invest.firstrade.com"
+_FT_OPTIONS_PAGE = f"{_FT_ORIGIN}/app/trade/options"
+
+_FETCH_EXP_DATES_JS = r"""
+var ticker = arguments[0];
+var cb = arguments[arguments.length - 1];
+fetch('/app/api/option-chain?m=get_exp_dates&root_symbol=' + ticker, {credentials: 'include'})
+  .then(function(r) { return r.json(); })
+  .then(function(j) { cb({ok: true, data: j}); })
+  .catch(function(e) { cb({ok: false, error: String(e)}); });
+"""
+
+_FETCH_CHAIN_JS = r"""
+var ticker = arguments[0];
+var expCompact = arguments[1];
+var cb = arguments[arguments.length - 1];
+Promise.all([
+  fetch('/app/api/option-chain?m=get_oc&root_symbol=' + ticker + '&exp_date=' + expCompact + '&chains_range=A',
+        {credentials: 'include'}).then(function(r) { return r.json(); }),
+  fetch('/app/api/option-greeks', {
+    method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({type: 'chain', root_symbol: ticker, exp_date: expCompact, chains_range: 'A'})
+  }).then(function(r) { return r.json(); }),
+]).then(function(results) {
+  var oc = results[0], gk = results[1];
+  var gkMap = {};
+  for (var i = 0; i < gk.length; i++) gkMap[gk[i].symbol] = gk[i];
+  var out = oc.map(function(row) {
+    var g = gkMap[row.optSymbol] || {};
+    return {
+      symbol: row.optSymbol, side: row.class === 'C' ? 'call' : 'put',
+      strike: row.strike, bid: row.bid, ask: row.ask, last: row.last,
+      volume: row.vol, oi: row.openInt,
+      iv: g.iv != null ? parseFloat(g.iv) : null,
+      delta: g.delta != null ? parseFloat(g.delta) : null,
+      gamma: g.gamma != null ? parseFloat(g.gamma) : null,
+      theta: g.theta != null ? parseFloat(g.theta) : null,
+      vega: g.vega != null ? parseFloat(g.vega) : null,
+    };
+  });
+  cb({ok: true, data: out});
+}).catch(function(e) { cb({ok: false, error: String(e)}); });
+"""
+
+
+def _cdp_reachable() -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://{_CDP_ADDR}/json", timeout=2) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _get_cdp_driver():
+    """附着到 CDP 9222 的已登录 Chrome。跟 account_monitor.py._get_driver
+    是同一种附着方式（debuggerAddress），独立实现是为了不 import
+    account_monitor.py（它顶层会跑一次 st.set_page_config 之类的副作用）。"""
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+    except ImportError:
+        return None
+    try:
+        opts = Options()
+        opts.add_experimental_option("debuggerAddress", _CDP_ADDR)
+        return webdriver.Chrome(options=opts)
+    except Exception:
+        return None
+
+
+def _run_on_firstrade_tab(driver, script: str, *args, timeout: float = 20):
+    """新开一个标签页、导航到期权页面（同源，session cookie 才生效）、跑一段
+    异步 JS、切回第一个窗口。不主动关闭新标签——跟 account_monitor.py
+    ._close_tab 同样的取舍：Chrome 的 beforeunload 保护 + CDP 关闭标签会
+    弄挂 WebDriver session，攒几个空标签远比 session 崩掉代价小。"""
+    driver.switch_to.new_window("tab")
+    try:
+        driver.get(_FT_OPTIONS_PAGE)
+        driver.set_script_timeout(timeout)
+        return driver.execute_async_script(script, *args)
+    finally:
+        try:
+            driver.switch_to.window(driver.window_handles[0])
+        except Exception:
+            pass
+
+
 def fetch_expirations_firstrade(ticker: str) -> list[str]:
-    """NOT IMPLEMENTED.
+    """真实接口：GET /app/api/option-chain?m=get_exp_dates。需要本机 CDP
+    9222 能连到一个已登录 Firstrade 的 Chrome（跟 account_monitor.py 用
+    --remote-debugging-port=9222 启动的是同一个）。连不上/未登录/接口出错
+    都返回空列表——调用方（页面）本来就把空列表当"没拉到"处理，不是这个
+    函数专属的行为。"""
+    if not _cdp_reachable():
+        return []
+    driver = _get_cdp_driver()
+    if driver is None:
+        return []
+    try:
+        result = _run_on_firstrade_tab(driver, _FETCH_EXP_DATES_JS, ticker.upper())
+    except Exception:
+        return []
+    if not result or not result.get("ok"):
+        return []
+    out = []
+    for row in result.get("data") or []:
+        d = str(row.get("expDate", ""))
+        if len(d) == 8:
+            out.append(f"{d[0:4]}-{d[4:6]}-{d[6:8]}")
+    return sorted(out)
 
-    Firstrade's option-chain page has never been scraped by this codebase --
-    grep confirms account_monitor.py's Chrome-CDP automation only ever
-    touched /app/balance, /app/history, /app/positions. There's no observed
-    page structure, no known JSON endpoint, and no prior art here to extract
-    from, unlike those three pages. Writing DOM-scraping code against markup
-    nobody has actually looked at would just be a guess dressed up as a
-    working function -- it would silently return nothing (or crash) against
-    the real page.
 
-    To implement this for real, whoever has a logged-in Firstrade session
-    needs to either (a) share the option-chain page's URL + a sample of its
-    HTML/JSON (view-source, or the Network tab response if it's fetched via
-    XHR — XHR would be far more reliable to parse than an HTML table), or
-    (b) pair with a session that has local Chrome-CDP access to Firstrade so
-    the page can be inspected directly the way the balance/positions pages
-    presumably were.
-    """
-    raise NotImplementedError(
-        "Firstrade 期权链尚未实现 — 这个代码库里从未抓取过 Firstrade 的期权链页面，"
-        "没有可参考的页面结构或接口。需要你提供该页面的 URL + HTML/JSON 样本"
-        "（或在能连到你本机已登录 Firstrade 的 Chrome CDP 的会话里现场抓取），"
-        "才能写出真正能用的解析代码，而不是猜一个大概率解析不出东西的版本。"
-    )
+def _build_firstrade_chain_df(
+    rows: list[dict], expiration: str, spot: float | None,
+    today: datetime.date | None = None,
+) -> pd.DataFrame:
+    """Pure transform: merged Firstrade rows (as produced by _FETCH_CHAIN_JS)
+    -> the same column shape _parse_chain() produces for MarketData.app.
+    Split out from fetch_chain_firstrade() so this logic is unit-testable
+    without a live CDP/Selenium session -- the network/CDP half has no
+    branching worth testing in isolation, this half has all of it."""
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    for c in ["strike", "bid", "ask", "last", "iv", "delta", "gamma", "theta", "vega"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in ["volume", "oi"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
+
+    # mid：正常情况下 bid/ask 均值；bid 或 ask 缺失/非正时退回 last（跟
+    # MarketData.app 那条路径的降级逻辑保持一致的"总要有个能用的数"原则）。
+    df["mid"] = df[["bid", "ask"]].mean(axis=1, skipna=True)
+    _bad_bid_ask = (df["bid"].isna() | (df["bid"] <= 0) | df["ask"].isna() | (df["ask"] <= 0))
+    df.loc[_bad_bid_ask, "mid"] = df["last"]
+
+    df["und_px"] = spot
+    if spot:
+        df["itm"] = ((df["side"] == "call") & (df["strike"] < spot)) | \
+                    ((df["side"] == "put") & (df["strike"] > spot))
+    else:
+        df["itm"] = None
+
+    today = today or datetime.date.today()
+    dte = max(0, (datetime.date.fromisoformat(expiration) - today).days)
+    df["dte"]    = dte
+    df["exp"]    = expiration
+    df["iv_pct"] = (df["iv"] * 100).round(2)
+    return df
 
 
 def fetch_chain_firstrade(ticker: str, expiration: str) -> pd.DataFrame:
-    """NOT IMPLEMENTED — see fetch_expirations_firstrade's docstring."""
-    raise NotImplementedError(
-        "Firstrade 期权链尚未实现，原因同 fetch_expirations_firstrade。"
-    )
+    """真实接口：GET .../option-chain?m=get_oc + POST .../option-greeks，
+    按 optSymbol 关联。标的现价单独用 yfinance 取（不复用 Firstrade 自己
+    带 account 号参数的报价接口，见模块顶部说明）。返回的列名跟
+    fetch_chain_marketdata()/_parse_chain() 一致，是同一个下游消费者的
+    drop-in 替代，不是另一套 schema。"""
+    if not _cdp_reachable():
+        return pd.DataFrame()
+    driver = _get_cdp_driver()
+    if driver is None:
+        return pd.DataFrame()
+
+    exp_compact = expiration.replace("-", "")
+    try:
+        result = _run_on_firstrade_tab(driver, _FETCH_CHAIN_JS, ticker.upper(), exp_compact)
+    except Exception:
+        return pd.DataFrame()
+    if not result or not result.get("ok"):
+        return pd.DataFrame()
+    rows = result.get("data") or []
+
+    try:
+        import yfinance as yf
+        spot = float(yf.Ticker(ticker.upper()).fast_info.last_price or 0) or None
+    except Exception:
+        spot = None
+    return _build_firstrade_chain_df(rows, expiration, spot)

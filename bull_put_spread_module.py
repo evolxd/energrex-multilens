@@ -22,7 +22,9 @@ _ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(_ROOT / "scoring"))
 
 from options_chain import (               # noqa: E402
+    fetch_chain_firstrade,
     fetch_chain_marketdata,
+    fetch_expirations_firstrade,
     fetch_expirations_marketdata,
 )
 from bull_put_spread import (              # noqa: E402
@@ -56,27 +58,20 @@ st.markdown(
 # ── 数据源选择 ────────────────────────────────────────────
 col_src, col_ticker = st.columns([1, 2])
 with col_src:
-    source = st.selectbox("期权链数据源", ["MarketData.app（已接入）", "Firstrade（未接入）"])
+    source = st.selectbox("期权链数据源", ["MarketData.app（已接入）", "Firstrade（已接入 · 需本机 CDP 已登录）"])
 with col_ticker:
     ticker = st.text_input("标的代码", placeholder="NVDA", key="bps_ticker").strip().upper()
 
 if source.startswith("Firstrade"):
-    st.warning(
-        "Firstrade 期权链目前**没有实现**——这个代码库里从没抓取过 Firstrade 的期权链页面，"
-        "`account_monitor.py` 里的 Chrome CDP 自动化只碰过余额/持仓/成交记录三个页面，"
-        "没有可参考的期权链页面结构或接口。\n\n"
-        "硬写一个没验证过的解析函数，大概率是猜错选择器、静默返回空数据或直接崩溃——"
-        "不想给你一个看起来能用、实际跑不出真东西的假功能。\n\n"
-        "要接入的话，需要你提供：该页面的 URL + 一份 HTML 或者（更好）打开浏览器开发者工具 "
-        "Network 面板看它是不是走 XHR/JSON 接口、把那个响应样本发我；或者在一个能连到你本机 "
-        "已登录 Firstrade 的 Chrome CDP 的会话里，现场带我看一眼页面结构。\n\n"
-        "现在先用 MarketData.app 的数据源把评分功能跑起来——公式和排名逻辑跟数据源无关，"
-        "以后接入 Firstrade 只需要换掉底层的 `fetch_chain_firstrade()` 实现，"
-        "上面的评分代码完全不用动。"
+    fetch_expirations, fetch_chain = fetch_expirations_firstrade, fetch_chain_firstrade
+    st.caption(
+        "走 Firstrade 真实内部接口（2026-09-06 现场抓包确认），需要本机有一个 "
+        "`start_chrome.bat` 启动、CDP 9222、已登录 Firstrade 的 Chrome 在跑——"
+        "跟 `account_monitor.py` 抓真实持仓用的是同一个自动化 profile。没连上/未登录时，"
+        "下面拉取到期日会直接显示空列表（不是报错崩溃），按提示先启动那个 Chrome 并登录即可。"
     )
-    st.stop()
-
-fetch_expirations, fetch_chain = fetch_expirations_marketdata, fetch_chain_marketdata
+else:
+    fetch_expirations, fetch_chain = fetch_expirations_marketdata, fetch_chain_marketdata
 
 if not ticker:
     st.info("输入一个标的代码开始。")
@@ -86,8 +81,12 @@ with st.spinner(f"拉取 {ticker} 可用到期日…"):
     expirations = fetch_expirations(ticker)
 
 if not expirations:
-    st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权、或 MarketData.app "
-              "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
+    if source.startswith("Firstrade"):
+        st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或者 CDP 9222 "
+                  "那个 Chrome（`start_chrome.bat`）没启动/没登录 Firstrade。")
+    else:
+        st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或 MarketData.app "
+                  "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
     st.stop()
 
 today = datetime.date.today()
