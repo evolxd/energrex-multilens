@@ -4844,9 +4844,18 @@ with _pos_tabs[1]:
         _kpi(_p7, "EWMA胜率(λ.94)",
              f"{_stats['ewma_wr']*100:.1f}%",
              _GREEN if _stats["ewma_wr"] >= 0.5 else _RED)
-        st.markdown("")
 
         _df_c = _stats["df"]
+        _last_close = _df_c["close_date"].max() if "close_date" in _df_c.columns else None
+        st.markdown(
+            f"<div style='color:{_MUTED};font-size:11px;margin-top:6px'>"
+            f"⚠️ 以上只是**已平仓期权交易**的原始美元盈亏（数据截至 {_last_close or '—'}），"
+            f"不包含当前持仓的未实现盈亏、股票持仓、或出入金——不是账户整体表现。"
+            f"账户整体、剔除出入金影响的收益率见本页下方「投资收益率 vs QQQ」。"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("")
 
         # ── 累计 P&L ──
         _fig_cum = go.Figure()
