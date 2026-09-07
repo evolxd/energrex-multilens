@@ -4896,20 +4896,27 @@ with _pos_tabs[1]:
         )
         st.markdown("")
 
+        # 三张图统一用平仓日期做时间轴（不再用抽象的"交易序号"）——同一天
+        # 平仓多笔的话，那几个点会叠在同一个x位置，这是权益曲线的正常样子，
+        # 不是bug。trade_num/underlying/combo_strategy 塞进 customdata，
+        # hover 时序号、标的、策略、日期一起显示。
+        _cd_common = _df_c[["trade_num", "underlying", "combo_strategy"]]
+
         # ── 累计 P&L ──
         _fig_cum = go.Figure()
         _fig_cum.add_trace(go.Scatter(
-            x=_df_c["trade_num"], y=_df_c["cumulative_pnl"],
+            x=_df_c["close_date"], y=_df_c["cumulative_pnl"],
             mode="lines+markers", name="累计盈亏",
             line=dict(color=_GREEN if _stats["total_pnl"] >= 0 else _RED, width=2.5),
             marker=dict(size=5),
-            customdata=_df_c[["underlying", "combo_strategy"]],
-            hovertemplate="第%{x}笔 %{customdata[0]} %{customdata[1]}<br>累计 $%{y:+,.2f}<extra></extra>",
+            customdata=_cd_common,
+            hovertemplate="%{x|%Y-%m-%d} · 第%{customdata[0]}笔 %{customdata[1]} %{customdata[2]}"
+                          "<br>累计 $%{y:+,.2f}<extra></extra>",
         ))
         _fig_cum.add_hline(y=0, line=dict(color=_BORDER, width=1, dash="dot"))
         _fig_cum.update_layout(
             title="累计 P&L 曲线", paper_bgcolor=_BG, plot_bgcolor=_BG, height=270,
-            xaxis=dict(showgrid=False, tickfont=dict(color=_MUTED), title="交易序号"),
+            xaxis=dict(type="date", showgrid=False, tickfont=dict(color=_MUTED), title="平仓日期"),
             yaxis=dict(showgrid=True, gridcolor=_BORDER, tickfont=dict(color=_MUTED),
                        tickprefix="$", tickformat=",.0f"),
             margin=dict(l=10, r=10, t=36, b=10))
@@ -4917,20 +4924,22 @@ with _pos_tabs[1]:
         # ── 滚动胜率 ──
         _fig_wr = go.Figure()
         _fig_wr.add_trace(go.Scatter(
-            x=_df_c["trade_num"], y=_df_c["rolling20_wr"] * 100,
+            x=_df_c["close_date"], y=_df_c["rolling20_wr"] * 100,
             mode="lines", name="滚动20笔",
             line=dict(color=_GREEN, width=2),
-            hovertemplate="第%{x}笔  %{y:.1f}%<extra></extra>"))
+            customdata=_cd_common,
+            hovertemplate="%{x|%Y-%m-%d} · 第%{customdata[0]}笔  %{y:.1f}%<extra></extra>"))
         _fig_wr.add_trace(go.Scatter(
-            x=_df_c["trade_num"], y=_df_c["rolling50_wr"] * 100,
+            x=_df_c["close_date"], y=_df_c["rolling50_wr"] * 100,
             mode="lines", name="滚动50笔",
             line=dict(color=_AMB, width=1.5, dash="dash"),
-            hovertemplate="第%{x}笔  %{y:.1f}%<extra></extra>"))
+            customdata=_cd_common,
+            hovertemplate="%{x|%Y-%m-%d} · 第%{customdata[0]}笔  %{y:.1f}%<extra></extra>"))
         _fig_wr.add_hline(y=50, line=dict(color=_BORDER, width=1, dash="dot"),
                           annotation_text="  50%", annotation_font_color=_MUTED)
         _fig_wr.update_layout(
             title="滚动胜率", paper_bgcolor=_BG, plot_bgcolor=_BG, height=270,
-            xaxis=dict(showgrid=False, tickfont=dict(color=_MUTED)),
+            xaxis=dict(type="date", showgrid=False, tickfont=dict(color=_MUTED), title="平仓日期"),
             yaxis=dict(showgrid=True, gridcolor=_BORDER, tickfont=dict(color=_MUTED),
                        ticksuffix="%", range=[0, 105]),
             legend=dict(font=dict(color=_TEXT), bgcolor=_BG, orientation="h", y=1.15),
@@ -4939,14 +4948,15 @@ with _pos_tabs[1]:
         # ── 回撤 ──
         _fig_dd = go.Figure()
         _fig_dd.add_trace(go.Scatter(
-            x=_df_c["trade_num"], y=_df_c["drawdown"],
+            x=_df_c["close_date"], y=_df_c["drawdown"],
             mode="lines", fill="tozeroy", name="回撤",
             line=dict(color=_RED, width=1.5),
             fillcolor="rgba(255,75,110,0.12)",
-            hovertemplate="第%{x}笔  $%{y:,.2f}<extra></extra>"))
+            customdata=_cd_common,
+            hovertemplate="%{x|%Y-%m-%d} · 第%{customdata[0]}笔  $%{y:,.2f}<extra></extra>"))
         _fig_dd.update_layout(
             title="P&L 峰值回撤", paper_bgcolor=_BG, plot_bgcolor=_BG, height=270,
-            xaxis=dict(showgrid=False, tickfont=dict(color=_MUTED)),
+            xaxis=dict(type="date", showgrid=False, tickfont=dict(color=_MUTED), title="平仓日期"),
             yaxis=dict(showgrid=True, gridcolor=_BORDER, tickfont=dict(color=_MUTED),
                        tickprefix="$", tickformat=",.0f"),
             margin=dict(l=10, r=10, t=36, b=10))
