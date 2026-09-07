@@ -1544,6 +1544,11 @@ if page == "🏆 排行榜":
     if _sector_filter_active:
         df_view = df_view[df_view["ticker_category"] == _sector_sel]
         _score_view_label = "行业得分"   # = final_score, relabeled + sector-scoped
+        # 选了具体行业之后，就是在业内互相比较——纯按该行业得分降序，不再用
+        # 全局榜单那个"可执行优先"的两级排序（那是给全局操作清单用的规则，
+        # 挪到"看这个行业里谁分高"这个场景下不对）。用户明确要求：选哪个类目
+        # 就按该类目分数降序。
+        df_view = df_view.sort_values("final_score", ascending=False)
     else:
         _score_view_label = "综合"       # unchanged final_score label
 
@@ -1551,16 +1556,20 @@ if page == "🏆 排行榜":
     _total_filtered = len(df_view)
     _show_n = top_n if top_n < _total_filtered else _total_filtered
     _suffix = f"（前 {_show_n} / 共 {_total_filtered} 只）" if _show_n < _total_filtered else f"（共 {_total_filtered} 只）"
-    # The sort is two-level -- decision_actionable first, then final_score --
-    # so a lower-scoring actionable name legitimately outranks a higher one.
-    # The old heading said only "综合评分排名", which made that read as a
-    # broken sort. Naming both keys, and drawing a line where the first group
-    # ends, makes the rule visible instead of surprising.
-    st.markdown(f"#### 排名：可执行优先 · 组内按综合分 {_suffix}")
+    if _sector_filter_active:
+        # 选了具体行业：纯按行业得分降序，见上面 df_view 的重新排序。
+        st.markdown(f"#### 排名：{_sector_sel} 行业内按行业得分降序 {_suffix}")
+    else:
+        # The sort is two-level -- decision_actionable first, then final_score --
+        # so a lower-scoring actionable name legitimately outranks a higher one.
+        # The old heading said only "综合评分排名", which made that read as a
+        # broken sort. Naming both keys, and drawing a line where the first group
+        # ends, makes the rule visible instead of surprising.
+        st.markdown(f"#### 排名：可执行优先 · 组内按综合分 {_suffix}")
 
     _shown = df_view.head(_show_n)
     _actionable_shown = int(_shown["decision_actionable"].sum()) if "decision_actionable" in _shown.columns else 0
-    if 0 < _actionable_shown < len(_shown):
+    if not _sector_filter_active and 0 < _actionable_shown < len(_shown):
         st.caption(
             f"前 {_actionable_shown} 只为决策层判定「可执行」，优先列出；其余按综合分降序。"
             "两组内部各自按综合分排序。"
