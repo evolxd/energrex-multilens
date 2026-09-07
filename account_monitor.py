@@ -2555,6 +2555,8 @@ def _watch_state() -> dict:
         "last_rows":   0,
         "new_data":    False,      # watchdog 检测到新文件时置 True
         "errors":      [],
+        "last_fifo_time":     None,   # 上次自动 FIFO 重算时间（成交CSV导入后自动触发）
+        "last_fifo_realized": None,   # 那次重算算出的已实现笔数
     }
 
 
@@ -2588,6 +2590,20 @@ class _ExportCsvHandler(FileSystemEventHandler if _WATCHDOG_OK else object):
             ws["new_data"]  = True
             if not result.get("ok"):
                 ws["errors"].append(result.get("reason", "unknown error"))
+            elif result.get("type") == "transactions":
+                # 新成交记录写进 transactions 表之后，「交易绩效」Tab 的已实现
+                # 盈亏/累计 P&L 曲线在此之前只在用户手动点「运行 FIFO 分析」
+                # 才会重算——同步了新数据、图却没变，就是因为这一步一直缺失。
+                # 这里补上自动重算，跟手动按钮调的是同一个函数。
+                try:
+                    _fifo_r = _fifo_match_options("account_1")
+                    ws["last_fifo_time"] = datetime.datetime.now(_ET)
+                    ws["last_fifo_realized"] = _fifo_r.get("realized_count", 0)
+                    _log.info(f"Auto FIFO re-match after CSV import: "
+                              f"{_fifo_r.get('realized_count', 0)} realized")
+                except Exception as _fe:
+                    _log.exception(f"Auto FIFO re-match failed: {_fe}")
+                    ws["errors"].append(f"自动 FIFO 重算失败: {_fe}")
         except Exception as e:
             _log.exception(f"CSV import failed: {e}")
             _watch_state()["errors"].append(str(e))
@@ -3863,6 +3879,9 @@ with st.sidebar:
     if ws["last_time"]:
         st.success(f"✓ 最近导入：{ws['last_file']}")
         st.caption(f"{ws['last_time'].strftime('%H:%M:%S')} ET · {ws['last_rows']} 行")
+        if ws.get("last_fifo_time"):
+            st.caption(f"↳ 已自动重算已实现盈亏 {ws['last_fifo_time'].strftime('%H:%M:%S')} ET · "
+                       f"{ws.get('last_fifo_realized', 0)} 笔（交易绩效 Tab 的图已跟上）")
     else:
         st.info("⏳ 监控中，等待 Firstrade 导出文件…")
 
@@ -3880,6 +3899,16 @@ with st.sidebar:
             ws["last_type"] = result["type"]
             ws["last_rows"] = result["rows"]
             ws["new_data"]  = True
+            if result["type"] == "transactions":
+                # 跟 watchdog 路径同样的问题：不补这一步，「交易绩效」Tab 还是
+                # 停在上次手动点「运行 FIFO 分析」时候的旧数据。
+                try:
+                    _fifo_r = _fifo_match_options("account_1")
+                    ws["last_fifo_time"] = datetime.datetime.now(_ET)
+                    ws["last_fifo_realized"] = _fifo_r.get("realized_count", 0)
+                except Exception as _fe:
+                    st.warning(f"成交已导入，但自动重算已实现盈亏失败：{_fe}"
+                               "——去「交易绩效」Tab 手动点「运行 FIFO 分析」。")
             st.success(f"✓ 导入 {result['rows']} 行")
             st.rerun()
         else:
