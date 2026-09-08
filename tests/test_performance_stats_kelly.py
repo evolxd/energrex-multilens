@@ -49,6 +49,7 @@ class PerformanceStatsKellyTests(unittest.TestCase):
         }
         exec(compile(filtered, str(ROOT / "account_monitor.py"), "exec"), ns)
         cls._compute = staticmethod(ns["_compute_performance_stats"])
+        cls._wilson = staticmethod(ns["_wilson_interval"])
 
     @classmethod
     def tearDownClass(cls):
@@ -202,6 +203,47 @@ class PerformanceStatsKellyTests(unittest.TestCase):
         # here, so shrinkage leaves it unchanged.
         self.assertAlmostEqual(cds["payoff_b_shrunk"], 1.25, places=6)
         self.assertGreater(cds["win_rate_shrunk"], cds["win_rate"])
+
+    def test_wilson_interval_matches_hand_computed_reference(self):
+        """p=0.5, n=10, z=1.96 is a standard textbook Wilson interval
+        example -- hand-derived here (not just re-trusting the code):
+        center = (0.5 + 3.8416/20) / 1.38416 = 0.5 exactly (symmetric case)
+        margin = 1.96 * sqrt(0.025 + 0.009604) / 1.38416 ~= 0.26341
+        -> (0.2366, 0.7634)."""
+        lower, upper = self._wilson(0.5, 10)
+        self.assertAlmostEqual(lower, 0.2366, places=3)
+        self.assertAlmostEqual(upper, 0.7634, places=3)
+
+    def test_wilson_interval_widens_as_sample_shrinks(self):
+        """Same point estimate (50%), smaller n -> wider interval. This is
+        the whole point of adding it: a bare '50%' with n=4 should look
+        far less trustworthy on screen than '50%' with n=200."""
+        lo_small, hi_small = self._wilson(0.5, 4)
+        lo_big, hi_big = self._wilson(0.5, 200)
+        self.assertLess(lo_small, lo_big)
+        self.assertGreater(hi_small, hi_big)
+        self.assertGreater(hi_small - lo_small, hi_big - lo_big)
+
+    def test_by_combo_carries_wilson_ci_on_raw_win_rate_not_shrunk(self):
+        """Wilson CI must be computed from the bucket's own raw win_rate/n,
+        never from win_rate_shrunk -- mixing the two would be statistically
+        meaningless (Wilson assumes n independent Bernoulli trials at the
+        raw proportion, not a blended estimate)."""
+        self._seed([
+            ("put_credit_spread", "2026-01-05", 600.0),
+            ("put_credit_spread", "2026-02-10", 500.0),
+            ("put_credit_spread", "2026-03-15", 400.0),
+            ("put_credit_spread", "2026-04-01", -300.0),
+            ("put_credit_spread", "2026-05-20", -100.0),
+        ])
+        stats = self._compute(ACCT)
+        bucket = stats["by_combo"]["put_credit_spread"]
+        expected_lower, expected_upper = self._wilson(bucket["win_rate"], bucket["count"])
+        self.assertAlmostEqual(bucket["win_rate_ci_lower"], expected_lower, places=9)
+        self.assertAlmostEqual(bucket["win_rate_ci_upper"], expected_upper, places=9)
+        # Sanity: the raw point estimate must sit inside its own interval.
+        self.assertLessEqual(bucket["win_rate_ci_lower"], bucket["win_rate"])
+        self.assertGreaterEqual(bucket["win_rate_ci_upper"], bucket["win_rate"])
 
 
 if __name__ == "__main__":

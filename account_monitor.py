@@ -912,6 +912,22 @@ def _get_event_calendar(acct_id: str, window_days: int = 30) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────
 # Module B: 交易绩效分析
 # ─────────────────────────────────────────────────────────────────
+
+def _wilson_interval(p_hat: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval for a binomial proportion (胜率).
+
+    与"收缩胜率"（K=20，往总体拉）是两个独立工具，回答不同问题：这个函数
+    只用某一桶自己的 n 笔、自己的原始胜率算区间，不掺总体数据——掺了的话
+    区间在数学上就不成立了（Wilson 区间的前提是 n 次独立伯努利试验的原始
+    比例）。n 很小（1-2 笔）时区间会宽到接近 [0%, 100%]，这是正常现象，
+    说明这个胜率确实不该信，不是 bug。
+    """
+    if n <= 0:
+        return (0.0, 1.0)
+    denom = 1 + z ** 2 / n
+    center = (p_hat + z ** 2 / (2 * n)) / denom
+    margin = z * ((p_hat * (1 - p_hat) / n + z ** 2 / (4 * n ** 2)) ** 0.5) / denom
+    return (max(0.0, center - margin), min(1.0, center + margin))
 def _compute_performance_stats(acct_id: str) -> dict | None:
     """从 option_realized_trades 计算全套绩效指标。数据为空返回 None。
 
@@ -1001,8 +1017,15 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
             _win_rate_shrunk - (1 - _win_rate_shrunk) / _payoff_b_shrunk
         ) if _payoff_b_shrunk else None
 
+        # 95% Wilson 区间——算在"原始胜率"上，不算在收缩胜率上（见
+        # _wilson_interval 的说明）。只回答"这一桶自己的样本量够不够撑起
+        # 这个胜率数字"，跟收缩胜率是互补的两件事，不合并展示成一个数。
+        _win_rate_ci_lower, _win_rate_ci_upper = _wilson_interval(_win_rate, _n)
+
         by_combo[str(cs)] = {
             "count": _n, "win_rate": _win_rate,
+            "win_rate_ci_lower": _win_rate_ci_lower,
+            "win_rate_ci_upper": _win_rate_ci_upper,
             "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
             "avg_win": _avg_win, "avg_loss": _avg_loss,
             "payoff_b": _payoff_b, "kelly_f": _kelly_f,
@@ -5045,9 +5068,10 @@ with _pos_tabs[1]:
         if _stats.get("by_combo"):
             st.caption(
                 "赔率 b = 均赢/|均亏|；原始 Kelly f* = 胜率 − (1−胜率)/b，未打小样本折扣、"
-                "未过硬约束封顶。收缩胜率/赔率/Kelly：小样本桶（笔数少）往全账户"
-                "总体水平上拉一把（K=20，笔数越多越信自己的数据、越少越信总体），"
-                "缓解 16/21 笔这种量级点估计噪音大的问题——仍是"
+                "未过硬约束封顶。胜率区间(95%) 是 Wilson 区间，算在原始胜率上，回答"
+                "\"这一桶自己的笔数够不够撑起这个胜率数字\"——区间很宽就是笔数太少，"
+                "不是 bug。收缩胜率/Kelly：往全账户总体拉一把（K=20，笔数越多越信自己"
+                "的数据），回答的是另一个问题，跟区间不是一回事。都仍是"
                 "docs/SIX_GATES_AND_EXPOSURE_DESIGN.md §2 敞口设计的候选输入，"
                 "不是可以直接拿去下单的仓位建议。"
             )
@@ -5055,6 +5079,7 @@ with _pos_tabs[1]:
                 {"组合策略": k, "次数": v["count"],
                  "统计区间": f"{v['close_date_min']} → {v['close_date_max']}",
                  "胜率": f"{v['win_rate']*100:.0f}%",
+                 "胜率区间(95%)": f"{v['win_rate_ci_lower']*100:.0f}%–{v['win_rate_ci_upper']*100:.0f}%",
                  "均赢": f"${v['avg_win']:+,.2f}",
                  "均亏": f"${v['avg_loss']:+,.2f}",
                  "赔率b": f"{v['payoff_b']:.2f}" if v["payoff_b"] else "—",
