@@ -100,7 +100,9 @@ def init_db() -> None:
         option_type    TEXT,
         expiry         TEXT,
         strike         REAL,
-        created_at     TEXT
+        created_at     TEXT,
+        combo_id       TEXT,
+        combo_strategy TEXT
     );
     CREATE TABLE IF NOT EXISTS iv_history (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,6 +148,14 @@ def init_db() -> None:
     for column in ["current_price REAL", "unit_cost REAL"]:
         try:
             conn.execute(f"ALTER TABLE positions ADD COLUMN {column}")
+        except Exception:
+            pass
+
+    # combo_id/combo_strategy 已经在上面 CREATE TABLE 里了，这两行只是给"表已经
+    # 存在但是老版本schema"的情况兜底（同样的模式在这个函数里已经在用）。
+    for column in ["combo_id TEXT", "combo_strategy TEXT"]:
+        try:
+            conn.execute(f"ALTER TABLE option_realized_trades ADD COLUMN {column}")
         except Exception:
             pass
 

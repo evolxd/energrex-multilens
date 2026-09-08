@@ -964,12 +964,30 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
     # 按整单的策略类型分组（credit/debit spread，或没配对上的裸腿）——
     # 这才是原来"按组合策略分组"那张表一直显示不出东西的原因：
     # combo_strategy 之前从来没被写进过 DB。
+    #
+    # avg_win/avg_loss/payoff_b/kelly_f 是给 docs/SIX_GATES_AND_EXPOSURE_DESIGN.md
+    # §2 的期权价差敞口设计用的——那份文档里的赔率表格当时是手算的，这里补成
+    # 正式代码。kelly_f = win_rate - (1-win_rate)/payoff_b，是"原始"Kelly（未打
+    # 小样本折扣），折扣和硬约束封顶留给调用方（那份文档 §2.3/§2.4 还没写代码）。
+    # close_date_min/max 跟 count 一起存进每个桶，是用户明确要求的："任何统计数字
+    # 都要带起止时间和总样本量"——数据结构里直接带上，不是只在我说话时提一句。
     by_combo = {}
     for cs, grp in df.groupby("combo_strategy"):
-        w = (grp["pnl"] > 0).sum()
+        _wins   = grp.loc[grp["pnl"] > 0, "pnl"]
+        _losses = grp.loc[grp["pnl"] < 0, "pnl"]
+        _n = len(grp)
+        _win_rate = float((grp["pnl"] > 0).sum()) / _n if _n else 0.0
+        _avg_win  = float(_wins.mean())   if len(_wins)   else 0.0
+        _avg_loss = float(_losses.mean()) if len(_losses) else 0.0
+        _payoff_b = abs(_avg_win / _avg_loss) if _avg_loss else None
+        _kelly_f  = (_win_rate - (1 - _win_rate) / _payoff_b) if _payoff_b else None
         by_combo[str(cs)] = {
-            "count": len(grp), "win_rate": w / len(grp),
+            "count": _n, "win_rate": _win_rate,
             "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
+            "avg_win": _avg_win, "avg_loss": _avg_loss,
+            "payoff_b": _payoff_b, "kelly_f": _kelly_f,
+            "close_date_min": str(grp["close_date"].min()),
+            "close_date_max": str(grp["close_date"].max()),
         }
 
     by_und = {}
@@ -5001,10 +5019,19 @@ with _pos_tabs[1]:
         # ── 组合策略分析 ──
         st.markdown("**按组合策略分组**")
         if _stats.get("by_combo"):
+            st.caption(
+                "赔率 b = 均赢/|均亏|；原始 Kelly f* = 胜率 − (1−胜率)/b，未打小样本折扣、"
+                "未过硬约束封顶——是 docs/SIX_GATES_AND_EXPOSURE_DESIGN.md §2 敞口设计的"
+                "候选输入，不是可以直接拿去下单的仓位建议。"
+            )
             _combo_rows = pd.DataFrame([
                 {"组合策略": k, "次数": v["count"],
+                 "统计区间": f"{v['close_date_min']} → {v['close_date_max']}",
                  "胜率": f"{v['win_rate']*100:.0f}%",
-                 "均盈亏": f"${v['avg_pnl']:+,.2f}",
+                 "均赢": f"${v['avg_win']:+,.2f}",
+                 "均亏": f"${v['avg_loss']:+,.2f}",
+                 "赔率b": f"{v['payoff_b']:.2f}" if v["payoff_b"] else "—",
+                 "原始Kelly": f"{v['kelly_f']*100:+.1f}%" if v["kelly_f"] is not None else "—",
                  "合计":   f"${v['total']:+,.2f}"}
                 for k, v in sorted(_stats["by_combo"].items(), key=lambda x: -x[1]["total"])
             ])
