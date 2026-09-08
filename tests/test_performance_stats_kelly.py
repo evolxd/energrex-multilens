@@ -157,14 +157,13 @@ class PerformanceStatsKellyTests(unittest.TestCase):
         self.assertIsNone(bucket["payoff_b_shrunk"])
         self.assertIsNone(bucket["kelly_f_shrunk"])
 
-    def test_shrinkage_pulls_small_buckets_toward_pooled_stats_with_k_30(self):
+    def test_shrinkage_pulls_small_buckets_toward_pooled_stats_with_k_20(self):
         """User's pushback: why fragment into small per-strategy buckets
         instead of one pooled statistic? Answer implemented here: keep the
         buckets (different spread types are structurally different bets),
         but shrink each bucket's win_rate/payoff_b toward the pooled
-        (all-combo) value, weighted by K_SHRINK virtual trades -- user
-        picked K=30 over 20 explicitly, reasoning that the larger pooled
-        sample is more reliable so small buckets should lean on it harder.
+        (all-combo) value, weighted by K_SHRINK virtual trades. User briefly
+        set K=30, then explicitly asked to change it back to K=20.
 
         put_credit_spread: n=5, win_rate=0.6, payoff_b=2.5
         call_debit_spread: n=3, win_rate=1/3, payoff_b=1.25
@@ -183,22 +182,22 @@ class PerformanceStatsKellyTests(unittest.TestCase):
             ("call_debit_spread", "2026-02-15", -800.0),
         ])
         stats = self._compute(ACCT)
-        self.assertEqual(stats["by_combo"]["put_credit_spread"]["shrink_k"], 30)
+        self.assertEqual(stats["by_combo"]["put_credit_spread"]["shrink_k"], 20)
 
         pcs = stats["by_combo"]["put_credit_spread"]
-        # (5*0.6 + 30*0.5) / 35 = 18/35
-        self.assertAlmostEqual(pcs["win_rate_shrunk"], 18 / 35, places=6)
-        # (5*2.5 + 30*1.25) / 35 = 50/35
-        self.assertAlmostEqual(pcs["payoff_b_shrunk"], 50 / 35, places=6)
-        self.assertAlmostEqual(pcs["kelly_f_shrunk"], 0.174285714, places=6)
+        # (5*0.6 + 20*0.5) / 25 = 13/25
+        self.assertAlmostEqual(pcs["win_rate_shrunk"], 13 / 25, places=6)
+        # (5*2.5 + 20*1.25) / 25 = 37.5/25 = 1.5
+        self.assertAlmostEqual(pcs["payoff_b_shrunk"], 1.5, places=6)
+        self.assertAlmostEqual(pcs["kelly_f_shrunk"], 0.2, places=6)
         # Shrinkage must pull the point estimate toward the pool, i.e.
         # strictly between the bucket's raw number and the pooled number.
         self.assertLess(pcs["win_rate_shrunk"], pcs["win_rate"])
         self.assertGreater(pcs["win_rate_shrunk"], 0.5)
 
         cds = stats["by_combo"]["call_debit_spread"]
-        # (3*(1/3) + 30*0.5) / 33 = 16/33
-        self.assertAlmostEqual(cds["win_rate_shrunk"], 16 / 33, places=6)
+        # (3*(1/3) + 20*0.5) / 23 = 11/23
+        self.assertAlmostEqual(cds["win_rate_shrunk"], 11 / 23, places=6)
         # call_debit_spread's own payoff_b (1.25) equals the pooled payoff_b
         # here, so shrinkage leaves it unchanged.
         self.assertAlmostEqual(cds["payoff_b_shrunk"], 1.25, places=6)

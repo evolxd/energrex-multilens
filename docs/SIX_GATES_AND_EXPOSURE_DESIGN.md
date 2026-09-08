@@ -197,13 +197,13 @@ Kelly 只是在这层封顶之下决定"往哪个方向多分配一点"，不能
      胜率_收缩 = (n × 该桶胜率 + K × 总体胜率) / (n + K)
      赔率_收缩 = (n × 该桶赔率 + K × 总体赔率) / (n + K)
      ```
-     `K` 是"要攒多少笔真实战绩才能基本不理会总体平均"的虚拟样本量。用户明确
-     选定 **K=30**（而不是更小的 20）——理由：总体样本（318 笔量级）远比任何
-     单一小桶可靠，基数应该更保守地偏向总体，让小样本桶更依赖总体而不是自己
-     的噪音。代码和公式都在 `account_monitor.py::_compute_performance_stats`
-     的 `by_combo` 循环里（`win_rate_shrunk`/`payoff_b_shrunk`/`kelly_f_shrunk`/
-     `shrink_k` 字段），"按组合策略分组"表新增了对应两列。
-     `tests/test_performance_stats_kelly.py::test_shrinkage_pulls_small_buckets_toward_pooled_stats_with_k_30`
+     `K` 是"要攒多少笔真实战绩才能基本不理会总体平均"的虚拟样本量。用户一度
+     定过 **K=30**（理由：总体样本更可靠，基数该更保守地偏向总体），随后
+     明确改回 **K=20**——最终值是 20。代码和公式都在
+     `account_monitor.py::_compute_performance_stats` 的 `by_combo` 循环里
+     （`win_rate_shrunk`/`payoff_b_shrunk`/`kelly_f_shrunk`/`shrink_k` 字段），
+     "按组合策略分组"表新增了对应两列。
+     `tests/test_performance_stats_kelly.py::test_shrinkage_pulls_small_buckets_toward_pooled_stats_with_k_20`
      用手算数字核对了公式。
    - 收缩之后的 `kelly_f_shrunk` 是比原始 `kelly_f` 更值得信的候选输入，但仍然
      只是候选——2.3 的小样本折扣、2.4 的硬约束封顶依然要在它之上再走一遍。
@@ -241,8 +241,9 @@ Kelly 只是在这层封顶之下决定"往哪个方向多分配一点"，不能
 ## 4. 变更记录
 
 - **2026-09-07**：`by_combo` 补上 avg_win/avg_loss/payoff_b/kelly_f（§2.5 item 1）；
-  针对用户"为什么不直接用总体统计"的质疑，给每个桶加了 K=30 的收缩估计
-  （win_rate_shrunk/payoff_b_shrunk/kelly_f_shrunk，§2.5 item 2）。同时修了
+  针对用户"为什么不直接用总体统计"的质疑，给每个桶加了收缩估计
+  （win_rate_shrunk/payoff_b_shrunk/kelly_f_shrunk，§2.5 item 2）。虚拟样本量
+  `K` 先定过 30，用户随后明确改回 **K=20**（最终值）。同时修了
   `account/db.py` 里 `option_realized_trades` 表 `CREATE TABLE` 语句缺失
   `combo_id`/`combo_strategy` 两列的 schema bug（旧库靠未记录的历史迁移侥幸
   能用，新建库会直接崩）。
