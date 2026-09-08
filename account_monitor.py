@@ -960,6 +960,7 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
     avg_win  = float(wins.mean())   if len(wins)   else 0.0
     avg_loss = float(losses.mean()) if len(losses) else 0.0
     pf = abs(avg_win / avg_loss) if avg_loss else None
+    _pooled_win_rate = float(df["win"].mean())
 
     # 按整单的策略类型分组（credit/debit spread，或没配对上的裸腿）——
     # 这才是原来"按组合策略分组"那张表一直显示不出东西的原因：
@@ -971,6 +972,15 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
     # 小样本折扣），折扣和硬约束封顶留给调用方（那份文档 §2.3/§2.4 还没写代码）。
     # close_date_min/max 跟 count 一起存进每个桶，是用户明确要求的："任何统计数字
     # 都要带起止时间和总样本量"——数据结构里直接带上，不是只在我说话时提一句。
+    #
+    # win_rate_shrunk/payoff_b_shrunk/kelly_f_shrunk：用户质疑"为什么小笔数要
+    # 分开统计，不做总体统计"——分开统计是对的（不同价差类型结构性赔率不同，
+    # 卖方/买方不是同一种赌注），但小样本桶（16笔、21笔）的具体数字确实噪音大。
+    # 折中：贝叶斯收缩，往全账户总体（318笔量级，更可靠）拉一把，样本越小拉
+    # 得越多。K_SHRINK 是"要攒多少笔真实战绩才能基本不理会总体平均"的虚拟
+    # 样本量，用户本人选定 30（比 20 更保守——总体水平样本更大更准，基数应
+    # 该更大，让小样本桶更依赖总体而不是自己的噪音）。
+    K_SHRINK = 30
     by_combo = {}
     for cs, grp in df.groupby("combo_strategy"):
         _wins   = grp.loc[grp["pnl"] > 0, "pnl"]
@@ -981,11 +991,25 @@ def _compute_performance_stats(acct_id: str) -> dict | None:
         _avg_loss = float(_losses.mean()) if len(_losses) else 0.0
         _payoff_b = abs(_avg_win / _avg_loss) if _avg_loss else None
         _kelly_f  = (_win_rate - (1 - _win_rate) / _payoff_b) if _payoff_b else None
+
+        _win_rate_shrunk = (_n * _win_rate + K_SHRINK * _pooled_win_rate) / (_n + K_SHRINK)
+        if _payoff_b is not None and pf is not None:
+            _payoff_b_shrunk = (_n * _payoff_b + K_SHRINK * pf) / (_n + K_SHRINK)
+        else:
+            _payoff_b_shrunk = pf if pf is not None else _payoff_b
+        _kelly_f_shrunk = (
+            _win_rate_shrunk - (1 - _win_rate_shrunk) / _payoff_b_shrunk
+        ) if _payoff_b_shrunk else None
+
         by_combo[str(cs)] = {
             "count": _n, "win_rate": _win_rate,
             "avg_pnl": float(grp["pnl"].mean()), "total": float(grp["pnl"].sum()),
             "avg_win": _avg_win, "avg_loss": _avg_loss,
             "payoff_b": _payoff_b, "kelly_f": _kelly_f,
+            "win_rate_shrunk": _win_rate_shrunk,
+            "payoff_b_shrunk": _payoff_b_shrunk,
+            "kelly_f_shrunk": _kelly_f_shrunk,
+            "shrink_k": K_SHRINK,
             "close_date_min": str(grp["close_date"].min()),
             "close_date_max": str(grp["close_date"].max()),
         }
@@ -5021,8 +5045,11 @@ with _pos_tabs[1]:
         if _stats.get("by_combo"):
             st.caption(
                 "赔率 b = 均赢/|均亏|；原始 Kelly f* = 胜率 − (1−胜率)/b，未打小样本折扣、"
-                "未过硬约束封顶——是 docs/SIX_GATES_AND_EXPOSURE_DESIGN.md §2 敞口设计的"
-                "候选输入，不是可以直接拿去下单的仓位建议。"
+                "未过硬约束封顶。收缩胜率/赔率/Kelly：小样本桶（笔数少）往全账户"
+                "总体水平上拉一把（K=30，笔数越多越信自己的数据、越少越信总体），"
+                "缓解 16/21 笔这种量级点估计噪音大的问题——仍是"
+                "docs/SIX_GATES_AND_EXPOSURE_DESIGN.md §2 敞口设计的候选输入，"
+                "不是可以直接拿去下单的仓位建议。"
             )
             _combo_rows = pd.DataFrame([
                 {"组合策略": k, "次数": v["count"],
@@ -5032,6 +5059,8 @@ with _pos_tabs[1]:
                  "均亏": f"${v['avg_loss']:+,.2f}",
                  "赔率b": f"{v['payoff_b']:.2f}" if v["payoff_b"] else "—",
                  "原始Kelly": f"{v['kelly_f']*100:+.1f}%" if v["kelly_f"] is not None else "—",
+                 "收缩胜率": f"{v['win_rate_shrunk']*100:.0f}%",
+                 "收缩Kelly": f"{v['kelly_f_shrunk']*100:+.1f}%" if v["kelly_f_shrunk"] is not None else "—",
                  "合计":   f"${v['total']:+,.2f}"}
                 for k, v in sorted(_stats["by_combo"].items(), key=lambda x: -x[1]["total"])
             ])

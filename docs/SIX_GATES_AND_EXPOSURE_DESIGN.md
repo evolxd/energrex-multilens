@@ -177,16 +177,44 @@ Kelly 只是在这层封顶之下决定"往哪个方向多分配一点"，不能
 
 ### 2.5 还缺什么代码才能真正跑起来
 
-1. **`by_combo` 需要拆 `avg_win` / `avg_loss`**——`_compute_performance_stats` 目前
-   `by_combo` 字典只有 `count` / `win_rate` / `avg_pnl` / `total`，没有分开算赢的
-   平均和亏的平均。§2.2 表格里的赔率 `b` 是手动现算的，需要正式补进
-   `account_monitor.py::_compute_performance_stats`。
-2. **小样本置信区间一个都没做**——16 笔、21 笔这种量级，点估计的胜率本身就有很大
-   噪音，应该给区间（比如 Wilson score interval）而不是单一数字，至少要在展示时
-   附一个"样本量太小，区间是 [x%, y%]"的提示（同样的"小样本给区间/给提示"模式已经
-   在 `refresh_scores.py::add_sector_ai_exposure_percentile` 里用过一次，可以直接
+1. ~~**`by_combo` 需要拆 `avg_win` / `avg_loss`**~~——**已完成**（2026-09-07，
+   `account_monitor.py::_compute_performance_stats`）。`by_combo` 现在每个桶带
+   `avg_win`/`avg_loss`/`payoff_b`/`kelly_f`/`close_date_min`/`close_date_max`，
+   `tests/test_performance_stats_kelly.py` 有对照手算的用例。
+
+2. ~~**为什么分桶而不是用总体统计**~~——**已用收缩估计（shrinkage）解决**
+   （2026-09-07）。用户当面质疑过这个设计：16 笔、21 笔这么小的样本，为什么不
+   直接用 318 笔总体统计（噪音小得多）？结论是两者都不该单独用：
+   - **不能直接合并**：不同价差类型是结构性不同的赌注（卖方策略结构上小赚多次、
+     偶尔大亏；买方策略结构上亏多次、偶尔大赚），§2.2 数据本身也证明了这一点
+     （put_credit_spread 75% vs call_debit_spread 33%）。把它们混成一个胜率，
+     用来给"即将要开的下一笔 put_credit_spread"定仓位是文不对题的。
+   - **但小样本的具体数字确实不可信**——75%、33% 这种点估计噪音大，直接拿去
+     算 Kelly 容易过度自信。
+   - 折中方案是**贝叶斯收缩**：每个桶的胜率/赔率都往全账户总体拉一把，笔数
+     越多越信自己的数据，笔数越少越信总体：
+     ```
+     胜率_收缩 = (n × 该桶胜率 + K × 总体胜率) / (n + K)
+     赔率_收缩 = (n × 该桶赔率 + K × 总体赔率) / (n + K)
+     ```
+     `K` 是"要攒多少笔真实战绩才能基本不理会总体平均"的虚拟样本量。用户明确
+     选定 **K=30**（而不是更小的 20）——理由：总体样本（318 笔量级）远比任何
+     单一小桶可靠，基数应该更保守地偏向总体，让小样本桶更依赖总体而不是自己
+     的噪音。代码和公式都在 `account_monitor.py::_compute_performance_stats`
+     的 `by_combo` 循环里（`win_rate_shrunk`/`payoff_b_shrunk`/`kelly_f_shrunk`/
+     `shrink_k` 字段），"按组合策略分组"表新增了对应两列。
+     `tests/test_performance_stats_kelly.py::test_shrinkage_pulls_small_buckets_toward_pooled_stats_with_k_30`
+     用手算数字核对了公式。
+   - 收缩之后的 `kelly_f_shrunk` 是比原始 `kelly_f` 更值得信的候选输入，但仍然
+     只是候选——2.3 的小样本折扣、2.4 的硬约束封顶依然要在它之上再走一遍。
+
+3. **小样本置信区间还没做**——收缩解决的是"点估计该往哪个方向修正"，没有解决
+   "这个修正后的数字到底有多不确定"。仍然应该给区间（比如 Wilson score
+   interval）而不是单一数字，至少在展示时附一个"样本量太小，区间是 [x%, y%]"
+   的提示（同样的"小样本给区间/给提示"模式已经在
+   `refresh_scores.py::add_sector_ai_exposure_percentile` 里用过一次，可以直接
    参考那个实现风格）。
-3. **归属层未定**——这套逻辑该挂在门③（`pages/5_⚖️_仓位管理.py`）里新增一个函数，
+4. **归属层未定**——这套逻辑该挂在门③（`pages/5_⚖️_仓位管理.py`）里新增一个函数，
    还是单独成一个新页面/新模块，需要用户拍板。倾向前者：Kelly 建议依赖账户当前
    敞口和硬约束，逻辑上属于"测算"，不是"选择"。
 
@@ -212,6 +240,12 @@ Kelly 只是在这层封顶之下决定"往哪个方向多分配一点"，不能
 
 ## 4. 变更记录
 
+- **2026-09-07**：`by_combo` 补上 avg_win/avg_loss/payoff_b/kelly_f（§2.5 item 1）；
+  针对用户"为什么不直接用总体统计"的质疑，给每个桶加了 K=30 的收缩估计
+  （win_rate_shrunk/payoff_b_shrunk/kelly_f_shrunk，§2.5 item 2）。同时修了
+  `account/db.py` 里 `option_realized_trades` 表 `CREATE TABLE` 语句缺失
+  `combo_id`/`combo_strategy` 两列的 schema bug（旧库靠未记录的历史迁移侥幸
+  能用，新建库会直接崩）。
 - **2026-09-06**：首次成稿。同一天完成的相关修复（都是这份文档援引数据的前提）：
   - 修了 Firstrade CSV 解析器的 3 个静默数据损坏 bug（日期格式假设错误、股票代号
     列名映射错误、日期格式本身在不同批次导出文件间不一致）。
