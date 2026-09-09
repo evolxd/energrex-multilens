@@ -26,12 +26,7 @@ import streamlit as st
 _ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(_ROOT / "scoring"))
 
-from options_chain import (               # noqa: E402
-    fetch_chain_firstrade,
-    fetch_chain_marketdata,
-    fetch_expirations_firstrade,
-    fetch_expirations_marketdata,
-)
+from spread_ui_common import pick_source_and_expirations  # noqa: E402
 from bull_put_spread import (              # noqa: E402
     BullPutCandidate,
     breakeven,
@@ -61,38 +56,7 @@ def render() -> None:
     )
 
     # ── 数据源选择 ────────────────────────────────────────────
-    col_src, col_ticker = st.columns([1, 2])
-    with col_src:
-        source = st.selectbox("期权链数据源", ["MarketData.app（已接入）", "Firstrade（已接入 · 需本机 CDP 已登录）"])
-    with col_ticker:
-        ticker = st.text_input("标的代码", placeholder="NVDA", key="bps_ticker").strip().upper()
-
-    if source.startswith("Firstrade"):
-        fetch_expirations, fetch_chain = fetch_expirations_firstrade, fetch_chain_firstrade
-        st.caption(
-            "走 Firstrade 真实内部接口（2026-09-06 现场抓包确认），需要本机有一个 "
-            "`start_chrome.bat` 启动、CDP 9222、已登录 Firstrade 的 Chrome 在跑——"
-            "跟 `account_monitor.py` 抓真实持仓用的是同一个自动化 profile。没连上/未登录时，"
-            "下面拉取到期日会直接显示空列表（不是报错崩溃），按提示先启动那个 Chrome 并登录即可。"
-        )
-    else:
-        fetch_expirations, fetch_chain = fetch_expirations_marketdata, fetch_chain_marketdata
-
-    if not ticker:
-        st.info("输入一个标的代码开始。")
-        st.stop()
-
-    with st.spinner(f"拉取 {ticker} 可用到期日…"):
-        expirations = fetch_expirations(ticker)
-
-    if not expirations:
-        if source.startswith("Firstrade"):
-            st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或者 CDP 9222 "
-                      "那个 Chrome（`start_chrome.bat`）没启动/没登录 Firstrade。")
-        else:
-            st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或 MarketData.app "
-                      "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
-        st.stop()
+    ticker, fetch_chain, expirations = pick_source_and_expirations("bps_ticker")
 
     today = datetime.date.today()
 
@@ -130,22 +94,12 @@ def render() -> None:
     selected_labels = st.multiselect("到期日", list(exp_labels.keys()), default=default_labels)
     selected_exps = [exp_labels[lbl] for lbl in selected_labels]
 
-    def _release_risk(expiration: str) -> list[dict]:
+    def _release_risk_label(expiration: str) -> str:
         """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
         结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
         scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
         已实现波动率的日程事件"。"""
-        return macro_calendar.releases_within(today, datetime.date.fromisoformat(expiration))
-
-    def _release_risk_label(expiration: str) -> str:
-        hits = _release_risk(expiration)
-        if not hits:
-            return "—"
-        parts = []
-        for h in hits:
-            mark = "" if h["confirmed"] else "（日期未核实）"
-            parts.append(f"{h['label']}{mark}")
-        return " · ".join(parts)
+        return macro_calendar.release_risk_label(today, expiration)
 
     if selected_exps:
         st.markdown(

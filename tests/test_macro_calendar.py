@@ -73,3 +73,28 @@ def test_fomc_meeting_counts_if_either_boundary_day_is_in_window():
     # Window that only catches the second day of the Sep 15-16 meeting.
     hits = mc.releases_within(datetime.date(2026, 9, 16), datetime.date(2026, 9, 16))
     assert any(h["type"] == "FOMC" for h in hits)
+
+
+# release_risk_label -- 2026-09-09 extracted from bull_put_spread_module.py /
+# bull_call_spread_module.py, which had this exact formatting logic copied
+# twice with no macro-calendar-specific reason for it to live in either page.
+
+def test_release_risk_label_returns_dash_when_no_releases_in_window():
+    assert mc.release_risk_label(datetime.date(2026, 9, 5), "2026-09-06") == "—"
+
+
+def test_release_risk_label_includes_known_confirmed_nfp():
+    label = mc.release_risk_label(datetime.date(2026, 9, 3), "2026-09-04")
+    assert "非农 (2026-08)" in label
+    assert "（日期未核实）" not in label  # 2026-08 NFP is one of the confirmed exceptions
+
+
+def test_release_risk_label_marks_unconfirmed_release_dates():
+    # 2026-09 NFP is not in the confirmed-exceptions set.
+    label = mc.release_risk_label(datetime.date(2026, 9, 3), "2026-10-02")
+    assert "（日期未核实）" in label
+
+
+def test_release_risk_label_joins_multiple_hits_with_middle_dot():
+    label = mc.release_risk_label(datetime.date(2026, 9, 3), "2026-09-15")
+    assert " · " in label

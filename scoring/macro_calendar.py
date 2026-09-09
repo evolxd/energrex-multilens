@@ -112,3 +112,21 @@ def releases_within(start: datetime.date, end: datetime.date) -> list[dict]:
         if start <= date <= end:
             hits.append({"date": date, "type": "NFP", "label": f"非农 ({month})", "confirmed": confirmed})
     return sorted(hits, key=lambda h: h["date"])
+
+
+def release_risk_label(today: datetime.date, expiration: str) -> str:
+    """"[今天, expiration] 窗口内已知发布日"的一行展示文本，"—"表示没有。
+
+    2026-09-09 从 bull_put_spread_module.py / bull_call_spread_module.py
+    抽出来——两个文件里逐字一样的两个函数（_release_risk +
+    _release_risk_label），价差评分和发布日历本身没有任何分道理，属于
+    该在这个模块里的东西，不该各页面自己抄一遍。
+    """
+    hits = releases_within(today, datetime.date.fromisoformat(expiration))
+    if not hits:
+        return "—"
+    parts = []
+    for h in hits:
+        mark = "" if h["confirmed"] else "（日期未核实）"
+        parts.append(f"{h['label']}{mark}")
+    return " · ".join(parts)

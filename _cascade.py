@@ -56,55 +56,45 @@ def _get_am() -> dict:
     return _am
 
 
-def _scan_exit_signals() -> list[dict]:
-    """扫描 DB 中的出场信号：止盈 / 止损 / 临近到期（≤7 DTE）。"""
-    signals: list[dict] = []
-    try:
-        conn = sqlite3.connect(str(_DB))
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT symbol, quantity, unit_cost, current_price, total_pnl, expiry "
-            "FROM options_positions WHERE account_id='account_1'"
-        ).fetchall()
-        today = datetime.date.today()
-        for o in rows:
-            sym   = str(o["symbol"]        or "")
-            q     = float(o["quantity"]     or 0)
-            cost  = float(o["unit_cost"]    or 0)
-            pnl   = float(o["total_pnl"]   or 0)
+_DIM_TO_TYPE = {"止盈纪律": "止盈", "止损纪律": "止损", "到期处理": "到期"}
 
-            if cost != 0 and q != 0:
-                basis   = abs(cost) * abs(q) * 100
-                pnl_pct = pnl / basis if basis else 0
-                if q < 0 and pnl_pct >= 0.50:
-                    signals.append({"symbol": sym, "type": "止盈",
-                                    "reason": f"空期权盈利 {pnl_pct*100:.0f}%，建议回补"})
-                elif q > 0 and pnl_pct >= 1.0:
-                    signals.append({"symbol": sym, "type": "止盈",
-                                    "reason": f"多期权盈利 {pnl_pct*100:.0f}%，建议部分兑现"})
-                elif q > 0 and pnl_pct <= -0.50:
-                    signals.append({"symbol": sym, "type": "止损",
-                                    "reason": f"多期权亏损 {pnl_pct*100:.0f}%，建议止损"})
 
-            try:
-                exp = datetime.date.fromisoformat(str(o["expiry"] or ""))
-                dte = (exp - today).days
-                if 0 <= dte <= 7:
-                    signals.append({"symbol": sym, "type": "到期",
-                                    "reason": f"距到期 {dte} 天，建议处理"})
-            except Exception:
-                pass
-
-        conn.close()
-    except Exception as e:
-        _log.warning(f"_scan_exit_signals: {e}")
-
+def _dedupe_signals_by_symbol(raw: list[dict]) -> list[dict]:
+    """按symbol去重折叠成摘要用的旧格式——一个symbol同时踩两种信号
+    （比如既止盈又快到期）不重复计数，只关心"多少个symbol有问题"。"""
     seen: set[str] = set()
     unique: list[dict] = []
-    for s in signals:
+    for s in raw:
         if s["symbol"] not in seen:
-            seen.add(s["symbol"]); unique.append(s)
+            seen.add(s["symbol"])
+            unique.append({
+                "symbol": s["symbol"],
+                "type": _DIM_TO_TYPE.get(s["dimension"], s["dimension"]),
+                "reason": s["detail"],
+            })
     return unique
+
+
+def _scan_exit_signals() -> list[dict]:
+    """扫描 DB 中的出场信号：止盈 / 止损 / 临近到期（≤7 DTE），按symbol去重。
+
+    2026-09-09：核心扫描（阈值/SQL）搬到了 account/discipline.py::
+    scan_pnl_dte_signals——门⑤纪律记录要用同一份数据但**不能**去重折叠
+    （一个symbol的止盈信号和到期信号是两个独立维度，各自要记录），这里
+    以前是重复实现了一遍同样的阈值逻辑，现在改成调那边、自己只做去重这
+    一层，不再有两份重复的阈值判断代码。`run_sync_cascade` 需要同时用到
+    去重前/去重后两种视图，直接调 `account.discipline.scan_pnl_dte_signals`
+    +`_dedupe_signals_by_symbol` 避免这个函数和门⑤记录各查一次库；这个
+    函数留给 `run_price_cascade`（不需要门⑤记录）这种只要摘要计数的场景。
+    """
+    try:
+        sys.path.insert(0, str(_ROOT))
+        from account.discipline import scan_pnl_dte_signals
+        raw = scan_pnl_dte_signals("account_1")
+    except Exception as e:
+        _log.warning(f"_scan_exit_signals: {e}")
+        raw = []
+    return _dedupe_signals_by_symbol(raw)
 
 
 def run_sync_cascade(step=None) -> dict:
@@ -196,25 +186,27 @@ def run_sync_cascade(step=None) -> dict:
     except Exception as e:
         _s(f"⚠️ Kelly 计算失败: {e}")
 
-    # 4 ── 出场信号扫描
+    # 4 ── 出场信号扫描 + 4.5 门⑤纪律记录（同一批 options_positions 数据，
+    # 只查一次库：pnl_dte 是未去重的原始信号列表，_scan_exit_signals 摘要
+    # 用的"去重计数"和门⑤记录用的"每种信号类型各自留一条"是同一份数据的
+    # 两种视图，见 _dedupe_signals_by_symbol 的说明）。
     _s("🔄 扫描出场信号...")
+    pnl_dte: list[dict] = []
     try:
-        sigs = _scan_exit_signals()
+        sys.path.insert(0, str(_ROOT))
+        from account.discipline import scan_pnl_dte_signals
+        pnl_dte = scan_pnl_dte_signals("account_1")
+        sigs = _dedupe_signals_by_symbol(pnl_dte)
         summary["exit_signals"] = len(sigs)
         _s(f"✅ 出场信号 {len(sigs)} 个")
     except Exception as e:
         _s(f"⚠️ 出场信号扫描失败: {e}")
 
     # 4.5 ── 门⑤纪律：记录信号 + 核对上次的有没有真的响应
-    # （docs/DISCIPLINE_GATE_DESIGN.md）。跟第4步用同一批 options_positions
-    # 数据，但保留每个symbol的每种信号类型不去重——discipline.
-    # scan_pnl_dte_signals 是独立实现，不是复用上面 _scan_exit_signals 的
-    # 结果（那边为了UI摘要按symbol折叠了）。
+    # （docs/DISCIPLINE_GATE_DESIGN.md）。
     _s("🔄 记录纪律信号...")
     try:
-        sys.path.insert(0, str(_ROOT))
         from account import discipline as _disc
-        pnl_dte = _disc.scan_pnl_dte_signals("account_1")
         try:
             hedge_plan = am["_compute_qqq_hedge_plan"]("account_1")
             hedge_gov  = hedge_plan.get("hedge_governance") if isinstance(hedge_plan, dict) else None
