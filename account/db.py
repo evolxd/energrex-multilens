@@ -20,8 +20,21 @@ SCREENSHOT_DIR.mkdir(exist_ok=True)
 
 
 def db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=15.0)
     conn.row_factory = sqlite3.Row
+    # WAL：默认的回滚日志模式下，任何一次写事务（同步账户/CSV导入/FIFO重算/
+    # 门⑤纪律记录）都会给整个库文件加排他锁，这段时间内别的连接连读都读不了
+    # ——这个系统有好几个入口可能同时碰库（账户同步的同时开着账户监控页面
+    # 正好自动刷新一次），WAL模式下读不会被写挡住，只有写和写之间才互斥，
+    # 大幅缓解这种"随时有人在同步、随时有人在看页面"的场景。PRAGMA 是持久化
+    # 在库文件头里的设置，重复执行没有代价（已经是WAL就直接返回）。
+    # busy_timeout（15秒，比 sqlite3 默认的5秒宽松）是给WAL之外剩下的那点
+    # 写-写竞争一个宽限，不是解决方案本身——已经在上面 connect(timeout=15.0)
+    # 里设置过了，这里不用再重复设一遍。
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
     return conn
 
 
