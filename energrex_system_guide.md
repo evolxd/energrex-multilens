@@ -17,7 +17,7 @@
 
 | 方式 | 命令 | 用途 |
 |---|---|---|
-| 网页 Dashboard | `streamlit run home.py --server.port 8502` | 人工浏览排行榜/个股详情/期权/账户/误价研究 |
+| 网页 Dashboard | `streamlit run home.py --server.port 8501` | 六重门导航（作战室/估值发现/工具选择/仓位测算/下场前验证/纪律/绩效评估） |
 | 命令行审计 | `python quant_audit.py TICKER` | 逐字段公式展开，调试某只票的分怎么算出来的 |
 | 对话（MCP） | 项目根目录 `.mcp.json` 已配置 | 任何支持 MCP 的 AI 客户端可直接调用 `get_stock_score` / `get_valuation_report` / `list_universe`，见 `scoring/mcp_server.py` |
 
@@ -96,7 +96,12 @@ evaluate_decision()` 也会给熔断标的一个专门的 `🧾 熔断复核 · 
 
 - GitHub：`evolxd/energrex-multilens`，`master` 分支是当前最新（这次会话
   所有修复已合并）
-- Render：`render.yaml` 已配置好（`branch: master`），部署这一步需要
-  仓库所有者本人登录 render.com 手动完成（涉及账号授权，AI 无法代劳）
-- 本地开发：`streamlit run home.py --server.port 8502`（不是默认的8501，
-  历史上端口冲突过）
+- Render：**这个部署计划已暂停，不要恢复**（2026-09-08 网络架构审查决定）——
+  `render.yaml` 部署的是这个真实账户驾驶舱本身（`home.py`），公网 `--server.
+  address 0.0.0.0` 绑自定义域名而应用本身没有任何登录门禁，一旦真的部署出去
+  全世界都能看到真实持仓和盈亏。而且账户同步依赖本机 Chrome CDP（`127.0.0.1:
+  9222`），Render 是远程容器连不到，部署了"同步账户"按钮也是死的。以后如果
+  `energrex.com` 要绑东西，该绑投资者看板（`energrex-investor-public`，走
+  GitHub Pages 自带的 Custom Domain，免费HTTPS，不需要Render）。
+- 本地开发：`streamlit run home.py --server.port 8501`（2026-09-08 起统一到
+  8501，之前用过8502是因为一次僵尸进程卡住8501杀不掉，问题早就不在了）

@@ -44,6 +44,9 @@ import macro_calendar                      # noqa: E402
 
 st.set_page_config(page_title="ENERGREX · Bull Put Spread 评分", page_icon="🎯", layout="wide")
 
+import _sidebar as _sb  # noqa: E402
+_sb.render()
+
 _BG, _SURF, _BORDER = "#0A1628", "#0F1923", "#1E2D3D"
 _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD, _BLUE = "#00D4AA", "#FFB347", "#FF4B6E", "#4FC3F7"

@@ -94,6 +94,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+import _sidebar as _sb  # noqa: E402
+_sb.render()
+
 st.markdown(f"""
 <style>
 footer {{visibility:hidden;}} #MainMenu {{visibility:hidden;}}

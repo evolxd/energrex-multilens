@@ -1,6 +1,11 @@
 """
-_sidebar.py — ENERGREX 共享侧边栏
-所有页面 import 后调用 render() 即可渲染统一侧边栏。
+_sidebar.py — ENERGREX 共享侧边栏（数据更新 + 风险状态）
+
+一级导航（六重门分组）由 home.py 的 st.navigation() 原生渲染，这里不再画
+任何 page_link——2026-09-08 六重门重建之前，这个文件还手工维护过一份导航
+列表，跟 Streamlit 自动生成的原生导航同时存在，导致侧边栏出现两套导航
+（用户截图指出的问题）。现在只剩这一件事：数据更新按钮 + 风险状态展示，
+所有页面 import 后调用 render() 即可。
 """
 import streamlit as st
 import sqlite3, json, pathlib, socket, datetime
@@ -83,46 +88,6 @@ def _hhmm(ts: str | None) -> str:
         return ts[11:16] + " ET"
     except Exception:
         return ts or "—"
-
-
-def render_nav(subnav_render_fn=None) -> None:
-    """渲染顶部品牌 + 导航（含可选的当前页二级导航，紧跟在对应一级入口下面，
-    不再和它中间隔着数据更新/风险状态——两级导航应该是同一个视觉群组）。
-
-    subnav_render_fn: 可选回调，在 "AI 估值评分" 这一项下面原地渲染二级导航
-    （比如 app.py 的 排行榜/单股详情/对比分析/评分审计/数据编辑），
-    只有当前就在该页面时才需要传。其余页面不传，行为不变。
-    """
-    with st.sidebar:
-        # ── 标题 ─────────────────────────────────────────
-        st.markdown(
-            f"<div style='font-size:22px;font-weight:800;"
-            f"letter-spacing:2px;color:{_G};padding:4px 0'>⚡ ENERGREX</div>",
-            unsafe_allow_html=True,
-        )
-        st.divider()
-
-        # ── 导航（一级 + 二级合并成一组）───────────────────
-        st.markdown(
-            f"<div style='font-size:10px;color:{_MUT};text-transform:uppercase;"
-            f"letter-spacing:1px;margin-bottom:2px'>📍 导航</div>",
-            unsafe_allow_html=True,
-        )
-        # app.py may also be launched directly on port 8501. In that mode
-        # home.py is not a Streamlit page relative to the entry point, so a
-        # page_link would abort the entire valuation page.
-        try:
-            st.page_link("home.py", label="作战室（主页）", icon="🏠")
-        except st.errors.StreamlitPageNotFoundError:
-            st.link_button("🏠 作战室（主页）", "http://127.0.0.1:8502")
-        st.page_link("pages/1_📊_AI_估值评分.py",      label="AI 估值评分",   icon="📊")
-        if subnav_render_fn is not None:
-            subnav_render_fn()
-        st.page_link("pages/4_🔎_误价研究.py",          label="误价与特殊机会", icon="🔎")
-        st.page_link("pages/2_📈_期权分析.py",         label="期权分析",       icon="📈")
-        st.page_link("pages/3_🏦_账户监控.py",         label="账户监控",       icon="🏦")
-        st.page_link("pages/5_⚖️_仓位管理.py",         label="仓位管理",       icon="⚖️")
-        st.divider()
 
 
 def render_status() -> None:
@@ -256,7 +221,6 @@ def render_status() -> None:
 
 
 def render() -> None:
-    """向后兼容包装：等价于依次调用 render_nav() + render_status()。
-    不需要在导航里插二级导航的页面（home.py / 期权分析 / 账户监控）继续用这个即可。"""
-    render_nav()
+    """每个页面统一调用的入口，等价于 render_status()——名字保留 render()
+    只是不用改动每个页面的调用点。"""
     render_status()

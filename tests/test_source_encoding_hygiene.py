@@ -79,8 +79,6 @@ def test_loaders_that_parse_python_source_tolerate_a_bom():
         "_cascade.py",
         "_run_sync.py",
         "_run_price_refresh.py",
-        "pages/1_📊_AI_估值评分.py",
-        "pages/2_📈_期权分析.py",
     ],
 )
 def test_known_source_loaders_use_bom_tolerant_encoding(relative_path):

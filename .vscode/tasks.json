@@ -12,7 +12,7 @@
       "label": "🏠 启动 Dashboard（估值/期权/仓位/误价研究 都在这一个进程里，靠左侧导航切换）",
       "type": "shell",
       "command": "python",
-      "args": ["-X", "utf8", "-m", "streamlit", "run", "home.py", "--server.port", "8502"],
+      "args": ["-X", "utf8", "-m", "streamlit", "run", "home.py", "--server.port", "8501"],
       "isBackground": true,
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "dedicated" },

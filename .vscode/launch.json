@@ -6,7 +6,7 @@
       "type": "debugpy",
       "request": "launch",
       "module": "streamlit",
-      "args": ["run", "home.py", "--server.port", "8502"],
+      "args": ["run", "home.py", "--server.port", "8501"],
       "justMyCode": false,
       "console": "integratedTerminal"
     },

@@ -40,6 +40,10 @@ from spread_universe_screener import (      # noqa: E402
 
 st.set_page_config(page_title="ENERGREX · 期权价差全市场筛选", page_icon="🌐", layout="wide")
 
+sys.path.insert(0, str(_ROOT))
+import _sidebar as _sb  # noqa: E402
+_sb.render()
+
 _BG, _SURF, _BORDER = "#0A1628", "#0F1923", "#1E2D3D"
 _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD = "#00D4AA", "#FFB347", "#FF4B6E"

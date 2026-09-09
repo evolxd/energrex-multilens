@@ -1330,26 +1330,23 @@ def _age_str(ts: datetime.datetime | None) -> str:
 
 import _sidebar as _sb
 
-# 二级导航（排行榜/单股详情/…）改成在 render_nav() 内部、紧贴着
-# "AI 估值评分" 一级入口下面原地渲染，不再和它中间隔着数据更新/风险状态——
-# 两级导航是同一件事（"我现在在哪 / 我要去哪"），不该被状态类widget拆开。
-# st.radio 在回调里创建，用这个字典把选中值带出闭包。
-_subnav = {}
-
-def _render_ai_valuation_subnav():
+# 二级导航（排行榜/单股详情/…）是这个页面自己的内容，不再是"导航"本身——
+# 一级导航（六重门分组）现在由 home.py 的 st.navigation() 原生渲染，
+# 这里只需要在侧边栏里画自己页面内的子视图切换即可，跟 _sidebar.py 的
+# render()（数据更新/风险状态）各画各的，不用再拼一个回调进 render_nav。
+with st.sidebar:
     st.markdown(
-        "<div style='margin-left:26px;color:#6B7280;font-size:10px;"
+        "<div style='color:#6B7280;font-size:10px;"
         "letter-spacing:0.5px;margin-bottom:2px'>该页面内导航</div>",
         unsafe_allow_html=True)
-    _subnav["page"] = st.radio(
+    page = st.radio(
         "AI估值评分页面内导航", key="ai_valuation_subnav",
         options=["🏆 排行榜", "🔍 单股详情", "⚖️ 对比分析", "🔬 评分审计", "📝 数据编辑"],
         label_visibility="collapsed",
     )
+    st.divider()
 
-_sb.render_nav(subnav_render_fn=_render_ai_valuation_subnav)
-page = _subnav["page"]
-_sb.render_status()
+_sb.render()
 
 _validated_count = int(
     df.get("validation_status", pd.Series(index=df.index, dtype="object"))
