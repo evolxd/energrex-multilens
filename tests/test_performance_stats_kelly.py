@@ -1,19 +1,24 @@
-"""Tests for _compute_performance_stats' by_combo Kelly inputs
+"""Tests for account/performance.py's by_combo Kelly inputs
 (avg_win/avg_loss/payoff_b/kelly_f/close_date_min/max).
 
 Written for docs/SIX_GATES_AND_EXPOSURE_DESIGN.md §2 -- that doc's payoff
 -ratio table was hand-computed once; this pins the real code that now
 computes it, plus the two things the user explicitly asked every
 statistic to carry: date range and sample size.
+
+2026-09-09: this used to AST-slice and exec account_monitor.py itself to
+reach these two functions (they were module-level functions inside that
+5000+-line UI script, with no other way to import them). They've since
+been extracted to account/performance.py (a real importable module --
+门③仓位管理 now needs them too, not just this test and account_monitor.py's
+own UI), so this is a plain import now.
 """
-import ast
 import pathlib
-import sqlite3
-import sys
 import tempfile
 import unittest
 
 import account.db as account_db
+from account.performance import compute_performance_stats, wilson_interval
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ACCT = "test_kelly_acct"
@@ -23,33 +28,15 @@ class PerformanceStatsKellyTests(unittest.TestCase):
 
     _tmp = None
     _original_db_path = None
-    _compute = None
+    _compute = staticmethod(compute_performance_stats)
+    _wilson = staticmethod(wilson_interval)
 
     @classmethod
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
         cls._original_db_path = account_db.DB_PATH
         account_db.DB_PATH = pathlib.Path(cls._tmp.name) / "test_kelly.db"
-
-        src = (ROOT / "account_monitor.py").read_text(encoding="utf-8-sig")
-        ui_line = next(
-            (i + 1 for i, line in enumerate(src.splitlines())
-             if "st.set_page_config" in line),
-            99999,
-        )
-        tree = ast.parse(src, filename="account_monitor.py")
-        filtered = ast.Module(
-            body=[n for n in tree.body if getattr(n, "lineno", 0) < ui_line],
-            type_ignores=[],
-        )
-        ast.fix_missing_locations(filtered)
-        ns = {
-            "__file__": str(ROOT / "account_monitor.py"),
-            "__name__": "account_monitor",
-        }
-        exec(compile(filtered, str(ROOT / "account_monitor.py"), "exec"), ns)
-        cls._compute = staticmethod(ns["_compute_performance_stats"])
-        cls._wilson = staticmethod(ns["_wilson_interval"])
+        account_db.init_db()
 
     @classmethod
     def tearDownClass(cls):

@@ -275,6 +275,45 @@ else:
         )
 
 
+# ── 仓位建议（历史胜率/赔率，按策略类型）────────────────────────────
+# 这个不是上面说的"评分驱动的仓位建议"（那是预测力没验证过的AI估值分），
+# 是纯粹从已实现交易历史算出来的经验赔率——回答"过去这类价差我的真实
+# 胜率/赔率是多少，所以下一笔该押多大"，跟股票评分预测力无关。
+# 2026-09-09 用户拆分决定：绩效事实留在门⑥账户监控的"交易绩效"tab（原始
+# 胜率/均赢均亏/赔率b/原始Kelly），收缩估计/置信区间这层"仓位建议"数字
+# 放这里——两处读的是同一个 account/performance.py，不是两份口径。
+st.subheader("仓位建议（历史胜率/赔率，按策略类型）")
+try:
+    from account.performance import compute_performance_stats as _perf_stats
+    _perf = _perf_stats("account_1")
+except Exception as _exc:
+    _perf = None
+    st.warning(f"读取交易历史失败：{_exc}")
+
+if not _perf or not _perf.get("by_combo"):
+    st.caption("暂无已实现交易历史，无法给出仓位建议——先在账户监控页跑一次「运行 FIFO 分析」。")
+else:
+    st.caption(
+        "收缩胜率/收缩Kelly：往全账户总体拉一把（K=20，笔数越多越信自己的数据），"
+        "缓解小样本噪音。胜率区间(95%) 是 Wilson 区间，算在原始胜率上，回答"
+        "\"这一桶自己的笔数够不够撑起这个胜率数字\"——区间很宽就是笔数太少，不是 bug。"
+        "都仍是 docs/SIX_GATES_AND_EXPOSURE_DESIGN.md §2 敞口设计的候选输入，"
+        "还没打小样本折扣、没过硬约束封顶，不是可以直接拿去下单的仓位建议——"
+        "封顶要在上面「硬约束现状」的限额之下再走一遍。目前只统计账户一。"
+    )
+    import pandas as _pd
+    _sizing_rows = _pd.DataFrame([
+        {"组合策略": k, "次数": v["count"],
+         "统计区间": f"{v['close_date_min']} → {v['close_date_max']}",
+         "收缩胜率": f"{v['win_rate_shrunk']*100:.0f}%",
+         "胜率区间(95%)": f"{v['win_rate_ci_lower']*100:.0f}%–{v['win_rate_ci_upper']*100:.0f}%",
+         "收缩Kelly": f"{v['kelly_f_shrunk']*100:+.1f}%" if v["kelly_f_shrunk"] is not None else "—"}
+        for k, v in sorted(_perf["by_combo"].items(), key=lambda x: -x[1]["count"])
+    ])
+    st.dataframe(_sizing_rows, use_container_width=True, hide_index=True,
+                 height=min(60 + len(_sizing_rows) * 38, 400))
+
+
 # ── 持仓论点监控 ─────────────────────────────────────────────────────
 # Only tickers that already have a mispricing case on file (authored via the
 # 误价研究 page) show up here -- most held tickers will not, and that is
