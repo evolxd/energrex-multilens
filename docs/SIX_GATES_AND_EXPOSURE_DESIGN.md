@@ -87,6 +87,7 @@
 | 期权成本/净值比率上限 | `Portfolio_Config.json` 的 `options_cost_ratio_limit` |
 | 熔断机制 | `scoring/scoring_engine.py` circuit breaker |
 | 每日操作简报 | `home.py`，持有/退出建议 |
+| **信号响应记录 + 分维度打分** | **还未建**——设计见 [`DISCIPLINE_GATE_DESIGN.md`](DISCIPLINE_GATE_DESIGN.md)（2026-09-08 立项：上面这几项都只看"此刻"，没有一处记录"提醒出现后你有没有真的响应、拖了几天"） |
 
 #### ⑥ 绩效评估
 | 入口 | 现有实现 |
