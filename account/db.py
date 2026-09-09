@@ -135,6 +135,20 @@ def init_db() -> None:
         total_theta REAL, total_vega  REAL,
         n_contracts INTEGER
     );
+    CREATE TABLE IF NOT EXISTS discipline_signals (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id      TEXT NOT NULL,
+        dimension       TEXT NOT NULL,
+        symbol          TEXT NOT NULL,
+        first_seen_date TEXT NOT NULL,
+        last_seen_date  TEXT NOT NULL,
+        detail          TEXT,
+        status          TEXT NOT NULL,
+        resolved_date   TEXT,
+        resolved_via    TEXT,
+        response_days   INTEGER,
+        UNIQUE(account_id, dimension, symbol, first_seen_date)
+    );
     """)
     conn.commit()
 
@@ -156,6 +170,14 @@ def init_db() -> None:
     for column in ["combo_id TEXT", "combo_strategy TEXT"]:
         try:
             conn.execute(f"ALTER TABLE option_realized_trades ADD COLUMN {column}")
+        except Exception:
+            pass
+
+    # discipline_signals 的列已经在上面 CREATE TABLE 里了，这几行是同样的
+    # 兜底模式，防的是"表已存在但是更老的schema"这种以后可能出现的情况。
+    for column in ["resolved_via TEXT", "response_days INTEGER"]:
+        try:
+            conn.execute(f"ALTER TABLE discipline_signals ADD COLUMN {column}")
         except Exception:
             pass
 

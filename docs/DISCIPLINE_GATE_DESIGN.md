@@ -176,6 +176,25 @@ UPDATE `last_seen_date`，不是每次同步插入新行——这条跟 `option_
 
 ## 10. 变更记录
 
+- **2026-09-09**：**代码已实现，门⑤不再是占位页**。
+  - `account/db.py`：`discipline_signals` 表 + ALTER TABLE 兜底
+  - `account/discipline.py`：`scan_pnl_dte_signals`/`hedge_governance_signals`/
+    `record_and_resolve_signals`（§4算法）/`get_overdue_signals`/
+    `compute_discipline_scores`（§5打分）
+  - `_cascade.py::run_sync_cascade`：新增步骤4.5，每次同步账户时记录+核对
+  - `_sidebar.py`：同步成功提示里加"🛡️ 纪律提醒 N 条"（方案A落地）
+  - `discipline_dashboard.py`：从占位页换成真实页面——4个维度卡片
+    （响应率/平均响应天数/未处理最久一条）+ 当前未处理信号明细表，
+    统计区间可选近30/90/365天
+  - `tests/test_discipline.py`：18个测试，覆盖 acted vs self_resolved、
+    UNIQUE约束防重复插入、到期未处理标记、超期窗口判断、打分聚合
+  - **实现时才发现的真实局限**（设计文档没展开）：对冲纪律的
+    MISSING_HEDGE（该开新对冲但没开）无法靠"响应"识别成 acted，只能靠
+    self_resolved（触发条件自己消失）——因为 option_realized_trades
+    只记录平仓，检测不到"开了一笔新对冲"这个动作。见
+    `account/discipline.py` 模块顶部 docstring。
+  - 已用真实浏览器验证：`init_db()` 跑过真实生产库，纪律看板页面正常
+    渲染空状态（N=0，无未处理信号——因为表刚建，还没有真实同步数据）。
 - **2026-09-08**：首次成稿，随后同一天用户确认：论点纪律这轮不做、响应窗口数字
   照定不改、需要主动推送提醒。§9 三条路径给出后用户选定 **方案 A（同步后弹提示）**。
   至此所有设计决策已定，可以开始写代码：`account/db.py` 加表、新建

@@ -141,6 +141,22 @@ def render_status() -> None:
                     f"净值 ${_eq:,.0f} · BD {_bd:.0f}%"
                     f" · 盈亏 ${_pnl:+,.0f} · 出场信号 {_sig} 个"
                 )
+                # 门⑤纪律提醒——方案A（docs/DISCIPLINE_GATE_DESIGN.md §9）：
+                # 不新建独立进程，跟着这次手动同步顺手弹一下，只在真的有
+                # "超过响应窗口还没处理"的信号时才显示，不是每次都刷屏。
+                try:
+                    from account import discipline as _disc
+                    _overdue = _disc.get_overdue_signals("account_1")
+                except Exception:
+                    _overdue = []
+                if _overdue:
+                    _overdue_lines = "；".join(
+                        f"{o['dimension']}：{o['symbol']} 已超期"
+                        f"{o['days_open']-o['window']}天未处理"
+                        for o in _overdue[:5]
+                    )
+                    _more = f"（另有{len(_overdue)-5}条）" if len(_overdue) > 5 else ""
+                    st.warning(f"🛡️ 纪律提醒 {len(_overdue)} 条：{_overdue_lines}{_more}")
             st.cache_data.clear()
             st.rerun()
 

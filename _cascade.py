@@ -205,6 +205,32 @@ def run_sync_cascade(step=None) -> dict:
     except Exception as e:
         _s(f"⚠️ 出场信号扫描失败: {e}")
 
+    # 4.5 ── 门⑤纪律：记录信号 + 核对上次的有没有真的响应
+    # （docs/DISCIPLINE_GATE_DESIGN.md）。跟第4步用同一批 options_positions
+    # 数据，但保留每个symbol的每种信号类型不去重——discipline.
+    # scan_pnl_dte_signals 是独立实现，不是复用上面 _scan_exit_signals 的
+    # 结果（那边为了UI摘要按symbol折叠了）。
+    _s("🔄 记录纪律信号...")
+    try:
+        sys.path.insert(0, str(_ROOT))
+        from account import discipline as _disc
+        pnl_dte = _disc.scan_pnl_dte_signals("account_1")
+        try:
+            hedge_plan = am["_compute_qqq_hedge_plan"]("account_1")
+            hedge_gov  = hedge_plan.get("hedge_governance") if isinstance(hedge_plan, dict) else None
+        except Exception as _e_hedge:
+            hedge_gov = None
+            _s(f"⚠️ 对冲纪律检查失败（跳过这一维度，不影响其它三个）: {_e_hedge}")
+        disc_summ = _disc.record_and_resolve_signals("account_1", pnl_dte, hedge_gov)
+        summary["discipline"] = disc_summ
+        _s(
+            f"✅ 纪律信号：新增{disc_summ['new']} · 已响应{disc_summ['acted']} · "
+            f"自然消失{disc_summ['self_resolved']} · 到期未处理{disc_summ['expired_unhandled']} · "
+            f"仍未处理{disc_summ['still_open']}"
+        )
+    except Exception as e:
+        _s(f"⚠️ 纪律信号记录失败: {e}")
+
     # 5 ── 更新操作简报
     _s("🔄 更新今日操作简报...")
     try:
