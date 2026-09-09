@@ -10,6 +10,11 @@ ENERGREX — Bull Put Spread 量化评分
     同一套数据）
   - Firstrade（未接入 —— 这个代码库里从未抓取过 Firstrade 的期权链页面，
     没有可参考的页面结构。选择它会看到明确的说明而不是报错崩溃或假数据）
+
+2026-09-09 六重门②工具选择合并：这个文件不再是独立页面（不再自己调用
+st.set_page_config/_sb.render），改成一个 render() 函数，被 spread_tool.py
+（门②"期权价差工具"统一入口）在选中"Put Credit"时调用。内部逻辑一行没动，
+只是把原来的模块级脚本代码包进了函数体。
 """
 import datetime
 import sys
@@ -42,261 +47,251 @@ from bull_put_spread import (              # noqa: E402
 )
 import macro_calendar                      # noqa: E402
 
-st.set_page_config(page_title="ENERGREX · Bull Put Spread 评分", page_icon="🎯", layout="wide")
-
-import _sidebar as _sb  # noqa: E402
-_sb.render()
-
 _BG, _SURF, _BORDER = "#0A1628", "#0F1923", "#1E2D3D"
 _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD, _BLUE = "#00D4AA", "#FFB347", "#FF4B6E", "#4FC3F7"
 
-st.markdown(
-    f"<h2 style='color:{_TEXT};margin-bottom:0'>🎯 Bull Put Spread 量化评分</h2>"
-    f"<div style='color:{_MUTED};font-size:12px;margin-bottom:16px'>"
-    f"方法论来自你上传的模板 · 公式/权重见页面底部\"评分算法说明\"</div>",
-    unsafe_allow_html=True,
-)
 
-# ── 数据源选择 ────────────────────────────────────────────
-col_src, col_ticker = st.columns([1, 2])
-with col_src:
-    source = st.selectbox("期权链数据源", ["MarketData.app（已接入）", "Firstrade（已接入 · 需本机 CDP 已登录）"])
-with col_ticker:
-    ticker = st.text_input("标的代码", placeholder="NVDA", key="bps_ticker").strip().upper()
-
-if source.startswith("Firstrade"):
-    fetch_expirations, fetch_chain = fetch_expirations_firstrade, fetch_chain_firstrade
-    st.caption(
-        "走 Firstrade 真实内部接口（2026-09-06 现场抓包确认），需要本机有一个 "
-        "`start_chrome.bat` 启动、CDP 9222、已登录 Firstrade 的 Chrome 在跑——"
-        "跟 `account_monitor.py` 抓真实持仓用的是同一个自动化 profile。没连上/未登录时，"
-        "下面拉取到期日会直接显示空列表（不是报错崩溃），按提示先启动那个 Chrome 并登录即可。"
-    )
-else:
-    fetch_expirations, fetch_chain = fetch_expirations_marketdata, fetch_chain_marketdata
-
-if not ticker:
-    st.info("输入一个标的代码开始。")
-    st.stop()
-
-with st.spinner(f"拉取 {ticker} 可用到期日…"):
-    expirations = fetch_expirations(ticker)
-
-if not expirations:
-    if source.startswith("Firstrade"):
-        st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或者 CDP 9222 "
-                  "那个 Chrome（`start_chrome.bat`）没启动/没登录 Firstrade。")
-    else:
-        st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或 MarketData.app "
-                  "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
-    st.stop()
-
-today = datetime.date.today()
-
-
-def _dte(exp_str: str) -> int:
-    return (datetime.date.fromisoformat(exp_str) - today).days
-
-
-exp_with_dte = sorted(
-    ((e, _dte(e)) for e in expirations if _dte(e) > 0),
-    key=lambda x: x[1],
-)
-
-# ── 4档 DTE 自动预选（模板建议 20天 / 30-35天 / 40-45天 / 50-60天）────
-_TIERS = [(15, 25), (28, 37), (38, 47), (48, 65)]
-
-
-def _closest_in_tier(lo: int, hi: int) -> str | None:
-    in_tier = [e for e, d in exp_with_dte if lo <= d <= hi]
-    if in_tier:
-        return in_tier[len(in_tier) // 2]
-    # tier 内没有到期日时，退而求其次找离 tier 中点最近的一个
-    mid = (lo + hi) / 2
-    if not exp_with_dte:
-        return None
-    return min(exp_with_dte, key=lambda x: abs(x[1] - mid))[0]
-
-
-default_selection = sorted({e for e in (_closest_in_tier(lo, hi) for lo, hi in _TIERS) if e})
-
-st.markdown(
-    f"<div style='color:{_MUTED};font-size:11px;margin-top:8px'>"
-    "模板建议覆盖 4 档到期日跨度（~20天 / 30-35天 / 40-45天 / 50-60天），"
-    "已按此自动预选，可自行增减：</div>",
-    unsafe_allow_html=True,
-)
-exp_labels = {f"{e}  (DTE {d})": e for e, d in exp_with_dte}
-default_labels = [lbl for lbl, e in exp_labels.items() if e in default_selection]
-selected_labels = st.multiselect("到期日", list(exp_labels.keys()), default=default_labels)
-selected_exps = [exp_labels[lbl] for lbl in selected_labels]
-
-
-def _release_risk(expiration: str) -> list[dict]:
-    """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
-    结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
-    scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
-    已实现波动率的日程事件"。"""
-    return macro_calendar.releases_within(today, datetime.date.fromisoformat(expiration))
-
-
-def _release_risk_label(expiration: str) -> str:
-    hits = _release_risk(expiration)
-    if not hits:
-        return "—"
-    parts = []
-    for h in hits:
-        mark = "" if h["confirmed"] else "（日期未核实）"
-        parts.append(f"{h['label']}{mark}")
-    return " · ".join(parts)
-
-
-if selected_exps:
+def render() -> None:
     st.markdown(
-        f"<div style='color:{_MUTED};font-size:11px;margin:4px 0'>"
-        "⚠️ 发布日风险（不代表发布结果好坏，只提示该窗口内已实现波动率可能放大）："
-        "</div>",
+        f"<h2 style='color:{_TEXT};margin-bottom:0'>🎯 Bull Put Spread 量化评分</h2>"
+        f"<div style='color:{_MUTED};font-size:12px;margin-bottom:16px'>"
+        f"方法论来自你上传的模板 · 公式/权重见页面底部\"评分算法说明\"</div>",
         unsafe_allow_html=True,
     )
-    for exp in selected_exps:
-        label = _release_risk_label(exp)
-        color = _MUTED if label == "—" else _WARN
+
+    # ── 数据源选择 ────────────────────────────────────────────
+    col_src, col_ticker = st.columns([1, 2])
+    with col_src:
+        source = st.selectbox("期权链数据源", ["MarketData.app（已接入）", "Firstrade（已接入 · 需本机 CDP 已登录）"])
+    with col_ticker:
+        ticker = st.text_input("标的代码", placeholder="NVDA", key="bps_ticker").strip().upper()
+
+    if source.startswith("Firstrade"):
+        fetch_expirations, fetch_chain = fetch_expirations_firstrade, fetch_chain_firstrade
+        st.caption(
+            "走 Firstrade 真实内部接口（2026-09-06 现场抓包确认），需要本机有一个 "
+            "`start_chrome.bat` 启动、CDP 9222、已登录 Firstrade 的 Chrome 在跑——"
+            "跟 `account_monitor.py` 抓真实持仓用的是同一个自动化 profile。没连上/未登录时，"
+            "下面拉取到期日会直接显示空列表（不是报错崩溃），按提示先启动那个 Chrome 并登录即可。"
+        )
+    else:
+        fetch_expirations, fetch_chain = fetch_expirations_marketdata, fetch_chain_marketdata
+
+    if not ticker:
+        st.info("输入一个标的代码开始。")
+        st.stop()
+
+    with st.spinner(f"拉取 {ticker} 可用到期日…"):
+        expirations = fetch_expirations(ticker)
+
+    if not expirations:
+        if source.startswith("Firstrade"):
+            st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或者 CDP 9222 "
+                      "那个 Chrome（`start_chrome.bat`）没启动/没登录 Firstrade。")
+        else:
+            st.error(f"没拉到 {ticker} 的期权到期日列表——确认代码正确、该标的有期权，或 MarketData.app "
+                      "API key 配置正常（.env 里的 MARKETDATA_API_KEY）。")
+        st.stop()
+
+    today = datetime.date.today()
+
+    def _dte(exp_str: str) -> int:
+        return (datetime.date.fromisoformat(exp_str) - today).days
+
+    exp_with_dte = sorted(
+        ((e, _dte(e)) for e in expirations if _dte(e) > 0),
+        key=lambda x: x[1],
+    )
+
+    # ── 4档 DTE 自动预选（模板建议 20天 / 30-35天 / 40-45天 / 50-60天）────
+    _TIERS = [(15, 25), (28, 37), (38, 47), (48, 65)]
+
+    def _closest_in_tier(lo: int, hi: int) -> str | None:
+        in_tier = [e for e, d in exp_with_dte if lo <= d <= hi]
+        if in_tier:
+            return in_tier[len(in_tier) // 2]
+        # tier 内没有到期日时，退而求其次找离 tier 中点最近的一个
+        mid = (lo + hi) / 2
+        if not exp_with_dte:
+            return None
+        return min(exp_with_dte, key=lambda x: abs(x[1] - mid))[0]
+
+    default_selection = sorted({e for e in (_closest_in_tier(lo, hi) for lo, hi in _TIERS) if e})
+
+    st.markdown(
+        f"<div style='color:{_MUTED};font-size:11px;margin-top:8px'>"
+        "模板建议覆盖 4 档到期日跨度（~20天 / 30-35天 / 40-45天 / 50-60天），"
+        "已按此自动预选，可自行增减：</div>",
+        unsafe_allow_html=True,
+    )
+    exp_labels = {f"{e}  (DTE {d})": e for e, d in exp_with_dte}
+    default_labels = [lbl for lbl, e in exp_labels.items() if e in default_selection]
+    selected_labels = st.multiselect("到期日", list(exp_labels.keys()), default=default_labels)
+    selected_exps = [exp_labels[lbl] for lbl in selected_labels]
+
+    def _release_risk(expiration: str) -> list[dict]:
+        """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
+        结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
+        scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
+        已实现波动率的日程事件"。"""
+        return macro_calendar.releases_within(today, datetime.date.fromisoformat(expiration))
+
+    def _release_risk_label(expiration: str) -> str:
+        hits = _release_risk(expiration)
+        if not hits:
+            return "—"
+        parts = []
+        for h in hits:
+            mark = "" if h["confirmed"] else "（日期未核实）"
+            parts.append(f"{h['label']}{mark}")
+        return " · ".join(parts)
+
+    if selected_exps:
         st.markdown(
-            f"<div style='font-size:11px;color:{color};margin-left:8px'>"
-            f"{exp}：{label}</div>",
+            f"<div style='color:{_MUTED};font-size:11px;margin:4px 0'>"
+            "⚠️ 发布日风险（不代表发布结果好坏，只提示该窗口内已实现波动率可能放大）："
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        for exp in selected_exps:
+            label = _release_risk_label(exp)
+            color = _MUTED if label == "—" else _WARN
+            st.markdown(
+                f"<div style='font-size:11px;color:{color};margin-left:8px'>"
+                f"{exp}：{label}</div>",
+                unsafe_allow_html=True,
+            )
+
+    col_w, col_otm = st.columns(2)
+    with col_w:
+        widths = st.multiselect("价差宽度 Width（$）", [2.5, 5.0, 7.5, 10.0, 15.0], default=[5.0, 10.0])
+    with col_otm:
+        otm_lo, otm_hi = st.slider(
+            "短腿虚值幅度 OTM%（相对现价）", min_value=1, max_value=30, value=(3, 15),
+            help="只在这个虚值区间内的行权价上生成短腿候选。太浅（<3%）容易被行权价占用，"
+                 "太深（>30%）权利金通常薄到没有实际意义。",
+        )
+
+    st.caption(
+        "Net Credit 假设：短腿按 bid 卖出、长腿按 ask 买入（保守的可成交估计，"
+        "不是用 mid 价这种理论上更好看但不一定能成交的价格）。"
+    )
+
+    if not selected_exps or not widths:
+        st.info("至少选一个到期日和一个价差宽度。")
+        st.stop()
+
+    if st.button("🚀 生成 & 评分", type="primary"):
+        all_candidates: list[BullPutCandidate] = []
+        fetch_errors: list[str] = []
+
+        with st.spinner("拉取期权链并生成候选价差…"):
+            for exp in selected_exps:
+                chain = fetch_chain(ticker, exp)
+                if chain.empty:
+                    fetch_errors.append(f"{exp}: 期权链为空")
+                    continue
+                puts = chain[chain["side"].astype(str).str.lower() == "put"].copy()
+                if puts.empty:
+                    fetch_errors.append(f"{exp}: 没有 put 数据")
+                    continue
+                if pd.to_numeric(puts["und_px"], errors="coerce").dropna().empty:
+                    fetch_errors.append(f"{exp}: 缺少现价 (underlyingPrice)")
+                    continue
+                dte = int(puts["dte"].iloc[0]) if "dte" in puts.columns else _dte(exp)
+
+                all_candidates.extend(generate_put_candidates_from_chain(
+                    ticker, puts, exp, dte, widths, otm_lo, otm_hi,
+                ))
+
+        if fetch_errors:
+            with st.expander(f"⚠️ {len(fetch_errors)} 个到期日拉取时有问题", expanded=False):
+                for e in fetch_errors:
+                    st.text(e)
+
+        if not all_candidates:
+            st.error("没有生成出任何有效候选价差——检查一下 OTM 区间/宽度设置是否离谱，"
+                      "或者该标的这几个到期日的期权链数据本身就很薄。")
+            st.stop()
+
+        ranked_all = rank_candidates(all_candidates, top_n=None)
+        st.session_state["bps_ranked"] = ranked_all
+        st.session_state["bps_ticker_scored"] = ticker
+
+    if "bps_ranked" in st.session_state and st.session_state.get("bps_ticker_scored") == ticker:
+        ranked = st.session_state["bps_ranked"]
+
+        def _row(s):
+            c = s.candidate
+            return {
+                "到期日": c.expiration, "DTE": c.dte,
+                "Short/Long": f"{c.short_strike:g}/{c.long_strike:g}",
+                "Width": s.width, "Net Credit": round(c.net_credit, 2),
+                "Max Profit": round(c.net_credit, 2), "Max Loss": s.max_loss,
+                "Breakeven": s.breakeven,
+                "ROM": f"{s.rom*100:.1f}%", "ADR": f"{s.adr*100:.0f}%",
+                "Buffer%": f"{s.buffer_pct*100:.1f}%",
+                "盈亏平衡胜率": f"{s.breakeven_win_rate*100:.1f}%",
+                "ADR得分": s.score_adr, "Buffer得分": s.score_buffer,
+                "ROM得分": s.score_rom, "DTE得分": s.score_dte,
+                "总分": s.total_score,
+                "发布日风险": _release_risk_label(c.expiration),
+            }
+
+        st.markdown(f"#### 排名前十 · {ticker}（共 {len(ranked)} 个候选价差参与评分）")
+        top10_df = pd.DataFrame([_row(s) for s in ranked[:10]])
+        top10_df.insert(0, "排名", range(1, len(top10_df) + 1))
+        st.dataframe(top10_df, use_container_width=True, hide_index=True)
+
+        if ranked:
+            best_adr = max(ranked, key=lambda s: s.adr)
+            best_buf = max(ranked[:10] if len(ranked) >= 10 else ranked, key=lambda s: s.buffer_pct)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(
+                    f"<div style='background:{_SURF};border:1px solid {_BORDER};border-radius:6px;"
+                    f"padding:10px;font-size:12px;color:{_TEXT}'>"
+                    f"<b>追求高资金周转率</b>（短DTE、高ADR）<br>"
+                    f"<span style='color:{_MUTED}'>{best_adr.candidate.expiration} · "
+                    f"{best_adr.candidate.short_strike:g}/{best_adr.candidate.long_strike:g} · "
+                    f"ADR {best_adr.adr*100:.0f}% · 总分 {best_adr.total_score}</span></div>",
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                st.markdown(
+                    f"<div style='background:{_SURF};border:1px solid {_BORDER};border-radius:6px;"
+                    f"padding:10px;font-size:12px;color:{_TEXT}'>"
+                    f"<b>追求更宽安全边际</b>（长DTE、高Buffer）<br>"
+                    f"<span style='color:{_MUTED}'>{best_buf.candidate.expiration} · "
+                    f"{best_buf.candidate.short_strike:g}/{best_buf.candidate.long_strike:g} · "
+                    f"Buffer {best_buf.buffer_pct*100:.1f}% · 总分 {best_buf.total_score}</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown(
+            f"<div style='color:{_MUTED};font-size:11px;margin-top:12px'>"
+            "风险控制（模板 5.2）：亏损达到初始权利金的 100%–150% 时止损平仓；"
+            "获利达到最大收益的 50%–70% 时平仓锁定利润。这是通用纪律参考，不是这个页面"
+            "自动执行的规则。</div>",
             unsafe_allow_html=True,
         )
 
-col_w, col_otm = st.columns(2)
-with col_w:
-    widths = st.multiselect("价差宽度 Width（$）", [2.5, 5.0, 7.5, 10.0, 15.0], default=[5.0, 10.0])
-with col_otm:
-    otm_lo, otm_hi = st.slider(
-        "短腿虚值幅度 OTM%（相对现价）", min_value=1, max_value=30, value=(3, 15),
-        help="只在这个虚值区间内的行权价上生成短腿候选。太浅（<3%）容易被行权价占用，"
-             "太深（>30%）权利金通常薄到没有实际意义。",
-    )
+        st.markdown("#### 全部候选（按总分排序）")
+        full_df = pd.DataFrame([_row(s) for s in ranked])
+        full_df.insert(0, "排名", range(1, len(full_df) + 1))
+        st.dataframe(full_df, use_container_width=True, hide_index=True, height=400)
 
-st.caption(
-    "Net Credit 假设：短腿按 bid 卖出、长腿按 ask 买入（保守的可成交估计，"
-    "不是用 mid 价这种理论上更好看但不一定能成交的价格）。"
-)
+        st.download_button(
+            "⬇️ 导出 CSV",
+            full_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"{ticker}_bull_put_spread_{datetime.date.today().isoformat()}.csv",
+            mime="text/csv",
+        )
 
-if not selected_exps or not widths:
-    st.info("至少选一个到期日和一个价差宽度。")
-    st.stop()
-
-if st.button("🚀 生成 & 评分", type="primary"):
-    all_candidates: list[BullPutCandidate] = []
-    fetch_errors: list[str] = []
-
-    with st.spinner("拉取期权链并生成候选价差…"):
-        for exp in selected_exps:
-            chain = fetch_chain(ticker, exp)
-            if chain.empty:
-                fetch_errors.append(f"{exp}: 期权链为空")
-                continue
-            puts = chain[chain["side"].astype(str).str.lower() == "put"].copy()
-            if puts.empty:
-                fetch_errors.append(f"{exp}: 没有 put 数据")
-                continue
-            if pd.to_numeric(puts["und_px"], errors="coerce").dropna().empty:
-                fetch_errors.append(f"{exp}: 缺少现价 (underlyingPrice)")
-                continue
-            dte = int(puts["dte"].iloc[0]) if "dte" in puts.columns else _dte(exp)
-
-            all_candidates.extend(generate_put_candidates_from_chain(
-                ticker, puts, exp, dte, widths, otm_lo, otm_hi,
-            ))
-
-    if fetch_errors:
-        with st.expander(f"⚠️ {len(fetch_errors)} 个到期日拉取时有问题", expanded=False):
-            for e in fetch_errors:
-                st.text(e)
-
-    if not all_candidates:
-        st.error("没有生成出任何有效候选价差——检查一下 OTM 区间/宽度设置是否离谱，"
-                  "或者该标的这几个到期日的期权链数据本身就很薄。")
-        st.stop()
-
-    ranked_all = rank_candidates(all_candidates, top_n=None)
-    st.session_state["bps_ranked"] = ranked_all
-    st.session_state["bps_ticker_scored"] = ticker
-
-if "bps_ranked" in st.session_state and st.session_state.get("bps_ticker_scored") == ticker:
-    ranked = st.session_state["bps_ranked"]
-
-    def _row(s):
-        c = s.candidate
-        return {
-            "到期日": c.expiration, "DTE": c.dte,
-            "Short/Long": f"{c.short_strike:g}/{c.long_strike:g}",
-            "Width": s.width, "Net Credit": round(c.net_credit, 2),
-            "Max Profit": round(c.net_credit, 2), "Max Loss": s.max_loss,
-            "Breakeven": s.breakeven,
-            "ROM": f"{s.rom*100:.1f}%", "ADR": f"{s.adr*100:.0f}%",
-            "Buffer%": f"{s.buffer_pct*100:.1f}%",
-            "盈亏平衡胜率": f"{s.breakeven_win_rate*100:.1f}%",
-            "ADR得分": s.score_adr, "Buffer得分": s.score_buffer,
-            "ROM得分": s.score_rom, "DTE得分": s.score_dte,
-            "总分": s.total_score,
-            "发布日风险": _release_risk_label(c.expiration),
-        }
-
-    st.markdown(f"#### 排名前十 · {ticker}（共 {len(ranked)} 个候选价差参与评分）")
-    top10_df = pd.DataFrame([_row(s) for s in ranked[:10]])
-    top10_df.insert(0, "排名", range(1, len(top10_df) + 1))
-    st.dataframe(top10_df, use_container_width=True, hide_index=True)
-
-    if ranked:
-        best_adr = max(ranked, key=lambda s: s.adr)
-        best_buf = max(ranked[:10] if len(ranked) >= 10 else ranked, key=lambda s: s.buffer_pct)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(
-                f"<div style='background:{_SURF};border:1px solid {_BORDER};border-radius:6px;"
-                f"padding:10px;font-size:12px;color:{_TEXT}'>"
-                f"<b>追求高资金周转率</b>（短DTE、高ADR）<br>"
-                f"<span style='color:{_MUTED}'>{best_adr.candidate.expiration} · "
-                f"{best_adr.candidate.short_strike:g}/{best_adr.candidate.long_strike:g} · "
-                f"ADR {best_adr.adr*100:.0f}% · 总分 {best_adr.total_score}</span></div>",
-                unsafe_allow_html=True,
-            )
-        with c2:
-            st.markdown(
-                f"<div style='background:{_SURF};border:1px solid {_BORDER};border-radius:6px;"
-                f"padding:10px;font-size:12px;color:{_TEXT}'>"
-                f"<b>追求更宽安全边际</b>（长DTE、高Buffer）<br>"
-                f"<span style='color:{_MUTED}'>{best_buf.candidate.expiration} · "
-                f"{best_buf.candidate.short_strike:g}/{best_buf.candidate.long_strike:g} · "
-                f"Buffer {best_buf.buffer_pct*100:.1f}% · 总分 {best_buf.total_score}</span></div>",
-                unsafe_allow_html=True,
-            )
-
-    st.markdown(
-        f"<div style='color:{_MUTED};font-size:11px;margin-top:12px'>"
-        "风险控制（模板 5.2）：亏损达到初始权利金的 100%–150% 时止损平仓；"
-        "获利达到最大收益的 50%–70% 时平仓锁定利润。这是通用纪律参考，不是这个页面"
-        "自动执行的规则。</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("#### 全部候选（按总分排序）")
-    full_df = pd.DataFrame([_row(s) for s in ranked])
-    full_df.insert(0, "排名", range(1, len(full_df) + 1))
-    st.dataframe(full_df, use_container_width=True, hide_index=True, height=400)
-
-    st.download_button(
-        "⬇️ 导出 CSV",
-        full_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"{ticker}_bull_put_spread_{datetime.date.today().isoformat()}.csv",
-        mime="text/csv",
-    )
-
-with st.expander("📐 评分算法说明（来自上传的模板，公式未做任何调整）"):
-    st.markdown(
-        """
+    with st.expander("📐 评分算法说明（来自上传的模板，公式未做任何调整）"):
+        st.markdown(
+            """
 **核心公式**
 - ROM（保证金回报率）= Net Credit / (Width − Net Credit)
 - ADR（日均年化回报率）= (ROM / DTE) × 365
@@ -313,5 +308,12 @@ with st.expander("📐 评分算法说明（来自上传的模板，公式未做
 
 实现见 `scoring/bull_put_spread.py`，单元测试见 `tests/test_bull_put_spread.py`
 （逐条对照模板 Section 6 的 Python 参考实现验证过）。
-        """
-    )
+            """
+        )
+
+
+if __name__ == "__main__":
+    # 独立调试用（不经过 spread_tool.py 的六重门壳）：
+    # streamlit run bull_put_spread_module.py
+    st.set_page_config(page_title="ENERGREX · Bull Put Spread 评分", page_icon="🎯", layout="wide")
+    render()

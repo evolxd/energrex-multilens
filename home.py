@@ -50,9 +50,7 @@ pg = st.navigation({
     ],
     "② 工具选择": [
         st.Page("options_module.py", title="期权分析", icon="📈"),
-        st.Page("bull_put_spread_module.py", title="期权价差评分（Put）", icon="🎯"),
-        st.Page("bull_call_spread_module.py", title="Bull Call Spread 评分", icon="📐"),
-        st.Page("pages/7_🌐_期权价差全市场筛选.py", title="期权价差全市场筛选", icon="🌐"),
+        st.Page("spread_tool.py", title="期权价差工具", icon="🎯"),
     ],
     "③ 仓位测算": [
         st.Page("pages/5_⚖️_仓位管理.py", title="仓位管理", icon="⚖️"),
