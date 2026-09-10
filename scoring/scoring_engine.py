@@ -141,6 +141,23 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "ORCL":  CompanyCategory.MEGA_TECH,
     "IBM":   CompanyCategory.MEGA_TECH,
     "NFLX":  CompanyCategory.MEGA_TECH,
+
+    # ── 2026-09-10 扩展批次：每只票的在市状态和业务描述都用 WebSearch
+    # 核实过（本环境 yfinance/WebFetch 被沙箱出口代理挡了，查不到实时行情，
+    # 只能验证"这家公司还存在、还在交易、做什么业务"，验证不了具体财务数字）。
+    # 新增票暂无 QUANT_AI_EXPOSURE 手动字段——不编AI暴露度数字，交给
+    # estimate_ai_exposure() 的既有兜底逻辑：缺失字段→中性50分→AI_UNVERIFIED，
+    # 跟这套系统对其他缺数据股票的处理方式完全一致，不搞双重标准。
+    "CRWV": CompanyCategory.AI_CHIP,       # CoreWeave，AI云/GPU算力基础设施
+    "ALAB": CompanyCategory.AI_CHIP,       # Astera Labs，AI互联芯片
+    "CRDO": CompanyCategory.AI_CHIP,       # Credo Technology，AI光/电互联
+    "NBIS": CompanyCategory.AI_CHIP,       # Nebius，AI云基础设施（原Yandex分拆），重资产同GOOGL/AMZN归类逻辑
+    "MPWR": CompanyCategory.AI_CHIP,       # Monolithic Power，数据中心电源管理芯片
+    "TER":  CompanyCategory.SEMI_EQUIP,    # Teradyne，半导体测试设备
+    "QLYS": CompanyCategory.CYBERSECURITY,
+    "RPD":  CompanyCategory.CYBERSECURITY,
+    "TENB": CompanyCategory.CYBERSECURITY,
+    "GTM":  CompanyCategory.AI_SOFTWARE,   # ZoomInfo，2026年已改代码从ZI换成GTM，核实过未退市
 }
 
 def get_category(ticker: str) -> CompanyCategory:

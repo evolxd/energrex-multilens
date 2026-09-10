@@ -86,6 +86,17 @@ QUANT_META: dict[str, dict] = {
     "MBLY":  {"sector_tag": "Hardware"},  # autonomous driving chips (AI_CHIP)
     "DOCU":  {"sector_tag": "SaaS"},   # e-signature / contract lifecycle SaaS
     "BBAI":  {"sector_tag": "SaaS"},   # AI analytics software
+    # ── 2026-09-10 扩展批次（见 scoring_engine.py::TICKER_CATEGORY 同批注释）──
+    "CRWV": {"sector_tag": "Hardware"},        # AI云/GPU算力，重资产
+    "ALAB": {"sector_tag": "Hardware"},
+    "CRDO": {"sector_tag": "Hardware"},
+    "NBIS": {"sector_tag": "Hardware"},        # AI云基础设施，重资产同GOOGL/AMZN
+    "MPWR": {"sector_tag": "Hardware"},
+    "TER":  {"sector_tag": "Hardware"},        # 半导体测试设备，同ONTO/ACLS归类逻辑
+    "QLYS": {"sector_tag": "Cybersecurity"},
+    "RPD":  {"sector_tag": "Cybersecurity"},
+    "TENB": {"sector_tag": "Cybersecurity"},
+    "GTM":  {"sector_tag": "SaaS"},
 }
 
 
