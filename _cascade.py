@@ -118,10 +118,11 @@ def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
             snap,
             max_bd=_am_rl["max_beta_delta_ratio"],
             max_leverage=_am_rl["max_leverage"],
-            # stress_redline 检查的是 stress_20_ratio，跟 stress_hard_stop
-            # 检查的 stress_10_ratio 是两个不同的读数——两者取同一个阈值
-            # 0.15 是原有设计就是这样，不是这次改动引入的巧合，这里沿用。
-            stress_redline=_am_rl["stress_hard_stop"],
+            # stress_redline 检查的是 stress_20_ratio。2026-09-11 之前这里
+            # 借用了 stress_hard_stop（-10%情景那条线）当 -20%情景的红线，
+            # 是历史遗留的巧合，不是两者本该共用一条线。用户确认要给-20%
+            # 情景一条独立的线后，改成读专门的 stress_20_hard_stop。
+            stress_redline=_am_rl["stress_20_hard_stop"],
         )
     except Exception as e:
         _log.warning(f"risk_snapshot_signals: {e}")

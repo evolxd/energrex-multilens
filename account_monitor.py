@@ -598,6 +598,7 @@ def _load_risk_limits() -> dict:
         "stress_warning":       raw["stress_warning"] / 100.0,
         "stress_de_risk":       raw["stress_de_risk"] / 100.0,
         "stress_hard_stop":     raw["stress_hard_stop"] / 100.0,
+        "stress_20_hard_stop":  raw["stress_20_hard_stop"] / 100.0,
         "drawdown_freeze":      raw["drawdown_freeze"] / 100.0,
         "drawdown_de_risk":     raw["drawdown_de_risk"] / 100.0,
         "drawdown_start_date":  "2026-06-01",
@@ -706,7 +707,7 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     stress_10_ratio   = stress_10 / equity if equity else None
     stress_20_ratio   = stress_20 / equity if equity else None
 
-    risk_status = _classify_stress_status(stress_10_ratio, _RISK_LIMITS)
+    risk_status = _classify_stress_status(stress_10_ratio, _RISK_LIMITS, stress_20_ratio)
     dd_status   = _classify_drawdown_status(drawdown, _RISK_LIMITS)
 
     return {

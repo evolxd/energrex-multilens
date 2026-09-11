@@ -70,7 +70,7 @@ def risk_snapshot_signals(
     *,
     max_bd: float = 3.5,
     max_leverage: float = 4.0,
-    stress_redline: float = 0.15,
+    stress_redline: float = 0.25,
 ) -> list[dict]:
     """account_monitor._compute_risk_snapshot() 的返回值 → 信号列表。
 

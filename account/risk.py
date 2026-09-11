@@ -27,6 +27,7 @@ DEFAULT_RISK_LIMITS = {
     "stress_warning":        0.08,
     "stress_de_risk":        0.12,
     "stress_hard_stop":      0.15,
+    "stress_20_hard_stop":   0.25,
     "drawdown_freeze":       0.20,
     "drawdown_de_risk":      0.30,
 }
@@ -492,16 +493,36 @@ def compute_portfolio_stress_test(
 
 
 def classify_stress_status(
-    stress_10_ratio: float | None, limits: dict | None = None
+    stress_10_ratio: float | None, limits: dict | None = None,
+    stress_20_ratio: float | None = None,
 ) -> str:
-    """GREEN / YELLOW_WARNING / ORANGE_DE_RISK / RED_HARD_STOP from -10% stress ratio."""
+    """GREEN / YELLOW_WARNING / ORANGE_DE_RISK / RED_HARD_STOP，取 -10%
+    情景（warning/de_risk/hard_stop 三档）和 -20% 情景（只有一条独立的
+    stress_20_hard_stop 硬止损线，不像 -10% 有两档早期预警）两者里更
+    严重的那个。
+
+    2026-09-11 用户确认：-10% 情景只要 0%/hard_stop 两档，中间的 warning/
+    de_risk 不必单独关心——不必改这个函数本身去掉两档，把这两个限额的
+    值设成跟 hard_stop 相同即可（比较逻辑天然收缩成二档，不引入新代码
+    路径）。-20% 情景是新增的独立检查，跟 -10% 情景是两个不同的读数，
+    不共用同一条线（之前 account/risk_signals.py 里曾经借用 -10% 的
+    stress_hard_stop 当 -20% 的红线，属于历史遗留的巧合，这次一并改成
+    各自独立的线，见 stress_20_hard_stop）。stress_20_ratio 不传时
+    （旧调用方/测试）完全不检查这条线，保持原行为。
+    """
     limits = limits or DEFAULT_RISK_LIMITS
-    magnitude = abs(stress_10_ratio) if stress_10_ratio else 0.0
-    if magnitude >= limits["stress_hard_stop"]:
+    magnitude_10 = abs(stress_10_ratio) if stress_10_ratio else 0.0
+    if magnitude_10 >= limits["stress_hard_stop"]:
         return "RED_HARD_STOP"
-    if magnitude >= limits["stress_de_risk"]:
+    if stress_20_ratio is not None:
+        magnitude_20 = abs(stress_20_ratio)
+        stress_20_limit = limits.get("stress_20_hard_stop",
+                                     DEFAULT_RISK_LIMITS["stress_20_hard_stop"])
+        if magnitude_20 >= stress_20_limit:
+            return "RED_HARD_STOP"
+    if magnitude_10 >= limits["stress_de_risk"]:
         return "ORANGE_DE_RISK"
-    if magnitude >= limits["stress_warning"]:
+    if magnitude_10 >= limits["stress_warning"]:
         return "YELLOW_WARNING"
     return "GREEN"
 

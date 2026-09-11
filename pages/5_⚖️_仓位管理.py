@@ -125,6 +125,9 @@ def _risk_snapshot_reading(key: str, snap: dict | None) -> float | None:
     if key in ("stress_warning", "stress_de_risk", "stress_hard_stop"):
         v = snap.get("stress_10_ratio")
         return abs(v) * 100.0 if v is not None else None
+    if key == "stress_20_hard_stop":
+        v = snap.get("stress_20_ratio")
+        return abs(v) * 100.0 if v is not None else None
     if key in ("drawdown_freeze", "drawdown_de_risk"):
         v = snap.get("drawdown")
         return abs(v) * 100.0 if v is not None else None

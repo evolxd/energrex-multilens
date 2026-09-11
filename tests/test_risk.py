@@ -724,6 +724,42 @@ class RiskStatusClassificationTests(unittest.TestCase):
                  "stress_hard_stop": 0.03}
         self.assertEqual(classify_stress_status(0.015, tight), "YELLOW_WARNING")
 
+    def test_stress_20_ratio_not_checked_when_omitted(self):
+        """Old call sites/tests that don't pass stress_20_ratio keep the
+        original -10%-only behavior -- adding the new dimension must not
+        change anything for callers that don't opt into it."""
+        self.assertEqual(classify_stress_status(0.05), "GREEN")
+
+    def test_stress_20_breach_is_red_even_when_stress_10_is_green(self):
+        """-20% 情景独立判断——2026-09-11 用户确认这是一条独立的线，不是
+        -10%那条线的延伸：-10%只有5%(GREEN)，但-20%已经冲到25%（新增的
+        stress_20_hard_stop），照样要报 RED_HARD_STOP。"""
+        self.assertEqual(
+            classify_stress_status(0.05, stress_20_ratio=0.25), "RED_HARD_STOP")
+
+    def test_stress_20_below_its_own_line_does_not_escalate(self):
+        self.assertEqual(
+            classify_stress_status(0.05, stress_20_ratio=0.20), "GREEN")
+
+    def test_stress_20_uses_magnitude_not_sign(self):
+        self.assertEqual(
+            classify_stress_status(0.0, stress_20_ratio=-0.30), "RED_HARD_STOP")
+
+    def test_stress_20_custom_limit_overrides_default(self):
+        custom = {**DEFAULT_RISK_LIMITS, "stress_20_hard_stop": 0.10}
+        self.assertEqual(
+            classify_stress_status(0.05, custom, stress_20_ratio=0.12),
+            "RED_HARD_STOP")
+
+    def test_collapsing_stress_10_tiers_to_a_single_line_is_a_data_change(self):
+        """2026-09-11 用户确认 -10% 情景只要 0%/硬止损两档，不要中间的
+        warning/de_risk 早期预警。这不需要改这个函数——把 warning 和
+        de_risk 的限额值设成跟 hard_stop 一样，比较逻辑天然收缩成二档。"""
+        binary = {**DEFAULT_RISK_LIMITS, "stress_warning": 0.15, "stress_de_risk": 0.15,
+                  "stress_hard_stop": 0.15}
+        self.assertEqual(classify_stress_status(0.10, binary), "GREEN")
+        self.assertEqual(classify_stress_status(0.15, binary), "RED_HARD_STOP")
+
 
 if __name__ == "__main__":
     unittest.main()

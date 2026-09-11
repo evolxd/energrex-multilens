@@ -146,6 +146,11 @@ RISK_SNAPSHOT_LIMIT_SPECS: tuple[LimitSpec, ...] = (
         help_text="大盘跌10%情景下的损失占净值比例，达到这条线是强制止损级别的警戒。",
     ),
     LimitSpec(
+        key="stress_20_hard_stop", label="压力测试(-20%)硬止损线", kind="max", unit="%",
+        help_text="大盘跌20%情景下的损失占净值比例——独立于上面-10%情景那条线的"
+                   "另一条硬止损线，不是同一个读数的两档，两条线各自判断。",
+    ),
+    LimitSpec(
         key="drawdown_freeze", label="回撤-冻结新仓线", kind="max", unit="%",
         help_text="账户实际回撤（时间加权，剔除出入金）达到这条线，冻结新增风险。",
     ),
@@ -173,6 +178,7 @@ RISK_SNAPSHOT_LIMIT_DEFAULTS: dict[str, float] = {
     "stress_warning":        8.0,
     "stress_de_risk":        12.0,
     "stress_hard_stop":      15.0,
+    "stress_20_hard_stop":   25.0,
     "drawdown_freeze":       20.0,
     "drawdown_de_risk":      30.0,
 }
