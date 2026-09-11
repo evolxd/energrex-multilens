@@ -244,6 +244,21 @@ self_resolved。
 
 ## 9. 变更记录
 
+- **2026-09-10（同日）代码实现完成**，四个 stage：
+  1. `account/discipline.py` 打分原语（event_score 衰减、compute_discipline_score
+     百分制）+ `discipline_signals` 加 event_score/review_tag/review_note 列
+  2. `account/risk_signals.py`（新）：hard_constraint / risk_snapshot / traded（门④）
+     / pullback（回调）/ compound_zhiying_pullback 五组纯扫描函数
+  3. `_cascade.py::run_sync_cascade` 第 4.5 步 `_gather_v2_risk_signals(snap)`
+     用真实数据接入；`record_and_resolve_signals` 加 `extra_signals`；
+     `_find_acted_evidence` 用 transactions 减仓交易补 acted 判定
+  4. `discipline_dashboard.py` 重写：顶部百分制纪律分 + 分档 + 分维度表 +
+     当前未处理信号 + 每周复核（逐条标注，"有意例外"书面豁免）
+  测试 574 → 603。真实 DB copy 端到端验证过（记录 11 条信号、分档计算、
+  复核标注剔除后重算）。第一次真实同步后页面就有数据。
+  **v1 妥协仍在**（都标在代码 docstring）：门④只把 BUY 当开仓、偏离Kelly
+  只查"负收缩Kelly策略还交易"（不查超配张数）、流动性天数维度暂缺
+  avg_dollar_volume 不触发。
 - **2026-09-10**：grilling 会话成稿。门⑤从 4 维度扩到 15 个 A 类维度 + 门④
   以事后检测形态并入；百分制纪律分（90% 及格）+ 事件分时间衰减 + 三档权重 +
-  可补救；回调模块首次设计；每周复核仪式。代码未开始写。
+  可补救；回调模块首次设计；每周复核仪式。
