@@ -104,6 +104,15 @@ def risk_snapshot_signals(
     return out
 
 
+# 系统自己会用来做宏观对冲的指数/ETF标的——"误价研究"页的 case 是给个股
+# 定价错误的论点用的，没人会给 QQQ 建一个"误价"案例，拿这个去查"无case
+# 交易"是在惩罚系统自己建议的对冲动作（2026-09-10 审计 F-10：账户里的
+# QQQ 宏观对冲买入被记成了违规）。
+DEFAULT_INDEX_HEDGE_SYMBOLS = frozenset({
+    "QQQ", "SPY", "IWM", "DIA", "VXX", "UVXY", "SQQQ", "TLT", "GLD",
+})
+
+
 # ── 门④：事后从 transactions 检测的三类违规 ──────────────────────
 def traded_signals(
     new_trades: list[dict],
@@ -113,21 +122,29 @@ def traded_signals(
     hard_breach_dates: set[_dt.date],
     negative_kelly_strategies: set[str],
     strategy_of: "callable | None" = None,
+    index_hedge_symbols: set[str] = DEFAULT_INDEX_HEDGE_SYMBOLS,
 ) -> list[dict]:
     """门④ #12/#13/#14 + 熔断票交易。
 
     new_trades：自上次同步以来 transactions 里的新行，每项至少
-        {"symbol", "trade_date"(date), "type"(BUY/SELL/...), "quantity"}。
+        {"symbol", "trade_date"(date), "type"(BUY/SELL/...), "quantity"}，
+        可选 "is_closing"（调用方从 Firstrade 原始 description 里判断——
+        它自己会标"OPEN CONTRACT"/"CLOSING CONTRACT"，比在这里用
+        FIFO 重新猜哪笔平了哪笔更可靠，也更简单）。
     cases_on_file：在"误价研究"页建过 case 的标的集合。
     circuit_symbols：评分被熔断压制、系统标"需人工复核"的标的集合。
     hard_breach_dates：这些日期上有任意硬约束在超限（调用方从
         discipline_signals 的 open 区间算出）。
     negative_kelly_strategies：收缩 Kelly ≤ 0 的 combo_strategy 集合。
     strategy_of：可选，symbol → combo_strategy 的映射函数（判 #13 用）。
+    index_hedge_symbols：豁免"无case交易"检测的指数/ETF对冲标的。
 
-    v1 妥协：只把 BUY 当"开仓/加仓"。返回的信号 first_seen 由调用方按
-    trade_date 记（这里只出 symbol/dimension/detail，record 那边用 today
-    ——所以调用方要把 today 传成 trade_date，或事后修正。见 Stage 3 接法）。
+    2026-09-10 审计 F-10 修复：v1 曾经只把"是不是 BUY"当"是不是开仓/
+    加仓"——买入平掉一张卖出期权（超限时系统自己要求的纠正动作）会被
+    误记成"开仓恶化breach"。现在用调用方标好的 is_closing 排除平仓
+    交易；标的在 index_hedge_symbols 里的额外豁免"无case交易"。
+    历史遗留信号（is_closing 缺失的旧数据路径）默认当开仓处理，跟老
+    行为一致，不会静默漏检。
     """
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -137,6 +154,7 @@ def traded_signals(
             continue
         und = underlying_of(raw_sym)
         is_buy = str(t.get("type") or "").upper() == "BUY"
+        is_opening = is_buy and not t.get("is_closing")
         td = t.get("trade_date")
         td_s = td.isoformat() if hasattr(td, "isoformat") else str(td or "")
 
@@ -146,16 +164,16 @@ def traded_signals(
                 seen.add(k)
                 out.append({"symbol": key_sym, "dimension": dim, "detail": detail})
 
-        if is_buy and und not in cases_on_file:
-            _add("无case交易", f"{td_s} 买入 {und}，误价研究页没有它的 case")
+        if is_opening and und not in cases_on_file and und not in index_hedge_symbols:
+            _add("无case交易", f"{td_s} 买入开仓 {und}，误价研究页没有它的 case")
 
-        if is_buy and und in circuit_symbols:
-            _add("熔断票交易", f"{td_s} 买入 {und}，该票评分被熔断压制、系统标需人工复核")
+        if is_opening and und in circuit_symbols:
+            _add("熔断票交易", f"{td_s} 买入开仓 {und}，该票评分被熔断压制、系统标需人工复核")
 
-        if is_buy and td in hard_breach_dates:
-            _add("开仓恶化breach", f"{td_s} 买入 {und}，当日已有硬约束在超限")
+        if is_opening and td in hard_breach_dates:
+            _add("开仓恶化breach", f"{td_s} 买入开仓 {und}，当日已有硬约束在超限")
 
-        if is_buy and strategy_of is not None:
+        if is_opening and strategy_of is not None:
             strat = strategy_of(raw_sym)
             if strat and strat in negative_kelly_strategies:
                 _add("偏离Kelly", f"{td_s} 在 {strat}（收缩Kelly≤0）上开仓")

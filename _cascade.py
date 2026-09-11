@@ -151,12 +151,18 @@ def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
     try:
         conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
         _cut = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
+        # is_closing：Firstrade 自己的 description 里就标了 "OPEN CONTRACT"/
+        # "CLOSING CONTRACT"（股票交易没有这个标记，NOT LIKE 两边都不中，
+        # 自然是 False，即按"开仓"处理，跟原来对股票的行为一致）——比在这
+        # 里重新用 FIFO 猜哪笔买入平了哪笔卖出可靠得多，也不用管同一天里
+        # 数量、方向都一样的多笔交易怎么消歧。见 F-10。
         new_trades = [
             {"symbol": r["symbol"], "type": (r["type"] or "").upper(),
              "quantity": r["quantity"],
-             "trade_date": _safe_date(r["trade_date"])}
+             "trade_date": _safe_date(r["trade_date"]),
+             "is_closing": "CLOSING CONTRACT" in (r["description"] or "").upper()}
             for r in conn.execute(
-                "SELECT symbol, type, quantity, trade_date FROM transactions "
+                "SELECT symbol, type, quantity, trade_date, description FROM transactions "
                 "WHERE account_id='account_1' AND trade_date >= ? AND type IN ('BUY','SELL')",
                 (_cut,))
         ]
@@ -218,12 +224,23 @@ def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
             hard_breach_dates=breach_dates, negative_kelly_strategies=neg_kelly,
             strategy_of=None,  # v1 不做 symbol→strategy 映射，见 risk_signals 顶部
         )
-        # 门④违规按交易日记 first_seen，不是 today
+        # 门④违规按交易日记 first_seen，不是 today——必须specifically找那笔
+        # "买入开仓"的交易，不能随便拿这个标的名下随便一笔交易的日期填
+        # 上去。同一标的窗口内常常既有平仓又有开仓（比如09-01平旧仓、
+        # 09-03开新仓），F-10 修复前反正所有 BUY 都算违规、拿哪笔日期垫
+        # 都一样；现在平仓不算违规了，如果还是"随便找第一笔"，一个09-03
+        # 才真正开始的违规会被错误地标成09-01（那笔其实是平仓）就已经
+        # 存在——response_days算的窗口就全错了。
         for s in traded:
-            for t in new_trades:
-                if _rs.underlying_of(t["symbol"]) == _rs.underlying_of(s["symbol"]) and t.get("trade_date"):
-                    s["first_seen"] = t["trade_date"].isoformat()
-                    break
+            opens = [
+                t for t in new_trades
+                if _rs.underlying_of(t["symbol"]) == _rs.underlying_of(s["symbol"])
+                and str(t.get("type") or "").upper() == "BUY"
+                and not t.get("is_closing")
+                and t.get("trade_date")
+            ]
+            if opens:
+                s["first_seen"] = min(t["trade_date"] for t in opens).isoformat()
         out += traded
     except Exception as e:
         _log.warning(f"traded_signals: {e}")

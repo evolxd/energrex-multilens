@@ -106,6 +106,75 @@ def test_traded_signals_sell_does_not_trigger_buy_only_checks():
     assert out == []
 
 
+# ── F-10 (2026-09-10 审计): 买入平仓 / 指数对冲 不该算开仓违规 ─────
+
+def _closing_trade(sym, d="2026-01-10"):
+    t = _trade(sym, kind="BUY", d=d)
+    t["is_closing"] = True
+    return t
+
+
+def test_buy_to_close_does_not_flag_no_case():
+    """Firstrade description 标了 CLOSING CONTRACT 的 BUY，是平掉卖出仓位，
+    不是开新仓——不该因为"误价研究没建case"被扣分。"""
+    out = rs.traded_signals(
+        [_closing_trade("AVGO")], cases_on_file=set(), circuit_symbols=set(),
+        hard_breach_dates=set(), negative_kelly_strategies=set())
+    assert out == []
+
+
+def test_buy_to_close_does_not_flag_breach_or_circuit_or_kelly():
+    out = rs.traded_signals(
+        [_closing_trade("AI260117C00030000")],
+        cases_on_file=set(), circuit_symbols={"AI"},
+        hard_breach_dates={datetime.date(2026, 1, 10)},
+        negative_kelly_strategies={"call_debit_spread"},
+        strategy_of=lambda s: "call_debit_spread",
+    )
+    assert out == []
+
+
+def test_buy_to_open_without_is_closing_key_still_flags():
+    """老数据路径没有 is_closing 字段——必须默认当开仓处理，不能因为
+    这个新参数的缺席而静默漏检（向后兼容，不能变宽松）。"""
+    out = rs.traded_signals(
+        [_trade("SOFI")],  # 没有 is_closing 键
+        cases_on_file=set(), circuit_symbols=set(),
+        hard_breach_dates=set(), negative_kelly_strategies=set())
+    assert any(s["dimension"] == "无case交易" for s in out)
+
+
+def test_index_hedge_symbol_exempt_from_no_case_even_when_opening():
+    """QQQ 这类系统自己会用来对冲的指数/ETF，开仓也不该被要求有case——
+    这条豁免跟是否平仓无关，专门针对"无case交易"这一项检测。"""
+    out = rs.traded_signals(
+        [_trade("QQQ")], cases_on_file=set(), circuit_symbols=set(),
+        hard_breach_dates=set(), negative_kelly_strategies=set())
+    assert out == []
+
+
+def test_index_hedge_exemption_only_covers_no_case_not_other_checks():
+    """指数标的豁免的是"无case交易"，不是全部豁免——如果 QQQ 恰好也踩了
+    熔断或硬约束超限，那两项检测该照样触发。"""
+    out = rs.traded_signals(
+        [_trade("QQQ")], cases_on_file=set(), circuit_symbols={"QQQ"},
+        hard_breach_dates={datetime.date(2026, 1, 10)},
+        negative_kelly_strategies=set())
+    dims = {s["dimension"] for s in out}
+    assert "无case交易" not in dims
+    assert "熔断票交易" in dims
+    assert "开仓恶化breach" in dims
+
+
+def test_custom_index_hedge_symbols_override_default():
+    out = rs.traded_signals(
+        [_trade("MSTR")], cases_on_file=set(), circuit_symbols=set(),
+        hard_breach_dates=set(), negative_kelly_strategies=set(),
+        index_hedge_symbols={"MSTR"},
+    )
+    assert out == []
+
+
 # ── pullback_signals (§7) ───────────────────────────────────────
 
 def _bars(closes):
