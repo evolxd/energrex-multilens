@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from account.risk import (
     DEFAULT_OPTIONS_COST_RATIO_LIMIT,
     DEFAULT_RISK_LIMITS,
     bs_greeks,
+    bs_price,
     build_recommendations,
     calculate_option_position_greeks,
     check_otm_spread_alerts,
@@ -34,6 +36,28 @@ class RiskTests(unittest.TestCase):
         self.assertAlmostEqual(greeks["gamma"], 0.046213, places=6)
         self.assertAlmostEqual(greeks["theta"], -0.0631, places=4)
         self.assertAlmostEqual(greeks["vega"], 0.1140, places=4)
+
+    def test_bs_price_satisfies_put_call_parity(self):
+        """C - P = S - K*e^(-rT) holds for any correct European BS pricer --
+        an independent check that doesn't re-derive the same formula being
+        tested (unlike comparing against a hand-copied expected number)."""
+        from account.risk import RF_RATE, bs_price
+        S, K, T, sigma = 142.0, 150.0, 45 / 365, 0.35
+        call = bs_price(S, K, T, sigma, "call")
+        put  = bs_price(S, K, T, sigma, "put")
+        self.assertAlmostEqual(call - put, S - K * math.exp(-RF_RATE * T), places=6)
+
+    def test_bs_price_deep_itm_call_approaches_intrinsic_value(self):
+        from account.risk import bs_price
+        price = bs_price(200, 100, 30 / 365, 0.20, "call")
+        # Deep ITM with little time value left: close to but not below intrinsic.
+        self.assertGreaterEqual(price, 100.0)
+        self.assertAlmostEqual(price, 100.0, delta=2.0)
+
+    def test_bs_price_zero_time_falls_back_to_intrinsic(self):
+        from account.risk import bs_price
+        self.assertEqual(bs_price(120, 100, 0, 0.30, "call"), 20.0)
+        self.assertEqual(bs_price(80, 100, 0, 0.30, "put"), 20.0)
 
     def test_calculate_option_position_greeks(self):
         row = calculate_option_position_greeks(
@@ -187,14 +211,20 @@ class PortfolioStressTestTests(unittest.TestCase):
         # Independently derived from the same Black-Scholes call this
         # function uses internally (dte=30, S=K=150, iv=0.30) -- this test
         # is exercising the position-loop assembly (signs, which total each
-        # term feeds, per-position aggregation), not bs_greeks itself, which
-        # test_bs_greeks_known_deterministic_case already locks down.
+        # term feeds, per-position aggregation), not bs_greeks/bs_price
+        # themselves, which their own dedicated tests already lock down.
         greeks = bs_greeks(150.0, 150.0, 30 / 365, 0.30, "call")
         d, g, th, vg = greeks["delta"], greeks["gamma"], greeks["theta"], greeks["vega"]
         opt_delta_notl = abs(1 * 100 * d * 150.0)
-        ds10, ds20 = -0.10 * 150.0, -0.20 * 150.0
-        opt_pnl10 = 1 * 100 * (d * ds10 + 0.5 * g * ds10 * ds10) + 1 * 100 * vg * 8
-        opt_pnl20 = 1 * 100 * (d * ds20 + 0.5 * g * ds20 * ds20) + 1 * 100 * vg * 16
+
+        # F-01 (2026-09-10): stress uses beta-scaled shocks (beta 1.2 ->
+        # underlying itself moves 1.2x the index move) and full BS
+        # repricing, not a delta/gamma Taylor expansion.
+        price_now = bs_price(150.0, 150.0, 30 / 365, 0.30, "call")
+        s10 = 150.0 * (1 + 1.2 * -0.10)
+        s20 = 150.0 * (1 + 1.2 * -0.20)
+        opt_pnl10 = 1 * 100 * (bs_price(s10, 150.0, 30 / 365, 0.30 + 0.08, "call") - price_now)
+        opt_pnl20 = 1 * 100 * (bs_price(s20, 150.0, 30 / 365, 0.30 + 0.16, "call") - price_now)
 
         self.assertAlmostEqual(result["gross_notional"], 30000.0, places=2)
         self.assertAlmostEqual(result["delta_notional"], 15000.0 + opt_delta_notl, places=2)
@@ -202,10 +232,43 @@ class PortfolioStressTestTests(unittest.TestCase):
         self.assertAlmostEqual(result["theta_per_day"], 100 * th, places=4)
         self.assertAlmostEqual(result["vega_per_pt"], 100 * vg, places=4)
         self.assertAlmostEqual(result["gamma_total"], 100 * g, places=4)
-        self.assertAlmostEqual(result["stress_10"], 100 * (-0.10 * 150.0) + opt_pnl10, places=2)
-        self.assertAlmostEqual(result["stress_20"], 100 * (-0.20 * 150.0) + opt_pnl20, places=2)
+        self.assertAlmostEqual(result["stress_10"], 100 * (1.2 * -0.10 * 150.0) + opt_pnl10, places=2)
+        self.assertAlmostEqual(result["stress_20"], 100 * (1.2 * -0.20 * 150.0) + opt_pnl20, places=2)
         self.assertEqual(result["nearest_expiry_date"], datetime.date(2026, 7, 17))
         self.assertEqual(result["nearest_expiry_sym"], "AAPL")
+
+    def test_stress_scales_with_beta_not_just_raw_index_shock(self):
+        """审计 F-01 的核心断言：同样是"指数跌10%"，beta=2的股票自己跌的
+        钱应该是 beta=1 时的两倍——不是不管beta都按同样10%算。"""
+        stocks_hi_beta  = [{"symbol": "NVDA", "quantity": 100, "market_value": 15000.0}]
+        stocks_lo_beta  = [{"symbol": "KO",   "quantity": 100, "market_value": 15000.0}]
+        hi = compute_portfolio_stress_test(
+            stocks_hi_beta, [], underlying_prices={}, iv_map={},
+            beta_map={"NVDA": 2.0})
+        lo = compute_portfolio_stress_test(
+            stocks_lo_beta, [], underlying_prices={}, iv_map={},
+            beta_map={"KO": 1.0})
+        self.assertAlmostEqual(hi["stress_10"], 2.0 * lo["stress_10"], places=6)
+
+    def test_option_stress_uses_full_repricing_not_taylor_expansion(self):
+        """深度虚值期权是泰勒展开在大幅冲击下失真最严重的地方——gamma
+        在冲击后已经变了，展开却还在用冲击前的 gamma。全额重新定价没有
+        这个偏差，价格差本身就是这个情景下真实的盈亏。"""
+        options = [{
+            "symbol": "TEST260717P00080000", "quantity": -1,
+            "current_price": 1.0, "market_value": -100.0,
+            "strike": 80.0, "expiry": "2026-07-17",
+        }]
+        result = compute_portfolio_stress_test(
+            [], options, underlying_prices={"TEST": 150.0},
+            iv_map={"TEST": {"iv": 0.40}}, beta_map={"TEST": 1.0},
+            today=datetime.date(2026, 6, 17),
+        )
+        T = 30 / 365
+        price_now = bs_price(150.0, 80.0, T, 0.40, "put")
+        price_20  = bs_price(150.0 * 0.80, 80.0, T, 0.40 + 0.16, "put")
+        expected_stress_20 = -1 * 100 * (price_20 - price_now)
+        self.assertAlmostEqual(result["stress_20"], expected_stress_20, places=2)
 
     def test_unknown_underlying_price_falls_back_to_market_value_for_delta_notional(self):
         options = [{

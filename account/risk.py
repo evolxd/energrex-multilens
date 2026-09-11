@@ -80,6 +80,44 @@ def bs_greeks(
         return dict(ZERO_GREEKS)
 
 
+def bs_price(
+    spot: float,
+    strike: float,
+    time_to_expiry: float,
+    sigma: float,
+    option_type: str,
+    risk_free_rate: float = RF_RATE,
+) -> float:
+    """Black-Scholes European option price (a $ price per share, not Greeks).
+
+    2026-09-10 审计 F-01：压力测试原来用 delta+0.5*gamma*dS² 的泰勒展开去
+    近似大幅冲击（-10%/-20%）下的期权盈亏——二阶展开只在冲击幅度小的时候
+    准，在这个量级上跟真实定价会有明显误差，尤其是深度虚值期权（gamma
+    在冲击后剧烈变化，泰勒展开完全跟不上）。full BS repricing 直接算冲击
+    前后的模型价格差，不管冲击多大都准（只要 BS 假设本身成立）。
+
+    退化到 intrinsic value 的口径跟 bs_greeks 的 ZERO_GREEKS 兜底、
+    _bs_put_price 的兜底一致——没有时间价值可算的时候（T/sigma/S 非正）
+    直接给内在价值，不是 0。
+    """
+    is_call = option_type.lower() == "call"
+    if time_to_expiry <= 1e-6 or sigma <= 1e-6 or spot <= 0 or strike <= 0:
+        return max(spot - strike, 0.0) if is_call else max(strike - spot, 0.0)
+    try:
+        sqrt_t = math.sqrt(time_to_expiry)
+        d1 = (
+            math.log(spot / strike)
+            + (risk_free_rate + 0.5 * sigma**2) * time_to_expiry
+        ) / (sigma * sqrt_t)
+        d2 = d1 - sigma * sqrt_t
+        disc_k = strike * math.exp(-risk_free_rate * time_to_expiry)
+        if is_call:
+            return spot * norm.cdf(d1) - disc_k * norm.cdf(d2)
+        return disc_k * norm.cdf(-d2) - spot * norm.cdf(-d1)
+    except Exception:
+        return max(spot - strike, 0.0) if is_call else max(strike - spot, 0.0)
+
+
 def calculate_option_position_greeks(
     *,
     symbol: str,
@@ -324,18 +362,34 @@ def compute_portfolio_stress_test(
     beta_map: dict[str, float],
     today: datetime.date | None = None,
 ) -> dict:
-    """-10%/-20% underlying-shock stress test across stock + option positions.
+    """两档大盘（指数）冲击情景下的组合损益：大盘跌10%/跌20%。
 
-    `stocks` rows need symbol/quantity/market_value; `options` rows need
-    symbol/quantity/current_price/market_value/strike/expiry (dict or
-    sqlite3.Row -- both support `row["field"]`). Options use Black-Scholes
-    Greeks (spot from `underlying_prices`, IV from `iv_map`, falling back to
-    30% IV when unknown) rather than any Greeks stored on the row, so this
-    never depends on a possibly-NULL DB column. Spread legs on the same
-    underlying naturally net out in delta-adjusted notional exposure.
+    `stocks` 需要 symbol/quantity/market_value；`options` 需要
+    symbol/quantity/current_price/market_value/strike/expiry（dict 或
+    sqlite3.Row 都支持 `row["field"]`）。期权用 Black-Scholes（现价来自
+    `underlying_prices`，IV 来自 `iv_map`，缺失时按 30% 兜底），不依赖行上
+    可能是 NULL 的 Greeks 列。同一标的的价差两腿在 delta 名义敞口里自然
+    net 掉。
 
-    stress_pnl = qty * multiplier * (delta*dS + 0.5*gamma*dS^2) + qty * multiplier * vega * iv_shock_pts
-    -10% shock: dS = -10%*S, iv_shock = +8 vol points. -20%: dS = -20%*S, +16 points.
+    2026-09-10 审计 F-01 修复了两个方向性错误：
+    1. 冲击情景以前是"每个标的自己跌10%/20%"，不管它的 beta 是多少——一个
+       beta 加权后账户杠杆 3.3x 的组合，"大盘跌10%"这个情景以前显示的是
+       每个标的自己跌10%（相当于大盘只跌了 10%/加权beta 那么多，是个温和
+       情景），现在是每个标的按自己的 beta 放大：跌幅 = beta × 大盘跌幅，
+       beta 2.0 的标的在"大盘跌10%"情景下自己跌 20%。
+    2. 期权盈亏以前用 delta + 0.5*gamma*dS² 的二阶泰勒展开近似——这个近似
+       只在冲击幅度小的时候准，在"标的可能跌 20%-59%（取决于beta）"这个
+       量级上，尤其对深度虚值期权，泰勒展开会明显偏离真实定价（gamma 本身
+       在大幅冲击后跟冲击前差很多，展开用的还是冲击前的 gamma）。现在冲击
+       前后都用 bs_price() 完整重新定价，价格差就是这笔期权在这个情景下
+       真实的盈亏，不管冲击多大都准（只要 BS 假设本身成立）。
+
+    stress_pnl（每个标的）= qty * multiplier * (bs_price(S×(1+beta×指数冲击),
+    K, T, iv+vol_shock, type) - bs_price(S, K, T, iv, type))
+    大盘跌10%：vol_shock = +8 个vol点；跌20%：+16 个vol点（市场下跌时隐含
+    波动率上升，这两个数字沿用了此前的经验设定，没有重新校准——校准
+    这两个数字、以及 8%/12%/15% 三档预警阈值要不要跟着这次改动调整，
+    是需要你来定的事，不是这次改动的一部分）。
     """
     today = today or datetime.date.today()
     gross = delta_notional = beta_delta = 0.0
@@ -353,8 +407,10 @@ def compute_portfolio_stress_test(
         gross += abs(mv)
         delta_notional += abs(mv)
         beta_delta += q * s_price * 1.0 * b
-        stress_10 += q * (-0.10 * s_price)
-        stress_20 += q * (-0.20 * s_price)
+        # 股票的"完整重新定价"就是线性的（没有凸性可言），beta 放大后
+        # 直接乘新的跌幅即可，不需要单独的 bs_price 路径。
+        stress_10 += q * (b * -0.10 * s_price)
+        stress_20 += q * (b * -0.20 * s_price)
 
     for o in options:
         sym = str(o["symbol"] or "").upper()
@@ -368,6 +424,9 @@ def compute_portfolio_stress_test(
         S = underlying_prices.get(und, 0.0)
 
         d = g = th = vg = 0.0
+        K = iv = 0.0
+        opt_type = ""
+        dte = 0
         if parsed and S > 0:
             K = float(o["strike"] or 0) or parsed["strike"]
             opt_type = parsed["option_type"]
@@ -404,9 +463,19 @@ def compute_portfolio_stress_test(
 
         if S > 0:
             beta_delta += q * mult * d * S * b
-            ds10, ds20 = -0.10 * S, -0.20 * S
-            stress_10 += q * mult * (d * ds10 + 0.5 * g * ds10 * ds10) + q * mult * vg * 8
-            stress_20 += q * mult * (d * ds20 + 0.5 * g * ds20 * ds20) + q * mult * vg * 16
+            if dte > 0 and K > 0:
+                T = dte / 365.0
+                price_now = bs_price(S, K, T, iv, opt_type)
+                for shock, vol_shock_pts, acc in (
+                    (-0.10, 8, "stress_10"), (-0.20, 16, "stress_20"),
+                ):
+                    s_new = S * (1 + b * shock)
+                    price_new = bs_price(s_new, K, T, iv + vol_shock_pts / 100.0, opt_type)
+                    pnl = q * mult * (price_new - price_now)
+                    if acc == "stress_10":
+                        stress_10 += pnl
+                    else:
+                        stress_20 += pnl
 
     return {
         "gross_notional": gross,
