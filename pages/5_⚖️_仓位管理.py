@@ -43,7 +43,9 @@ from scoring.position_limits import (  # noqa: E402
     LOOSEN_COOLDOWN_DAYS,
     MAX_LOOSEN_STEP_PCT,
     MIN_REASON_CHARS,
+    RISK_SNAPSHOT_LIMIT_SPECS,
     build_record,
+    effective_risk_limits,
     evaluate_change,
     pending_change,
 )
@@ -89,6 +91,44 @@ if not chain_ok:
         f"限额变更日志的哈希链校验失败：{chain_issue}。"
         "在修复之前不会接受任何新的变更 —— 历史被改动过的日志没有约束力。"
     )
+
+# 风险快照类限额（杠杆/Beta-Delta/压力测试/回撤）——2026-09-10 审计 F-08：
+# 这7条以前是 account_monitor.py 里的硬编码字典，跟这里的仓位限额走的是
+# 完全不同的治理（没有变更记录、没有放宽关卡）。现在跟仓位限额共用同一份
+# position_limits.jsonl、同一套 evaluate_change 治理，只是"现状"读数来自
+# account_monitor._compute_risk_snapshot()，不是这页已经算好的 exposures
+# ——两者是不同的数据源，所以是独立的一组卡片+表单，不跟上面四条混在
+# 同一个循环里。
+risk_snapshot_limits = effective_risk_limits(records, now)
+try:
+    import _cascade as _casc
+    _risk_snap = _casc._get_am()["_compute_risk_snapshot"]("account_1")
+    if _risk_snap.get("error"):
+        _risk_snap = None
+except Exception as _rs_exc:
+    _risk_snap = None
+    st.session_state["_risk_snapshot_error"] = str(_rs_exc)
+
+
+def _risk_snapshot_reading(key: str, snap: dict | None) -> float | None:
+    """按注册表的存储单位（stress/drawdown 是百分点，leverage/BD 是原始
+    倍数）返回当前读数——跟 account_monitor.py._load_risk_limits() 反方向
+    的换算，两处的换算规则必须对应，任何一处改了单位都要看另一处。"""
+    if not snap:
+        return None
+    if key == "max_leverage":
+        v = snap.get("leverage_delta") if snap.get("leverage_delta") is not None else snap.get("leverage")
+        return abs(v) if v is not None else None
+    if key == "max_beta_delta_ratio":
+        v = snap.get("beta_delta_ratio")
+        return abs(v) if v is not None else None
+    if key in ("stress_warning", "stress_de_risk", "stress_hard_stop"):
+        v = snap.get("stress_10_ratio")
+        return abs(v) * 100.0 if v is not None else None
+    if key in ("drawdown_freeze", "drawdown_de_risk"):
+        v = snap.get("drawdown")
+        return abs(v) * 100.0 if v is not None else None
+    return None
 
 
 # ── 看板 ────────────────────────────────────────────────────────────
@@ -143,6 +183,26 @@ else:
                 exposures.by_chain_pct.items(), key=lambda x: -x[1]
             ):
                 st.write(f"{chain} — {pct:.1f}%")
+
+
+# ── 风险快照现状 ────────────────────────────────────────────────────
+st.subheader("风险快照限额（杠杆 / 压力测试 / 回撤）")
+
+if _risk_snap is None:
+    st.info(
+        "尚未读到可用的风险快照——先到「账户监控」页同步 Firstrade，"
+        "下方仍可设定限额。"
+    )
+else:
+    _rcols = st.columns(len(RISK_SNAPSHOT_LIMIT_SPECS))
+    for _col, _spec in zip(_rcols, RISK_SNAPSHOT_LIMIT_SPECS):
+        _limit_v = risk_snapshot_limits.get(_spec.key)
+        _reading = _risk_snapshot_reading(_spec.key, _risk_snap)
+        with _col:
+            st.metric(_spec.label, f"{_reading:.1f}{_spec.unit}" if _reading is not None else "—")
+            if _limit_v is not None:
+                _room = _limit_v - (_reading or 0.0)
+                st.caption(f"上限 {_limit_v:.1f}{_spec.unit} ｜ 余量 {_room:+.1f}{_spec.unit}")
 
 
 # ── 预警 ────────────────────────────────────────────────────────────
@@ -331,6 +391,77 @@ for spec in LIMIT_SPECS:
                         reason=reason,
                         now=now,
                         exposure=exposure,
+                        old_value=current,
+                    )
+                    append_snapshot(LIMITS_LOG, payload)
+                    for note in verdict.notes:
+                        st.success(note)
+                    st.cache_data.clear()
+                    st.rerun()
+
+
+st.caption(
+    "以下 7 条走同一套治理（同一份哈希链日志、同一套超限锁/书面理由/步长/"
+    "频率/冷静期），现状读数来自「账户监控」的风险快照，不是上面的持仓敞口。"
+)
+for spec in RISK_SNAPSHOT_LIMIT_SPECS:
+    pending = pending_change(records, spec.key, now)
+    current = risk_snapshot_limits.get(spec.key)
+    with st.expander(
+        f"{spec.label}"
+        + (f" — 当前 {current:.1f}{spec.unit}" if current is not None else " — 未设定")
+        + ("　⏳ 有变更待生效" if pending else "")
+    ):
+        st.caption(spec.help_text)
+
+        if pending:
+            st.info(
+                f"已记录变更：{pending['old_value']:.1f}{spec.unit} → "
+                f"{pending['new_value']:.1f}{spec.unit}，"
+                f"于 {pending['effective_at']} 生效。在此之前仍按 "
+                f"{current:.1f}{spec.unit} 执行。"
+            )
+
+        with st.form(f"risk_limit_form_{spec.key}"):
+            new_value = st.number_input(
+                f"新的限额（{spec.unit}）",
+                min_value=0.0,
+                max_value=100.0 if spec.unit == "%" else 20.0,
+                value=float(current) if current is not None else 15.0,
+                step=0.5,
+                key=f"risk_val_{spec.key}",
+            )
+            reason = st.text_area(
+                "变更理由（放宽时必填，将永久写入哈希链日志）",
+                key=f"risk_reason_{spec.key}",
+                height=80,
+            )
+            submitted = st.form_submit_button("提交变更")
+
+        if submitted:
+            if not chain_ok:
+                st.error("日志哈希链校验未通过，拒绝写入。")
+            else:
+                reading = _risk_snapshot_reading(spec.key, _risk_snap)
+                verdict = evaluate_change(
+                    spec.key,
+                    float(new_value),
+                    reason=reason,
+                    now=now,
+                    history=records,
+                    exposure=reading,
+                )
+                if not verdict.allowed:
+                    for blocker in verdict.blockers:
+                        st.error(blocker)
+                else:
+                    payload = build_record(
+                        spec.key,
+                        float(new_value),
+                        verdict,
+                        reason=reason,
+                        now=now,
+                        exposure=reading,
                         old_value=current,
                     )
                     append_snapshot(LIMITS_LOG, payload)

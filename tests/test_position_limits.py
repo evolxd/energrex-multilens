@@ -12,11 +12,15 @@ from scoring.position_limits import (
     COOLING_OFF_DAYS,
     CORRECTION_WINDOW_HOURS,
     LIMIT_BY_KEY,
+    LIMIT_SPECS,
     LOOSEN_COOLDOWN_DAYS,
     MAX_LOOSEN_STEP_PCT,
     MIN_REASON_CHARS,
+    RISK_SNAPSHOT_LIMIT_DEFAULTS,
+    RISK_SNAPSHOT_LIMIT_SPECS,
     build_record,
     effective_limit,
+    effective_risk_limits,
     evaluate_change,
     pending_change,
 )
@@ -303,3 +307,71 @@ def test_record_captures_exposure_at_the_time_of_change():
     assert payload["old_value"] == 15.0
     assert payload["direction"] == "loosen"
     assert payload["effective_at"].startswith("2026-08-08")
+
+
+# ── 风险快照类限额 (F-08 2026-09-10 审计) ───────────────────────────────
+
+def test_risk_snapshot_specs_disjoint_from_exposure_specs():
+    """两组限额的 key 不能撞——LIMIT_BY_KEY 是两组的并集，撞了就是两个
+    spec 互相覆盖，静默丢掉一个。"""
+    exposure_keys = {s.key for s in LIMIT_SPECS}
+    risk_keys = {s.key for s in RISK_SNAPSHOT_LIMIT_SPECS}
+    assert not (exposure_keys & risk_keys)
+    assert len(LIMIT_BY_KEY) == len(exposure_keys) + len(risk_keys)
+
+
+def test_risk_snapshot_defaults_cover_every_spec():
+    """每条 spec 必须有一个硬编码默认值兜底——这几条限额的哲学是
+    "从一开始就有安全上限"，不是仓位限额那种"未设定就不评估"。"""
+    spec_keys = {s.key for s in RISK_SNAPSHOT_LIMIT_SPECS}
+    assert spec_keys == set(RISK_SNAPSHOT_LIMIT_DEFAULTS.keys())
+
+
+def test_effective_risk_limits_falls_back_to_defaults_when_registry_empty():
+    out = effective_risk_limits([], T0)
+    assert out == RISK_SNAPSHOT_LIMIT_DEFAULTS
+
+
+def test_effective_risk_limits_uses_registry_value_per_key_not_all_or_nothing():
+    """只改了一条（max_leverage），其余6条应该还是默认值——不能因为
+    注册表里有了一条记录就整体切换成"注册表模式"。"""
+    history = [rec("max_leverage", None, 5.0, "initial", T0 - dt.timedelta(days=1))]
+    out = effective_risk_limits(history, T0)
+    assert out["max_leverage"] == 5.0
+    for key, default in RISK_SNAPSHOT_LIMIT_DEFAULTS.items():
+        if key != "max_leverage":
+            assert out[key] == default
+
+
+def test_risk_snapshot_limit_governed_by_same_gates_as_exposure_limits():
+    """F-08 的重点：这几条现在走 evaluate_change/build_record 这同一套
+    治理逻辑，不是自己另起一套——收紧免检，放宽要过五道关卡，两组限额
+    在这件事上没有区别。"""
+    tighten = evaluate_change(
+        "max_leverage", 3.0, reason="", now=T0,
+        history=settled("max_leverage", 4.0), exposure=None,
+    )
+    assert tighten.allowed and tighten.direction == "tighten"
+
+    # exposure=3.0 vs old limit 4.0: not currently breached, so the loosen
+    # attempts below fail (or succeed) on the *other* gates, not Gate 1.
+    loosen_no_reason = evaluate_change(
+        "max_leverage", 6.0, reason="too short", now=T0,
+        history=settled("max_leverage", 4.0), exposure=3.0,
+    )
+    assert not loosen_no_reason.allowed
+    assert any("书面理由" in b for b in loosen_no_reason.blockers)
+
+    loosen_ok = evaluate_change(
+        "max_leverage", 4.5, reason=GOOD_REASON, now=T0,
+        history=settled("max_leverage", 4.0), exposure=3.0,
+    )
+    assert loosen_ok.allowed
+    assert loosen_ok.effective_at == T0 + dt.timedelta(days=COOLING_OFF_DAYS)
+
+    loosen_while_breached = evaluate_change(
+        "max_leverage", 4.5, reason=GOOD_REASON, now=T0,
+        history=settled("max_leverage", 4.0), exposure=4.2,
+    )
+    assert not loosen_while_breached.allowed
+    assert any("已超限" in b for b in loosen_while_breached.blockers)

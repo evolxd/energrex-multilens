@@ -108,8 +108,21 @@ def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
     out: list[dict] = []
 
     # ── 风险快照类（BD/杠杆/压力测试/强制去风险）──
+    # 2026-09-10 审计 F-16：max_bd/max_leverage/stress_redline 以前不传，
+    # 静默用 risk_snapshot_signals() 自己的默认参数——跟 account_monitor.py
+    # 的 _RISK_LIMITS（现在读受控注册表）完全脱节，改一处不会同步到另一处。
+    # 这里跟 account_monitor.py 读同一份 _RISK_LIMITS，不再各自维护一份。
     try:
-        out += _rs.risk_snapshot_signals(snap)
+        _am_rl = _get_am()["_RISK_LIMITS"]
+        out += _rs.risk_snapshot_signals(
+            snap,
+            max_bd=_am_rl["max_beta_delta_ratio"],
+            max_leverage=_am_rl["max_leverage"],
+            # stress_redline 检查的是 stress_20_ratio，跟 stress_hard_stop
+            # 检查的 stress_10_ratio 是两个不同的读数——两者取同一个阈值
+            # 0.15 是原有设计就是这样，不是这次改动引入的巧合，这里沿用。
+            stress_redline=_am_rl["stress_hard_stop"],
+        )
     except Exception as e:
         _log.warning(f"risk_snapshot_signals: {e}")
 

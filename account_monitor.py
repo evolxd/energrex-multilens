@@ -567,16 +567,41 @@ def _refresh_beta_spy() -> None:
 # 运行时 _BETA_SPY：启动时合并 base + 缓存（缓存优先）
 _BETA_SPY = {**_BETA_BASE, **_load_beta_cache()}
 
-_RISK_LIMITS = {
-    "max_leverage":          4.0,
-    "max_beta_delta_ratio":  3.5,
-    "stress_warning":        0.08,
-    "stress_de_risk":        0.12,
-    "stress_hard_stop":      0.15,
-    "drawdown_freeze":       0.20,
-    "drawdown_de_risk":      0.30,
-    "drawdown_start_date":  "2026-06-01",
-}
+def _load_risk_limits() -> dict:
+    """从受控注册表（position_limits.jsonl）读 7 条风险快照类限额。
+
+    2026-09-10 审计 F-08：这 7 个数字以前是这里的一个硬编码字典，跟
+    account/risk.py::DEFAULT_RISK_LIMITS、account/risk_signals.py::
+    risk_snapshot_signals() 的默认参数三处各写一份——现在只有这一处从
+    注册表读，另外两处的默认值只在测试单独调那些函数、注册表还没有
+    任何记录时才会被用到（见各自文件里的说明）。
+
+    注册表存的是百分点（15.0 表示 15%），这里读出来除以 100 转成小数
+    ——本文件里所有比较这几条限额的代码（_classify_stress_status 等）
+    一直吃的是小数，这个换算只做一次，不动那些比较函数本身。
+    drawdown_start_date 不是一条风险限额（不存在"超没超限"的意义，只是
+    回撤计算的起算日），继续留作普通常量。
+    """
+    from scoring.position_limits import effective_risk_limits as _eff_risk_limits
+    try:
+        from scoring.mispricing_store import read_chain as _read_chain
+        _records = _read_chain(_ROOT / "data" / "position_limits.jsonl")
+    except Exception:
+        _records = []
+    raw = _eff_risk_limits(_records, datetime.datetime.now())
+    return {
+        "max_leverage":         raw["max_leverage"],
+        "max_beta_delta_ratio": raw["max_beta_delta_ratio"],
+        "stress_warning":       raw["stress_warning"] / 100.0,
+        "stress_de_risk":       raw["stress_de_risk"] / 100.0,
+        "stress_hard_stop":     raw["stress_hard_stop"] / 100.0,
+        "drawdown_freeze":      raw["drawdown_freeze"] / 100.0,
+        "drawdown_de_risk":     raw["drawdown_de_risk"] / 100.0,
+        "drawdown_start_date":  "2026-06-01",
+    }
+
+
+_RISK_LIMITS = _load_risk_limits()
 
 
 def _compute_risk_snapshot(acct_id: str) -> dict:

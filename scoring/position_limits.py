@@ -105,7 +105,95 @@ LIMIT_SPECS: tuple[LimitSpec, ...] = (
     ),
 )
 
-LIMIT_BY_KEY = {spec.key: spec for spec in LIMIT_SPECS}
+# ── 风险快照类限额（杠杆/Beta-Delta/压力测试/回撤） ─────────────────────
+# 2026-09-10 审计 F-08：这几条以前是 account_monitor.py 里的一个模块级
+# 字典（_RISK_LIMITS），跟 account/risk.py::DEFAULT_RISK_LIMITS、
+# account/risk_signals.py::risk_snapshot_signals() 的默认参数三处各写一份
+# 同样的数字——没有变更记录，改哪一处都不会同步到另外两处。跟上面四条
+# 仓位限额一样，走同一套哈希链治理（同一个 position_limits.jsonl 文件，
+# key 不会撞，见 effective_risk_limits()）。
+
+# 现状读数来自 account_monitor._compute_risk_snapshot()，不是
+# scoring.position_exposure.Exposures——两者是完全不同的数据源（一个是
+# 组合构成，一个是杠杆/压力测试快照），所以是独立的一组 LimitSpec，
+# 不跟上面 LIMIT_SPECS 混在同一个循环里。
+#
+# 单位约定：杠杆/Beta-Delta 两条是原始倍数（4.0 就是 4.0x，读数和限额
+# 直接比，不做换算）；压力测试/回撤三条用百分点存储和展示（15.0 表示
+# 15%），跟上面四条仓位限额的展示习惯一致——但 account/risk.py 和
+# account/risk_signals.py 里实际做比较的函数（classify_stress_status
+# 等）吃的是小数（0.15），换算只在 account_monitor.py 读取限额时做一次，
+# 不改动那些比较函数本身，避免把单位错误引入真正判断超没超限的代码。
+RISK_SNAPSHOT_LIMIT_SPECS: tuple[LimitSpec, ...] = (
+    LimitSpec(
+        key="max_leverage", label="Delta杠杆上限", kind="max", unit="x",
+        help_text="总敞口（Delta口径）/净值的杠杆倍数上限。",
+    ),
+    LimitSpec(
+        key="max_beta_delta_ratio", label="Beta-Delta比率上限", kind="max", unit="x",
+        help_text="Beta加权Delta敞口/净值——跟大盘的等效敞口倍数上限。",
+    ),
+    LimitSpec(
+        key="stress_warning", label="压力测试-警示线", kind="max", unit="%",
+        help_text="大盘跌10%情景下的损失占净值比例，达到这条线触发黄色警示。",
+    ),
+    LimitSpec(
+        key="stress_de_risk", label="压力测试-去风险线", kind="max", unit="%",
+        help_text="大盘跌10%情景下的损失占净值比例，达到这条线建议主动去风险。",
+    ),
+    LimitSpec(
+        key="stress_hard_stop", label="压力测试-硬止损线", kind="max", unit="%",
+        help_text="大盘跌10%情景下的损失占净值比例，达到这条线是强制止损级别的警戒。",
+    ),
+    LimitSpec(
+        key="drawdown_freeze", label="回撤-冻结新仓线", kind="max", unit="%",
+        help_text="账户实际回撤（时间加权，剔除出入金）达到这条线，冻结新增风险。",
+    ),
+    LimitSpec(
+        key="drawdown_de_risk", label="回撤-强制去风险线", kind="max", unit="%",
+        help_text="账户实际回撤达到这条线，强制去风险。",
+    ),
+)
+
+RISK_SNAPSHOT_LIMIT_BY_KEY = {spec.key: spec for spec in RISK_SNAPSHOT_LIMIT_SPECS}
+
+# 通用查找表——两组限额的并集。evaluate_change()/变更历史展示这类只
+# 关心"这个 key 对应哪个 spec"的代码走这个，不用关心它属于哪一组；
+# 只有需要"专门列出仓位限额那4条"或"专门列出风险快照那7条"的地方
+# （现状卡片的两个循环）才分别用 LIMIT_SPECS / RISK_SNAPSHOT_LIMIT_SPECS。
+LIMIT_BY_KEY = {spec.key: spec for spec in (*LIMIT_SPECS, *RISK_SNAPSHOT_LIMIT_SPECS)}
+
+# 2026-09-10 之前硬编码在三处的默认值，原样保留在这里作为"注册表里还没有
+# 这条记录时"的兜底——只有第一次跑、jsonl 里那个 key 还没有任何记录时才
+# 会用到；一旦通过 evaluate_change/append_snapshot 写过一条 initial 记录，
+# 就永远从 jsonl 读，不再看这个字典。
+RISK_SNAPSHOT_LIMIT_DEFAULTS: dict[str, float] = {
+    "max_leverage":          4.0,
+    "max_beta_delta_ratio":  3.5,
+    "stress_warning":        8.0,
+    "stress_de_risk":        12.0,
+    "stress_hard_stop":      15.0,
+    "drawdown_freeze":       20.0,
+    "drawdown_de_risk":      30.0,
+}
+
+
+def effective_risk_limits(
+    history: Iterable[Mapping[str, Any]],
+    now: dt.datetime,
+) -> dict[str, float]:
+    """当前生效的 7 条风险快照类限额，注册表里没有记录的 key 用硬编码
+    默认值兜底（未设定 ≠ 不设限，这几条从一开始就有安全默认值，跟仓位
+    限额那 4 条"未设定就不评估"的哲学不同——杠杆/压力这几条不能没有
+    默认上限）。返回的是百分点/倍数原始存储单位，不是 account_monitor.py
+    比较函数要的小数——调用方自己按需要 /100。
+    """
+    out = dict(RISK_SNAPSHOT_LIMIT_DEFAULTS)
+    for key in RISK_SNAPSHOT_LIMIT_BY_KEY:
+        value = effective_limit(history, key, now)
+        if value is not None:
+            out[key] = float(value)
+    return out
 
 
 @dataclass
