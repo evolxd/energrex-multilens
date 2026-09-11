@@ -69,6 +69,7 @@ _MD_KEY  = os.environ.get("MARKETDATA_API_KEY", "")
 from account.db import DB_PATH as _DB_PATH
 from account.db import SCREENSHOT_DIR as _SS_DIR
 from account.db import db as _db
+from account.accounts import account_download_dir as _account_download_dir
 from account.db import init_db as _init_db
 
 
@@ -2502,7 +2503,16 @@ def _watch_state() -> dict:
 # Watchdog 文件监听器
 # ════════════════════════════════════════════════════════
 class _ExportCsvHandler(FileSystemEventHandler if _WATCHDOG_OK else object):
-    """监听 Downloads 文件夹，检测 export*.csv 新文件。"""
+    """监听某个账户专属的下载子文件夹，检测 export*.csv 新文件。
+
+    2026-09-10：以前只监听全局 ~/Downloads/ 根目录、写死 account_1——现在
+    每个账户一个子文件夹（account_download_dir()），_start_watcher() 给
+    每个账户各建一个 handler 实例，导入哪个账户由 handler 自己的
+    acct_id 决定，不再靠"反正只有一个账户在用"这个假设。
+    """
+
+    def __init__(self, acct_id: str = "account_1"):
+        self.acct_id = acct_id
 
     def _handle(self, path: str):
         p = pathlib.Path(path)
@@ -2517,9 +2527,9 @@ class _ExportCsvHandler(FileSystemEventHandler if _WATCHDOG_OK else object):
             return
         if mdate != datetime.date.today():
             return
-        _log.info(f"Detected export CSV: {p.name}")
+        _log.info(f"Detected export CSV: {p.name} (account={self.acct_id})")
         try:
-            result = _process_csv_file(p)
+            result = _process_csv_file(p, self.acct_id)
             ws = _watch_state()
             ws["last_file"] = result.get("file")
             ws["last_time"] = datetime.datetime.now(_ET)
@@ -2534,7 +2544,7 @@ class _ExportCsvHandler(FileSystemEventHandler if _WATCHDOG_OK else object):
                 # 才会重算——同步了新数据、图却没变，就是因为这一步一直缺失。
                 # 这里补上自动重算，跟手动按钮调的是同一个函数。
                 try:
-                    _fifo_r = _fifo_match_options("account_1")
+                    _fifo_r = _fifo_match_options(self.acct_id)
                     _combo_n = _fifo_r.get("combo_summary", {}).get(
                         "combo_count", _fifo_r.get("realized_count", 0))
                     ws["last_fifo_time"] = datetime.datetime.now(_ET)
@@ -2564,14 +2574,22 @@ class _ExportCsvHandler(FileSystemEventHandler if _WATCHDOG_OK else object):
 
 @st.cache_resource
 def _start_watcher():
+    """每个账户各建一个 handler，各自监听自己的下载子文件夹。
+
+    account_download_dir() 建文件夹这一步只在这里跑一次（st.cache_resource
+    只执行一次）——同步进程里跑几次都建这几个文件夹，进程重启后才会拿到
+    这之后新增的账户，跟这个函数本身"只启动一次"的性质一致。
+    """
     if not _WATCHDOG_OK:
         return None
-    handler  = _ExportCsvHandler()
     observer = Observer()
-    observer.schedule(handler, str(_DOWNLOADS), recursive=False)
+    for cfg in ACCT_CFG:
+        handler = _ExportCsvHandler(cfg["id"])
+        watch_dir = _account_download_dir(cfg["id"])
+        observer.schedule(handler, str(watch_dir), recursive=False)
+        _log.info(f"Watchdog watching {watch_dir} for {cfg['id']}")
     observer.daemon = True
     observer.start()
-    _log.info(f"Watchdog started → {_DOWNLOADS}")
     return observer
 
 
@@ -2944,7 +2962,7 @@ def _scrape_and_diff_positions(driver, acct_id: str) -> dict:
                     "new_rows": [], "raw_url": "", "strategy": "none"}
     try:
         # ── 优先：xlsx 下载（_download_positions_xlsx 定义在本文件后段）──
-        xlsx_path = _download_positions_xlsx(driver)
+        xlsx_path = _download_positions_xlsx(driver, _account_download_dir(acct_id))
         new_rows: list[dict] = []
 
         if xlsx_path is not None:
@@ -3188,15 +3206,19 @@ def _scrape_balance(driver, acct_id: str) -> bool:
     return ok
 
 
-def _scrape_history_csv(driver) -> bool:
-    """导航到历史页面，点击「下载」menuitem，触发 Chrome 下载 CSV。"""
+def _scrape_history_csv(driver, download_dir: pathlib.Path = _DOWNLOADS) -> bool:
+    """导航到历史页面，点击「下载」menuitem，触发 Chrome 下载 CSV。
+
+    download_dir：这个账户专属的下载子文件夹（account_download_dir()），
+    不传就退回旧的全局 ~/Downloads/（兼容还没传账户的调用方）。
+    """
     ok = False
     try:
         # Chrome 109+ 需要 Browser.setDownloadBehavior
         try:
             driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
                 "behavior": "allow",
-                "downloadPath": str(_DOWNLOADS),
+                "downloadPath": str(download_dir),
                 "eventsEnabled": True,
             })
         except Exception:
@@ -3235,16 +3257,19 @@ return false;
     return ok
 
 
-def _download_positions_xlsx(driver) -> "pathlib.Path | None":
+def _download_positions_xlsx(driver, download_dir: pathlib.Path = _DOWNLOADS) -> "pathlib.Path | None":
     """
     在 Firstrade positions 页点击"下载"按钮，等待 xlsx 写完后返回文件路径。
     失败返回 None（调用方回退到 JS 抓取）。
+
+    download_dir：这个账户专属的下载子文件夹，不传就退回旧的全局
+    ~/Downloads/（兼容还没传账户的调用方）。
     """
     try:
         try:
             driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
                 "behavior":      "allow",
-                "downloadPath":  str(_DOWNLOADS),
+                "downloadPath":  str(download_dir),
                 "eventsEnabled": True,
             })
         except Exception:
@@ -3253,7 +3278,7 @@ def _download_positions_xlsx(driver) -> "pathlib.Path | None":
         # 快照现有 xlsx 的修改时间，用于识别新增或被覆盖的文件
         _t_start = time.time()
         before_mtimes: dict[pathlib.Path, float] = {
-            f: f.stat().st_mtime for f in _DOWNLOADS.glob("*.xlsx")
+            f: f.stat().st_mtime for f in download_dir.glob("*.xlsx")
         }
 
         driver.switch_to.new_window("tab")
@@ -3398,7 +3423,7 @@ def _download_positions_xlsx(driver) -> "pathlib.Path | None":
         while time.time() < deadline:
             time.sleep(0.5)
             candidates: list[pathlib.Path] = []
-            for f in _DOWNLOADS.glob("*.xlsx"):
+            for f in download_dir.glob("*.xlsx"):
                 try:
                     mtime = f.stat().st_mtime
                     old_mtime = before_mtimes.get(f)
@@ -3677,7 +3702,7 @@ def _auto_sync(acct_id: str = "account_1"):
             _log.warning(f"[pos] step 1.5 error: {_pe}")
             ss["positions_diff"] = {"ok": False, "summary": str(_pe), "changes": []}
 
-        csv_ok = _scrape_history_csv(driver)
+        csv_ok = _scrape_history_csv(driver, _account_download_dir(acct_id))
         ss["bal_ok"]      = bal_ok
         ss["csv_ok"]      = csv_ok
         ss["last_time"]   = datetime.datetime.now(_ET)
@@ -3815,47 +3840,7 @@ with st.sidebar:
                 f"账户持仓监控</div>", unsafe_allow_html=True)
     st.divider()
 
-    # 监控状态
-    if ws["last_time"]:
-        st.success(f"✓ 最近导入：{ws['last_file']}")
-        st.caption(f"{ws['last_time'].strftime('%H:%M:%S')} ET · {ws['last_rows']} 行")
-        if ws.get("last_fifo_time"):
-            st.caption(f"↳ 已自动重算已实现盈亏 {ws['last_fifo_time'].strftime('%H:%M:%S')} ET · "
-                       f"{ws.get('last_fifo_realized', 0)} 笔（交易绩效 Tab 的图已跟上）")
-    else:
-        st.info("⏳ 监控中，等待 Firstrade 导出文件…")
-
-    # 手动导入按钮（选文件）
-    st.divider()
-    up = st.file_uploader("手动上传 CSV", type="csv", label_visibility="collapsed",
-                          help="也可直接从 Firstrade 下载到 Downloads 文件夹，自动检测")
-    if up:
-        tmp = _FT_DIR / up.name
-        tmp.write_bytes(up.read())
-        result = _process_csv_file(tmp)
-        if result["ok"]:
-            ws["last_file"] = result["file"]
-            ws["last_time"] = datetime.datetime.now(_ET)
-            ws["last_type"] = result["type"]
-            ws["last_rows"] = result["rows"]
-            ws["new_data"]  = True
-            if result["type"] == "transactions":
-                # 跟 watchdog 路径同样的问题：不补这一步，「交易绩效」Tab 还是
-                # 停在上次手动点「运行 FIFO 分析」时候的旧数据。
-                try:
-                    _fifo_r = _fifo_match_options("account_1")
-                    ws["last_fifo_time"] = datetime.datetime.now(_ET)
-                    ws["last_fifo_realized"] = _fifo_r.get("combo_summary", {}).get(
-                        "combo_count", _fifo_r.get("realized_count", 0))
-                except Exception as _fe:
-                    st.warning(f"成交已导入，但自动重算已实现盈亏失败：{_fe}"
-                               "——去「交易绩效」Tab 手动点「运行 FIFO 分析」。")
-            st.success(f"✓ 导入 {result['rows']} 行")
-            st.rerun()
-        else:
-            st.error(result.get("reason", "解析失败"))
-
-    st.divider()
+    # 账户编号选择器——放在最前面，因为手动上传要知道导入到哪个账户
     _acct_opts = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
     _sel_display = st.selectbox("账户编号", list(_acct_opts.keys()),
                                 key="sb_acct", label_visibility="collapsed")
@@ -3874,9 +3859,50 @@ with st.sidebar:
             st.success(f"已新增 {_new_acct['number']} · {_new_acct['label']}")
             st.rerun()
 
+    # 监控状态
+    if ws["last_time"]:
+        st.success(f"✓ 最近导入：{ws['last_file']}")
+        st.caption(f"{ws['last_time'].strftime('%H:%M:%S')} ET · {ws['last_rows']} 行")
+        if ws.get("last_fifo_time"):
+            st.caption(f"↳ 已自动重算已实现盈亏 {ws['last_fifo_time'].strftime('%H:%M:%S')} ET · "
+                       f"{ws.get('last_fifo_realized', 0)} 笔（交易绩效 Tab 的图已跟上）")
+    else:
+        st.info("⏳ 监控中，等待 Firstrade 导出文件…")
+
+    # 手动导入按钮（选文件）——导入到上面选中的账户
+    st.divider()
+    up = st.file_uploader("手动上传 CSV", type="csv", label_visibility="collapsed",
+                          help=f"也可直接从 Firstrade 下载到 {_account_download_dir(_sel_cfg['id'])} "
+                               f"文件夹，自动检测")
+    if up:
+        tmp = _FT_DIR / up.name
+        tmp.write_bytes(up.read())
+        result = _process_csv_file(tmp, _sel_cfg["id"])
+        if result["ok"]:
+            ws["last_file"] = result["file"]
+            ws["last_time"] = datetime.datetime.now(_ET)
+            ws["last_type"] = result["type"]
+            ws["last_rows"] = result["rows"]
+            ws["new_data"]  = True
+            if result["type"] == "transactions":
+                # 跟 watchdog 路径同样的问题：不补这一步，「交易绩效」Tab 还是
+                # 停在上次手动点「运行 FIFO 分析」时候的旧数据。
+                try:
+                    _fifo_r = _fifo_match_options(_sel_cfg["id"])
+                    ws["last_fifo_time"] = datetime.datetime.now(_ET)
+                    ws["last_fifo_realized"] = _fifo_r.get("combo_summary", {}).get(
+                        "combo_count", _fifo_r.get("realized_count", 0))
+                except Exception as _fe:
+                    st.warning(f"成交已导入，但自动重算已实现盈亏失败：{_fe}"
+                               "——去「交易绩效」Tab 手动点「运行 FIFO 分析」。")
+            st.success(f"✓ 导入 {result['rows']} 行")
+            st.rerun()
+        else:
+            st.error(result.get("reason", "解析失败"))
+
     st.markdown(f"<div style='color:{_MUTED};font-size:11px;line-height:2'>"
                 f"{'🟢' if _WATCHDOG_OK else '🔴'} watchdog 文件监控<br>"
-                f"📂 ~/Downloads/export*.csv"
+                f"📂 ~/Downloads/energrex_{_sel_cfg['number']}/export*.csv"
                 f"</div>", unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════
@@ -6226,14 +6252,14 @@ for _ptab, _pcfg in zip(_pos_tabs[6:], ACCT_CFG):
                     else:
                         st.warning("没有有效数据（代号不能为空）")
             with _sc2:
-                # 可选：从 Firstrade xlsx 批量导入
-                _dl_dir  = pathlib.Path.home() / "Downloads"
+                # 可选：从 Firstrade xlsx 批量导入（这个账户专属的下载子文件夹）
+                _dl_dir  = _account_download_dir(_pcfg["id"])
                 _xl_list = sorted(_dl_dir.glob("*positions*.xlsx"),
                                   key=lambda f: f.stat().st_mtime, reverse=True)
                 if _xl_list:
                     if st.button("📂 从 xlsx 批量导入",
                                  key=f"bulk_import_{_pcfg['id']}",
-                                 help=f"从 ~/Downloads/{_xl_list[0].name} 导入，覆盖现有数据"):
+                                 help=f"从 {_dl_dir}/{_xl_list[0].name} 导入，覆盖现有数据"):
                         _sn, _on = _import_from_xlsx_file(_xl_list[0], _pcfg["id"])
                         st.success(f"已导入 {_sn} 只股票 + {_on} 张期权")
                         st.rerun()
