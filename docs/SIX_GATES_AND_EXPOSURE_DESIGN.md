@@ -77,7 +77,9 @@
 | 六位大师视角交叉验证 | `energrex-valuation` skill：Damodaran / Cathie Wood / Jensen Huang / Howard Marks / Mary Meeker / Peter Thiel |
 | 方法论回测 | `scoring/weight_config_backtest.py`、`spread_decomposition_backtest.py`、`risk_subcomponent_backtest.py` |
 | 方法论健康度趋势 | `scoring/methodology_trend.py` |
-| **下单前检查（开仓恶化breach / 偏离Kelly / 无case交易 / 熔断票）** | **还未建**——Firstrade 没 API 抓不到下单那一刻，改成"事后从 `transactions` 检测、违规记进门⑤台账"。设计见 [`DISCIPLINE_AND_REVIEW_ARCHITECTURE.md`](DISCIPLINE_AND_REVIEW_ARCHITECTURE.md) §1(#12–14)、§4 |
+| **新开仓候选（选哪个标的）** | **已建**（2026-09-10）——`account/risk.py::new_opportunity_candidates()`，`pre_trade_check.py` 单独展示。这段逻辑原来一直混在作战室"今日操作简报"里没人特意看 |
+| **下单前检查（下多大）** | **已建**（2026-09-10）——`pre_trade_check.py` 表单：① 硬约束"现在 → 下单后 / 限额"逐条比对（走门③同一套 `compute_exposures`/`breaches`，共用层在 `scoring/exposure_context.py`，新增 `exposures_after_trade()`）；② Kelly 建议上限对比（`account/performance.py::kelly_size_check()`，默认半Kelly，笔数 <10 拒绝给规模）；③ 能下/减到多少/不能下 |
+| **违规事后检测（开仓恶化breach / 偏离Kelly / 无case交易 / 熔断票）** | **已建**，但不在这一门——Firstrade 没 API 抓不到下单那一刻，改成"事后从 `transactions` 检测、违规记进门⑤台账"。设计见 [`DISCIPLINE_AND_REVIEW_ARCHITECTURE.md`](DISCIPLINE_AND_REVIEW_ARCHITECTURE.md) §1(#12–14)、§4 |
 
 #### ⑤ 纪律
 | 入口 | 现有实现 |
