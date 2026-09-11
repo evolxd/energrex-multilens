@@ -148,6 +148,11 @@ def init_db() -> None:
         total_theta REAL, total_vega  REAL,
         n_contracts INTEGER
     );
+    CREATE TABLE IF NOT EXISTS accounts (
+        id         TEXT PRIMARY KEY,
+        label      TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS discipline_signals (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         account_id      TEXT NOT NULL,

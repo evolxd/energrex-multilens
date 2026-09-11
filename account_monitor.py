@@ -52,10 +52,11 @@ if _env.exists():
             _k, _v = _line.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip())
 
-ACCT_CFG = [
-    {"id": "account_1", "label": "账户一"},
-    {"id": "account_2", "label": "账户二"},
-]
+from account.accounts import list_accounts as _list_accounts
+from account.accounts import add_account as _add_account
+from account.accounts import rename_account as _rename_account
+
+ACCT_CFG = _list_accounts()
 
 _ET  = pytz.timezone("America/New_York")
 _log = logging.getLogger("energrex.account")
@@ -3855,8 +3856,24 @@ with st.sidebar:
             st.error(result.get("reason", "解析失败"))
 
     st.divider()
-    sel_acct_label = st.selectbox("账户", [c["label"] for c in ACCT_CFG],
-                                  key="sb_acct", label_visibility="collapsed")
+    _acct_opts = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
+    _sel_display = st.selectbox("账户编号", list(_acct_opts.keys()),
+                                key="sb_acct", label_visibility="collapsed")
+    _sel_cfg = _acct_opts[_sel_display]
+    sel_acct_label = _sel_cfg["label"]
+
+    with st.expander("✏️ 管理账户"):
+        _new_label = st.text_input("账户名", value=_sel_cfg["label"],
+                                   key=f"acct_label_{_sel_cfg['id']}")
+        _bc1, _bc2 = st.columns(2)
+        if _bc1.button("保存名字", key="btn_rename_acct", use_container_width=True):
+            _rename_account(_sel_cfg["id"], _new_label)
+            st.rerun()
+        if _bc2.button("＋ 新增账户", key="btn_add_acct", use_container_width=True):
+            _new_acct = _add_account()
+            st.success(f"已新增 {_new_acct['number']} · {_new_acct['label']}")
+            st.rerun()
+
     st.markdown(f"<div style='color:{_MUTED};font-size:11px;line-height:2'>"
                 f"{'🟢' if _WATCHDOG_OK else '🔴'} watchdog 文件监控<br>"
                 f"📂 ~/Downloads/export*.csv"
