@@ -548,3 +548,65 @@ def compute_discipline_scores(
         }
     conn.close()
     return out
+
+
+# ── 每周复核（设计文档 §6） ─────────────────────────────────────
+REVIEW_TAGS = ("有意例外", "漏了", "不认同信号")
+
+
+def get_review_queue(
+    acct_id: str,
+    since: _dt.date | None = None,
+    until: _dt.date | None = None,
+) -> list[dict]:
+    """待复核清单：周期内已了结、事件分没到上限（迟响应/自然消失/到期未
+    处理）、且还没标注过的信号。给每周复核页面用。
+    """
+    until = until or _dt.date.today()
+    conn = _db()
+    conn.row_factory = sqlite3.Row
+    where  = "account_id=? AND review_tag IS NULL AND status IN " \
+             "('acted','self_resolved','expired_unhandled')"
+    params: list = [acct_id]
+    if since:
+        where += " AND first_seen_date >= ?"
+        params.append(since.isoformat())
+    where += " AND first_seen_date <= ?"
+    params.append(until.isoformat())
+    rows = conn.execute(
+        f"SELECT id, dimension, symbol, first_seen_date, resolved_date, status, "
+        f"response_days, event_score, detail FROM discipline_signals WHERE {where} "
+        f"ORDER BY first_seen_date DESC",
+        params,
+    ).fetchall()
+    conn.close()
+
+    out: list[dict] = []
+    for r in rows:
+        es = r["event_score"]
+        if es is None:
+            es = event_score(r["dimension"], r["status"], r["response_days"])
+        if float(es) >= _cap_for(r["dimension"]):
+            continue  # 满分事件不用复核
+        out.append({
+            "id": r["id"], "dimension": r["dimension"], "symbol": r["symbol"],
+            "first_seen_date": r["first_seen_date"], "resolved_date": r["resolved_date"],
+            "status": r["status"], "response_days": r["response_days"],
+            "event_score": round(float(es), 2), "detail": r["detail"],
+        })
+    return out
+
+
+def set_review_annotation(signal_id: int, tag: str, note: str = "") -> None:
+    """给一条信号打复核标注。"有意例外"/"不认同信号"会让它在
+    compute_discipline_score 里整条剔除（§6 书面豁免）；"漏了"不改分。
+    """
+    if tag not in REVIEW_TAGS:
+        raise ValueError(f"未知复核标注：{tag}")
+    conn = _db()
+    conn.execute(
+        "UPDATE discipline_signals SET review_tag=?, review_note=? WHERE id=?",
+        (tag, note or None, signal_id),
+    )
+    conn.commit()
+    conn.close()

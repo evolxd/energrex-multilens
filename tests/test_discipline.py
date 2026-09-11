@@ -434,6 +434,44 @@ class V2ScoringTests(unittest.TestCase):
         # 止盈 not scored -> no events
         self.assertEqual(out["n_events"], 0)
 
+    # ── review queue / annotation ─────────────────────────────────
+
+    def test_review_queue_lists_imperfect_untagged_events_only(self):
+        self._seed_resolved("止损纪律", "PERFECT", "2026-01-05", "acted",
+                            response_days=1, event_score=1.0)  # full -> not in queue
+        self._seed_resolved("止损纪律", "LATE", "2026-01-05", "acted",
+                            response_days=6, event_score=0.4)   # imperfect -> in queue
+        self._seed_resolved("止损纪律", "TAGGED", "2026-01-05", "self_resolved",
+                            event_score=0.0, review_tag="漏了")  # already tagged -> out
+        q = disc.get_review_queue(ACCT, since=datetime.date(2026, 1, 1),
+                                  until=datetime.date(2026, 1, 31))
+        symbols = {x["symbol"] for x in q}
+        self.assertEqual(symbols, {"LATE"})
+
+    def test_set_annotation_deliberate_exception_removes_from_score(self):
+        self._seed_resolved("止损纪律", "AAA", "2026-01-05", "self_resolved",
+                            event_score=0.0)
+        self._seed_resolved("止损纪律", "BBB", "2026-01-06", "acted",
+                            response_days=1, event_score=1.0)
+        conn = account_db.db()
+        bad_id = conn.execute(
+            "SELECT id FROM discipline_signals WHERE account_id=? AND symbol='AAA'",
+            (ACCT,)).fetchone()[0]
+        conn.close()
+        disc.set_review_annotation(bad_id, "有意例外", "IV crush 早就预期到了，不是疏忽")
+        out = disc.compute_discipline_score(
+            ACCT, since=datetime.date(2026, 1, 1), until=datetime.date(2026, 1, 31))
+        self.assertAlmostEqual(out["score"], 100.0)  # only the 1.0 event remains
+
+    def test_set_annotation_rejects_unknown_tag(self):
+        self._seed_resolved("止损纪律", "AAA", "2026-01-05", "self_resolved",
+                            event_score=0.0)
+        conn = account_db.db()
+        sid = conn.execute("SELECT id FROM discipline_signals WHERE symbol='AAA'").fetchone()[0]
+        conn.close()
+        with self.assertRaises(ValueError):
+            disc.set_review_annotation(sid, "随便写的")
+
 
 if __name__ == "__main__":
     unittest.main()
