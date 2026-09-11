@@ -21,13 +21,19 @@ from scoring.mispricing_monitor import (  # noqa: E402
     WATCH_STATES,
     thesis_state_for_ticker,
 )
-from scoring.mispricing_store import append_snapshot, read_chain, verify_chain  # noqa: E402
+from scoring.exposure_context import (  # noqa: E402
+    chain_of as _chain_of,
+    load_avg_dollar_volume,
+    load_limits,
+    load_portfolio,
+    underlyings_in,
+)
+from scoring.mispricing_store import append_snapshot  # noqa: E402
 from scoring.position_exposure import (  # noqa: E402
     UNCLASSIFIED,
     approaching,
     breaches,
     compute_exposures,
-    underlying_of,
 )
 from scoring.position_limits import (  # noqa: E402
     COOLING_OFF_DAYS,
@@ -38,7 +44,6 @@ from scoring.position_limits import (  # noqa: E402
     MAX_LOOSEN_STEP_PCT,
     MIN_REASON_CHARS,
     build_record,
-    effective_limit,
     evaluate_change,
     pending_change,
 )
@@ -61,135 +66,29 @@ st.caption(
 
 
 # ── 数据读取 ────────────────────────────────────────────────────────
-@st.cache_data(ttl=60)
-def _load_portfolio():
-    """Latest stock positions, option positions and balance.
-
-    Options must be included: this account holds the large majority of its
-    equity in spreads, so a stock-only reading would report near-zero
-    concentration while one underlying sits at roughly half the book.
-
-    Returns empty rather than raising so the limit-setting half of the page
-    still works before any account sync.
-    """
-    try:
-        from account.db import db
-
-        conn = db()
-        latest = conn.execute(
-            "SELECT MAX(sync_time) FROM positions"
-        ).fetchone()
-        sync_time = latest[0] if latest else None
-        # Latest row per symbol, not "every row sharing one exact global
-        # sync_time" -- _refresh_stock_prices() used to stamp each stock
-        # with its own datetime.now() one at a time, so the old exact-match
-        # query silently returned only whichever stock happened to update
-        # last (2026-08-27 bug fix; see account/repository.py::load_positions
-        # for the full story).
-        rows = (
-            [
-                dict(r)
-                for r in conn.execute(
-                    """
-                    SELECT symbol, market_value FROM positions p1
-                    WHERE p1.sync_time = (
-                        SELECT MAX(p2.sync_time) FROM positions p2
-                        WHERE p2.symbol = p1.symbol
-                    )
-                    """
-                )
-            ]
-            if sync_time
-            else []
-        )
-        options = [
-            dict(r)
-            for r in conn.execute(
-                "SELECT symbol, market_value FROM options_positions"
-            )
-        ]
-        bal = conn.execute(
-            "SELECT total_equity, cash_balance FROM account_balance "
-            "ORDER BY sync_time DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
-        equity = float(bal[0]) if bal and bal[0] else None
-        cash = float(bal[1]) if bal and bal[1] is not None else None
-        return rows, options, equity, cash, sync_time
-    except Exception as exc:  # pragma: no cover - defensive UI path
-        st.warning(f"读取账户数据失败：{exc}")
-        return [], [], None, None, None
-
-
-def _chain_of(symbol: str) -> str | None:
-    """
-    Bug fixed 2026-08-27: this imported `from scoring_engine import ...`
-    (flat-module style) but scoring_engine.py lives at scoring/scoring_engine.py,
-    and nothing on this page ever put `scoring/` itself on sys.path -- only
-    the repo root (for `from scoring.position_exposure import ...`, the
-    package-style import). Every call here raised ModuleNotFoundError,
-    silently caught by the bare `except Exception: return None`, so every
-    single ticker -- including well-classified ones like NVDA -- fell into
-    "未分类" forever. The chain/sector concentration limit was measuring
-    "everything", not sectors, since this function was written.
-    """
-    try:
-        from scoring.scoring_engine import TICKER_CATEGORY
-
-        cat = TICKER_CATEGORY.get(symbol)
-        return cat.value if cat else None
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=3600)
-def _load_avg_dollar_volume(tickers: tuple[str, ...]) -> dict[str, float]:
-    """20-trading-day average daily dollar volume per underlying.
-
-    Cached for an hour, not 60s like the portfolio itself -- this is a
-    liquidity characteristic of the stock, not something that meaningfully
-    changes minute to minute, and it's one yfinance call per ticker.
-    """
-    import yfinance as yf
-
-    result: dict[str, float] = {}
-    for ticker in tickers:
-        try:
-            hist = yf.Ticker(ticker).history(period="1mo")
-            if hist.empty:
-                continue
-            dollar_vol = (hist["Close"] * hist["Volume"]).dropna()
-            if len(dollar_vol):
-                result[ticker] = float(dollar_vol.tail(20).mean())
-        except Exception:
-            continue
-    return result
+# 读数逻辑住在 scoring/exposure_context.py，门④下场前验证用的是同一份——
+# 两个页面对"现在的敞口是多少、超没超限"必须给一样的答案。这里只是套一层
+# Streamlit 缓存：持仓 60 秒，日均成交额 1 小时（每个标的一次 yfinance 调用，
+# 而流动性不是分钟级会变的东西）。
+_load_portfolio = st.cache_data(ttl=60)(load_portfolio)
+_load_avg_dollar_volume = st.cache_data(ttl=3600)(load_avg_dollar_volume)
 
 
 positions, option_positions, total_equity, cash_balance, sync_time = _load_portfolio()
-_underlyings = tuple(sorted({
-    p["symbol"].strip().upper() for p in positions if p.get("symbol")
-} | {
-    underlying_of(p["symbol"]) for p in (option_positions or []) if p.get("symbol")
-}))
+_underlyings = underlyings_in(positions, option_positions)
 avg_dollar_volume = _load_avg_dollar_volume(_underlyings)
 exposures = compute_exposures(
     positions, total_equity, cash_balance, _chain_of, option_positions,
     avg_dollar_volume=avg_dollar_volume,
 )
 
-records = read_chain(LIMITS_LOG)
-chain_ok, chain_issue = verify_chain(records)
+now = dt.datetime.now()
+records, current_limits, chain_ok, chain_issue = load_limits(LIMITS_LOG, now)
 if not chain_ok:
     st.error(
         f"限额变更日志的哈希链校验失败：{chain_issue}。"
         "在修复之前不会接受任何新的变更 —— 历史被改动过的日志没有约束力。"
     )
-
-now = dt.datetime.now()
-current_limits = {
-    spec.key: effective_limit(records, spec.key, now) for spec in LIMIT_SPECS
-}
 
 
 # ── 看板 ────────────────────────────────────────────────────────────

@@ -18,7 +18,12 @@ import tempfile
 import unittest
 
 import account.db as account_db
-from account.performance import compute_performance_stats, wilson_interval
+from account.performance import (
+    MIN_SAMPLE_FOR_KELLY,
+    compute_performance_stats,
+    kelly_size_check,
+    wilson_interval,
+)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ACCT = "test_kelly_acct"
@@ -231,6 +236,69 @@ class PerformanceStatsKellyTests(unittest.TestCase):
         # Sanity: the raw point estimate must sit inside its own interval.
         self.assertLessEqual(bucket["win_rate_ci_lower"], bucket["win_rate"])
         self.assertGreaterEqual(bucket["win_rate_ci_upper"], bucket["win_rate"])
+
+
+class KellySizeCheckTests(unittest.TestCase):
+    """门④下场前验证的 Kelly 对比——纯函数，不碰 DB。"""
+
+    EQUITY = 100_000.0
+
+    def _bucket(self, *, n=30, kelly=0.10):
+        return {"bull_put_spread": {
+            "count": n, "kelly_f_shrunk": kelly, "win_rate": 0.7,
+            "win_rate_shrunk": 0.68, "win_rate_ci_lower": 0.5,
+            "win_rate_ci_upper": 0.85, "payoff_b_shrunk": 1.4,
+            "close_date_min": "2026-01-01", "close_date_max": "2026-09-01",
+        }}
+
+    def test_unknown_strategy_reports_no_data(self):
+        got = kelly_size_check({}, "bull_put_spread", self.EQUITY, 1_000.0)
+        self.assertEqual(got["status"], "no_data")
+
+    def test_small_sample_refuses_to_size(self):
+        got = kelly_size_check(
+            self._bucket(n=MIN_SAMPLE_FOR_KELLY - 1), "bull_put_spread",
+            self.EQUITY, 1_000.0)
+        self.assertEqual(got["status"], "low_sample")
+        self.assertIsNone(got["suggested_max_loss"])
+
+    def test_negative_kelly_says_do_not_bet(self):
+        got = kelly_size_check(
+            self._bucket(kelly=-0.05), "bull_put_spread", self.EQUITY, 1_000.0)
+        self.assertEqual(got["status"], "negative")
+        self.assertIsNone(got["suggested_max_loss"])
+
+    def test_half_kelly_is_the_default_budget(self):
+        got = kelly_size_check(
+            self._bucket(kelly=0.10), "bull_put_spread", self.EQUITY, 1_000.0)
+        # 10% × 半Kelly × 100k = 5000
+        self.assertAlmostEqual(got["suggested_max_loss"], 5_000.0)
+        self.assertEqual(got["status"], "within")
+        self.assertAlmostEqual(got["ratio"], 0.2)
+
+    def test_over_budget_is_flagged_with_ratio(self):
+        got = kelly_size_check(
+            self._bucket(kelly=0.10), "bull_put_spread", self.EQUITY, 7_500.0)
+        self.assertEqual(got["status"], "over")
+        self.assertAlmostEqual(got["ratio"], 1.5)
+
+    def test_exactly_at_budget_is_within(self):
+        got = kelly_size_check(
+            self._bucket(kelly=0.10), "bull_put_spread", self.EQUITY, 5_000.0)
+        self.assertEqual(got["status"], "within")
+
+    def test_fraction_is_configurable(self):
+        got = kelly_size_check(
+            self._bucket(kelly=0.10), "bull_put_spread", self.EQUITY, 1_000.0,
+            kelly_fraction=1.0)
+        self.assertAlmostEqual(got["suggested_max_loss"], 10_000.0)
+
+    def test_carries_sample_context_for_display(self):
+        got = kelly_size_check(
+            self._bucket(), "bull_put_spread", self.EQUITY, 1_000.0)
+        self.assertEqual(got["n"], 30)
+        self.assertEqual(got["close_date_min"], "2026-01-01")
+        self.assertEqual(got["win_rate_ci_upper"], 0.85)
 
 
 if __name__ == "__main__":

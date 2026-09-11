@@ -35,6 +35,79 @@ def wilson_interval(p_hat: float, n: int, z: float = 1.96) -> tuple[float, float
     return (max(0.0, center - margin), min(1.0, center + margin))
 
 
+MIN_SAMPLE_FOR_KELLY = 10
+"""低于这个笔数，收缩Kelly也只是"总体平均 + 一点噪音"，不该拿来定仓位。
+
+不是统计学上的硬门槛，是这个账户的经验值：K_SHRINK=20 意味着 10 笔以下的
+桶里，总体平均的权重还占三分之二以上——那个数字与其说是"这个策略的Kelly"，
+不如说是"全账户的Kelly"，用它给某个具体策略定规模是在假装知道自己不知道
+的事。门④在这种情况下只提示、不给建议张数。
+"""
+
+
+def kelly_size_check(
+    by_combo: dict,
+    strategy: str,
+    total_equity: float,
+    intended_max_loss: float,
+    *,
+    kelly_fraction: float = 0.5,
+) -> dict:
+    """把"这笔打算亏多少"和"收缩Kelly允许亏多少"摆在一起比。
+
+    Kelly 的 f* 是"每次下注可以押上净值的百分之几"，对期权价差来说，押上的
+    那笔钱就是这单的最大亏损（不是市值、不是名义敞口）——所以比较的两端是
+    intended_max_loss 和 f* × 净值。
+
+    kelly_fraction 默认 0.5（半 Kelly）：全 Kelly 在胜率/赔率估得准的前提下
+    才是最优增长率，而这里的胜率是几十笔样本估出来的，估计误差下全 Kelly 的
+    实际表现会显著劣于理论值，破产风险也高。半 Kelly 牺牲约 25% 的理论增长率
+    换一半的波动，是这种"参数自己也是估出来的"场景下的常规做法。
+
+    返回 dict 永远带 status：
+      no_data      —— 这个策略类型没有历史战绩
+      low_sample   —— 有战绩但笔数不够（见 MIN_SAMPLE_FOR_KELLY）
+      negative     —— 收缩Kelly ≤ 0，历史上这个策略是亏钱的，不该加仓
+      within       —— 打算冒的钱在建议上限之内
+      over         —— 超了建议上限
+    """
+    stats = (by_combo or {}).get(strategy)
+    if not stats:
+        return {"status": "no_data", "strategy": strategy}
+
+    n = int(stats.get("count") or 0)
+    kelly_f = stats.get("kelly_f_shrunk")
+    out = {
+        "strategy": strategy,
+        "n": n,
+        "kelly_f_shrunk": kelly_f,
+        "win_rate": stats.get("win_rate"),
+        "win_rate_shrunk": stats.get("win_rate_shrunk"),
+        "win_rate_ci_lower": stats.get("win_rate_ci_lower"),
+        "win_rate_ci_upper": stats.get("win_rate_ci_upper"),
+        "payoff_b_shrunk": stats.get("payoff_b_shrunk"),
+        "close_date_min": stats.get("close_date_min"),
+        "close_date_max": stats.get("close_date_max"),
+        "intended_max_loss": intended_max_loss,
+        "kelly_fraction": kelly_fraction,
+        "suggested_max_loss": None,
+        "ratio": None,
+    }
+
+    if n < MIN_SAMPLE_FOR_KELLY:
+        out["status"] = "low_sample"
+        return out
+    if kelly_f is None or kelly_f <= 0:
+        out["status"] = "negative"
+        return out
+
+    suggested = kelly_f * kelly_fraction * float(total_equity or 0.0)
+    out["suggested_max_loss"] = suggested
+    out["ratio"] = (intended_max_loss / suggested) if suggested > 0 else None
+    out["status"] = "over" if intended_max_loss > suggested else "within"
+    return out
+
+
 def compute_performance_stats(acct_id: str) -> dict | None:
     """从 option_realized_trades 计算全套绩效指标。数据为空返回 None。
 
