@@ -190,24 +190,83 @@ def hedge_governance_signals(hedge_governance: dict | None) -> list[dict]:
     return out
 
 
+_NON_TICKER_SYMBOLS = {"PORTFOLIO", "QQQ_HEDGE_MISSING"}
+
+
+def _find_acted_evidence(conn, acct_id: str, row) -> tuple[str | None, str | None]:
+    """一个信号不再触发了，找"你真的做了动作"的证据（设计文档 §3）。
+    返回 (动作日期, 说明) 或 (None, None)。
+
+    顺序：
+      1. option_realized_trades 里同 symbol、first_seen 之后的平仓（v1 老逻辑）
+      2. transactions 里的减仓交易——能归标的的看那个标的的 SELL；
+         PORTFOLIO / 产业链名 / 合成 symbol 看窗口内任意一笔 SELL
+         （组合层面 = 有没有做任何降风险的事）
+    """
+    sym = row["symbol"]
+    fs  = str(row["first_seen_date"])
+
+    t = conn.execute(
+        "SELECT symbol, close_date FROM option_realized_trades "
+        "WHERE account_id=? AND symbol=? AND close_date > ? "
+        "ORDER BY close_date ASC LIMIT 1",
+        (acct_id, sym, fs),
+    ).fetchone()
+    if t:
+        return str(t["close_date"]), f"{t['symbol']} 平仓于 {t['close_date']}"
+
+    from account.risk_signals import underlying_of
+    import re as _re
+    # 能归标的的 symbol：纯股票代码，或 OCC 期权代码。其余（PORTFOLIO、
+    # 产业链名"AI芯片"、合成 symbol）都当组合层面。
+    is_ticker_like = bool(_re.match(r"^[A-Z]{1,6}(\d{6}[CP]\d{8})?$", sym or ""))
+    if not is_ticker_like or sym in _NON_TICKER_SYMBOLS:
+        tx = conn.execute(
+            "SELECT trade_date, symbol FROM transactions "
+            "WHERE account_id=? AND type='SELL' AND trade_date > ? "
+            "ORDER BY trade_date ASC LIMIT 1",
+            (acct_id, fs),
+        ).fetchone()
+        if tx:
+            return str(tx["trade_date"]), f"窗口内减仓 {tx['symbol']} 于 {tx['trade_date']}（组合层面降风险）"
+        return None, None
+
+    und = underlying_of(sym)
+    tx = conn.execute(
+        "SELECT trade_date, symbol FROM transactions "
+        "WHERE account_id=? AND type='SELL' AND trade_date > ? "
+        "AND (symbol=? OR symbol LIKE ?) ORDER BY trade_date ASC LIMIT 1",
+        (acct_id, fs, und, f"{und}%"),
+    ).fetchone()
+    if tx:
+        return str(tx["trade_date"]), f"减仓 {tx['symbol']} 于 {tx['trade_date']}"
+    return None, None
+
+
 def record_and_resolve_signals(
     acct_id: str,
     pnl_dte_signals: list[dict],
     hedge_governance: dict | None,
     today: _dt.date | None = None,
+    extra_signals: list[dict] | None = None,
 ) -> dict:
     """设计文档 §4 的记录/核对算法，每次账户同步调一次。
 
     pnl_dte_signals: scan_pnl_dte_signals() 的结果。
     hedge_governance: account.risk.compute_qqq_hedge_plan(...) 返回值里的
         "hedge_governance" 键——调用方已经算好，这个函数不自己拉取。
+    extra_signals: v2 的其余信号（account/risk_signals.py 的输出——硬约束/
+        风险快照/门④/回调复合）。每项 {symbol, dimension, detail}，门④违规类
+        可带 "first_seen" 键把首次日期定成交易日而不是 today。
 
     返回本次同步的变更摘要：
     {"new": N, "acted": N, "self_resolved": N, "expired_unhandled": N, "still_open": N}
     """
     today   = today or _dt.date.today()
     today_s = today.isoformat()
-    current = list(pnl_dte_signals) + hedge_governance_signals(hedge_governance)
+    current = (list(pnl_dte_signals)
+               + hedge_governance_signals(hedge_governance)
+               + list(extra_signals or []))
 
     conn = _db()
     conn.row_factory = sqlite3.Row
@@ -217,6 +276,7 @@ def record_and_resolve_signals(
     for sig in current:
         dim, sym, detail = sig["dimension"], sig["symbol"], sig.get("detail", "")
         current_keys.add((dim, sym))
+        first_seen_s = str(sig.get("first_seen") or today_s)[:10]
         row = conn.execute(
             "SELECT id FROM discipline_signals WHERE account_id=? AND dimension=? "
             "AND symbol=? AND status='open'",
@@ -233,7 +293,7 @@ def record_and_resolve_signals(
                     "INSERT INTO discipline_signals "
                     "(account_id, dimension, symbol, first_seen_date, last_seen_date, "
                     " detail, status) VALUES (?,?,?,?,?,?,'open')",
-                    (acct_id, dim, sym, today_s, today_s, detail),
+                    (acct_id, dim, sym, first_seen_s, today_s, detail),
                 )
                 summary["new"] += 1
             except sqlite3.IntegrityError:
@@ -250,25 +310,18 @@ def record_and_resolve_signals(
     for row in open_rows:
         if (row["dimension"], row["symbol"]) in current_keys:
             continue
-        trade = conn.execute(
-            "SELECT symbol, close_date FROM option_realized_trades "
-            "WHERE account_id=? AND symbol=? AND close_date > ? "
-            "ORDER BY close_date ASC LIMIT 1",
-            (acct_id, row["symbol"], row["first_seen_date"]),
-        ).fetchone()
-        if trade:
+        acted_date, acted_via = _find_acted_evidence(conn, acct_id, row)
+        if acted_date:
             first_seen = _dt.date.fromisoformat(str(row["first_seen_date"])[:10])
-            closed_s   = str(trade["close_date"])
             try:
-                closed = _dt.date.fromisoformat(closed_s[:10])
-                resp_days = (closed - first_seen).days
+                resp_days = (_dt.date.fromisoformat(str(acted_date)[:10]) - first_seen).days
             except Exception:
                 resp_days = None
             _es = event_score(row["dimension"], "acted", resp_days)
             conn.execute(
                 "UPDATE discipline_signals SET status='acted', resolved_date=?, "
                 "resolved_via=?, response_days=?, event_score=? WHERE id=?",
-                (closed_s, f"{trade['symbol']} 平仓于 {closed_s}", resp_days, _es, row["id"]),
+                (str(acted_date), acted_via, resp_days, _es, row["id"]),
             )
             summary["acted"] += 1
         else:

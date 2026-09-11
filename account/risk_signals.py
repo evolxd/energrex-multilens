@@ -49,10 +49,17 @@ def hard_constraint_signals(breaches_list: list[dict]) -> list[dict]:
         if dim is None:
             continue
         sym = (b.get("detail") or "").strip().upper() or "PORTFOLIO"
+
+        def _n(x):
+            try:
+                return f"{float(x):.1f}"
+            except (TypeError, ValueError):
+                return str(x)
+
         out.append({
             "symbol": sym, "dimension": dim,
-            "detail": f"{b.get('label','')}：当前 {b.get('reading')}，"
-                      f"限额 {b.get('limit')}，超出 {b.get('overshoot')}",
+            "detail": f"{b.get('label','')}：当前 {_n(b.get('reading'))}，"
+                      f"限额 {_n(b.get('limit'))}，超出 {_n(b.get('overshoot'))}",
         })
     return out
 

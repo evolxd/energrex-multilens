@@ -97,6 +97,179 @@ def _scan_exit_signals() -> list[dict]:
     return _dedupe_signals_by_symbol(raw)
 
 
+def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
+    """纪律架构 v2 的其余信号（account/risk_signals.py），每个子块自己
+    try/except——一块挂了不影响其它块。返回 extra_signals 列表喂
+    discipline.record_and_resolve_signals。设计见
+    docs/DISCIPLINE_AND_REVIEW_ARCHITECTURE.md。
+    """
+    sys.path.insert(0, str(_ROOT))
+    from account import risk_signals as _rs
+    out: list[dict] = []
+
+    # ── 风险快照类（BD/杠杆/压力测试/强制去风险）──
+    try:
+        out += _rs.risk_snapshot_signals(snap)
+    except Exception as e:
+        _log.warning(f"risk_snapshot_signals: {e}")
+
+    # ── 硬约束类 breach ──
+    try:
+        conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
+        pos = [dict(r) for r in conn.execute(
+            "SELECT symbol, market_value FROM positions p1 WHERE p1.sync_time = "
+            "(SELECT MAX(p2.sync_time) FROM positions p2 WHERE p2.symbol = p1.symbol)")]
+        opts = [dict(r) for r in conn.execute(
+            "SELECT symbol, market_value FROM options_positions")]
+        bal = conn.execute("SELECT total_equity, cash_balance FROM account_balance "
+                           "ORDER BY sync_time DESC LIMIT 1").fetchone()
+        conn.close()
+        equity = float(bal[0]) if bal and bal[0] else None
+        cash   = float(bal[1]) if bal and bal[1] is not None else None
+
+        from scoring.position_exposure import compute_exposures
+        from scoring.position_limits import LIMIT_SPECS, effective_limit
+        from scoring.mispricing_store import read_chain
+        def _chain_of(sym):
+            try:
+                from scoring.scoring_engine import TICKER_CATEGORY
+                c = TICKER_CATEGORY.get(sym)
+                return c.value if c else None
+            except Exception:
+                return None
+        exposures = compute_exposures(pos, equity, cash, _chain_of, opts)
+        if exposures is not None:
+            recs = read_chain(_ROOT / "data" / "position_limits.jsonl")
+            now = datetime.datetime.now()
+            limits = {s.key: effective_limit(recs, s.key, now) for s in LIMIT_SPECS}
+            from scoring.position_exposure import breaches
+            out += _rs.hard_constraint_signals(breaches(exposures, limits))
+    except Exception as e:
+        _log.warning(f"hard_constraint_signals: {e}")
+
+    # ── 门④：事后从 transactions 检测 ──
+    try:
+        conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
+        _cut = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
+        new_trades = [
+            {"symbol": r["symbol"], "type": (r["type"] or "").upper(),
+             "quantity": r["quantity"],
+             "trade_date": _safe_date(r["trade_date"])}
+            for r in conn.execute(
+                "SELECT symbol, type, quantity, trade_date FROM transactions "
+                "WHERE account_id='account_1' AND trade_date >= ? AND type IN ('BUY','SELL')",
+                (_cut,))
+        ]
+        # 硬约束在超限的日期集合（从 discipline_signals 的 open 区间算）
+        hard_dims = ("单票超限", "集中度超限", "现金底线", "流动性天数")
+        breach_dates: set = set()
+        for r in conn.execute(
+            "SELECT dimension, first_seen_date, resolved_date, status FROM discipline_signals "
+            "WHERE account_id='account_1' AND dimension IN ({})".format(
+                ",".join("?" * len(hard_dims))), hard_dims):
+            d0 = _safe_date(r["first_seen_date"])
+            d1 = _safe_date(r["resolved_date"]) if r["status"] != "open" else datetime.date.today()
+            if d0 and d1:
+                d = d0
+                while d <= d1:
+                    breach_dates.add(d); d += datetime.timedelta(days=1)
+        conn.close()
+
+        cases = set()
+        _cases_f = _ROOT / "data" / "mispricing_cases.jsonl"
+        if _cases_f.exists():
+            import json as _json
+            for line in _cases_f.read_text(encoding="utf-8").splitlines():
+                try:
+                    j = _json.loads(line)
+                    t = (j.get("ticker") or j.get("symbol") or "").strip().upper()
+                    if t:
+                        cases.add(t)
+                except Exception:
+                    pass
+
+        circuit = set()
+        try:
+            import csv as _csv
+            _rv = _ROOT / "results_validated.csv"
+            if _rv.exists():
+                with open(_rv, encoding="utf-8-sig", newline="") as f:
+                    for row in _csv.DictReader(f):
+                        tk = (row.get("ticker") or "").strip().upper()
+                        cv = str(row.get("circuit_triggered") or row.get("熔断") or "").strip().lower()
+                        if tk and cv in ("true", "1", "yes", "是"):
+                            circuit.add(tk)
+        except Exception:
+            pass
+
+        neg_kelly = set()
+        try:
+            from account.performance import compute_performance_stats
+            st = compute_performance_stats("account_1")
+            for cs, v in (st or {}).get("by_combo", {}).items():
+                k = v.get("kelly_f_shrunk")
+                if k is not None and k <= 0:
+                    neg_kelly.add(cs)
+        except Exception:
+            pass
+
+        traded = _rs.traded_signals(
+            new_trades, cases_on_file=cases, circuit_symbols=circuit,
+            hard_breach_dates=breach_dates, negative_kelly_strategies=neg_kelly,
+            strategy_of=None,  # v1 不做 symbol→strategy 映射，见 risk_signals 顶部
+        )
+        # 门④违规按交易日记 first_seen，不是 today
+        for s in traded:
+            for t in new_trades:
+                if _rs.underlying_of(t["symbol"]) == _rs.underlying_of(s["symbol"]) and t.get("trade_date"):
+                    s["first_seen"] = t["trade_date"].isoformat()
+                    break
+        out += traded
+    except Exception as e:
+        _log.warning(f"traded_signals: {e}")
+
+    # ── 回调模块 + 止盈复合 ──
+    try:
+        conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
+        unds = {_rs.underlying_of(r["symbol"]) for r in conn.execute(
+            "SELECT symbol FROM options_positions WHERE account_id='account_1'")}
+        unds |= {r["symbol"].strip().upper() for r in conn.execute(
+            "SELECT DISTINCT symbol FROM positions") if r["symbol"]}
+        conn.close()
+        unds = {u for u in unds if u and u.isascii()}
+        bars = {}
+        try:
+            import yfinance as _yf
+            for u in unds:
+                try:
+                    h = _yf.Ticker(u).history(period="6mo")
+                    if not h.empty:
+                        h = h.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]]
+                        bars[u] = h.reset_index(drop=True)
+                except Exception:
+                    continue
+        except Exception as e:
+            _log.warning(f"pullback yfinance: {e}")
+        if bars:
+            pb = _rs.pullback_signals(bars)
+            # 单独的 MAJOR 是 B 类（只展示，不进纪律分）——这里不记进台账；
+            # 只有跟止盈复合的才记
+            from account.discipline import scan_pnl_dte_signals
+            pnl_dte_all = scan_pnl_dte_signals("account_1")
+            out += _rs.compound_zhiying_pullback_signals(pnl_dte_all, pb)
+    except Exception as e:
+        _log.warning(f"pullback: {e}")
+
+    return out
+
+
+def _safe_date(s):
+    try:
+        return datetime.date.fromisoformat(str(s)[:10])
+    except Exception:
+        return None
+
+
 def run_sync_cascade(step=None) -> dict:
     """
     账户同步后的级联计算：
@@ -202,8 +375,8 @@ def run_sync_cascade(step=None) -> dict:
     except Exception as e:
         _s(f"⚠️ 出场信号扫描失败: {e}")
 
-    # 4.5 ── 门⑤纪律：记录信号 + 核对上次的有没有真的响应
-    # （docs/DISCIPLINE_GATE_DESIGN.md）。
+    # 4.5 ── 门④+门⑤纪律：记录全部风控信号 + 核对上次的有没有真的响应
+    # （docs/DISCIPLINE_AND_REVIEW_ARCHITECTURE.md）。
     _s("🔄 记录纪律信号...")
     try:
         from account import discipline as _disc
@@ -212,14 +385,26 @@ def run_sync_cascade(step=None) -> dict:
             hedge_gov  = hedge_plan.get("hedge_governance") if isinstance(hedge_plan, dict) else None
         except Exception as _e_hedge:
             hedge_gov = None
-            _s(f"⚠️ 对冲纪律检查失败（跳过这一维度，不影响其它三个）: {_e_hedge}")
-        disc_summ = _disc.record_and_resolve_signals("account_1", pnl_dte, hedge_gov)
+            _s(f"⚠️ 对冲纪律检查失败（跳过这一维度，不影响其它维度）: {_e_hedge}")
+        extra = _gather_v2_risk_signals(snap)
+        disc_summ = _disc.record_and_resolve_signals(
+            "account_1", pnl_dte, hedge_gov, extra_signals=extra)
         summary["discipline"] = disc_summ
         _s(
-            f"✅ 纪律信号：新增{disc_summ['new']} · 已响应{disc_summ['acted']} · "
-            f"自然消失{disc_summ['self_resolved']} · 到期未处理{disc_summ['expired_unhandled']} · "
-            f"仍未处理{disc_summ['still_open']}"
+            f"✅ 纪律信号（含硬约束/杠杆/门④/回调 {len(extra)} 条）：新增{disc_summ['new']} · "
+            f"已响应{disc_summ['acted']} · 自然消失{disc_summ['self_resolved']} · "
+            f"到期未处理{disc_summ['expired_unhandled']} · 仍未处理{disc_summ['still_open']}"
         )
+        try:
+            _score = _disc.compute_discipline_score(
+                "account_1",
+                since=datetime.date.today() - datetime.timedelta(days=30))
+            if _score["score"] is not None:
+                summary["discipline_score"] = _score["score"]
+                _s(f"   纪律分（近30天）：{_score['score']}% · {_score['grade']}"
+                   + (f" · {_score['pending_review']} 条待复核" if _score['pending_review'] else ""))
+        except Exception:
+            pass
     except Exception as e:
         _s(f"⚠️ 纪律信号记录失败: {e}")
 
