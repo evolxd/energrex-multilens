@@ -73,6 +73,46 @@ class AccountsTests(unittest.TestCase):
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
+    def test_archive_hides_from_default_list_but_not_include_archived(self):
+        acc.archive_account("account_2")
+        active = {r["id"] for r in acc.list_accounts()}
+        self.assertNotIn("account_2", active)
+        everyone = {r["id"] for r in acc.list_accounts(include_archived=True)}
+        self.assertIn("account_2", everyone)
+
+    def test_archive_does_not_touch_label_or_number(self):
+        acc.archive_account("account_2")
+        row = next(r for r in acc.list_accounts(include_archived=True)
+                   if r["id"] == "account_2")
+        self.assertEqual(row["label"], "账户二")
+        self.assertEqual(row["number"], "002")
+
+    def test_unarchive_restores_to_default_list(self):
+        acc.archive_account("account_1")
+        acc.unarchive_account("account_1")
+        active = {r["id"] for r in acc.list_accounts()}
+        self.assertIn("account_1", active)
+
+    def test_archived_account_number_is_not_reused_by_add_account(self):
+        acc.archive_account("account_2")
+        new = acc.add_account()
+        self.assertEqual(new["id"], "account_3")
+
+    def test_archive_as_the_very_first_db_touch_still_seeds_first(self):
+        """Regression: archive_account() used to call _ensure_table() (create
+        table only) instead of _seed_if_empty() (create + seed). Called as
+        the first touch on a brand-new DB, the UPDATE ran against an empty
+        table (0 rows affected), then a later list_accounts() call seeded
+        fresh is_active=1 rows -- silently undoing the archive."""
+        acc.archive_account("account_2")   # first DB touch in this test
+        active = {r["id"] for r in acc.list_accounts()}
+        self.assertNotIn("account_2", active)
+
+    def test_rename_as_the_very_first_db_touch_still_seeds_first(self):
+        acc.rename_account("account_1", "冷启动改名")
+        row = next(r for r in acc.list_accounts() if r["id"] == "account_1")
+        self.assertEqual(row["label"], "冷启动改名")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4254,21 +4254,27 @@ def _margin_cls(v):
     return "mval r"
 
 
-cols = st.columns(2)
-for col, cfg in zip(cols, ACCT_CFG):
-    bal  = _load_latest_balance(cfg["id"])
-    te   = bal.get("total_equity")
-    cb   = bal.get("cash_balance")
-    mu   = bal.get("margin_used")
-    ma   = bal.get("margin_available")
-    mp   = bal.get("margin_usage_pct")
-    dp   = bal.get("day_pnl")
-    ts   = (bal.get("sync_time") or "")[:16]
-    with col:
-        # ── 余额卡片 ──
-        st.markdown(f"""
+# 每行最多4张卡片——账户数量已经可以远超2个（见"管理账户"），固定2列的
+# st.columns(2) + zip(cols, ACCT_CFG) 会让第3个账户开始被 zip 直接截断、
+# 静默不显示，不是留白，是账户真的从这个总览里消失了。
+_CARDS_PER_ROW = 4
+for _row_start in range(0, len(ACCT_CFG), _CARDS_PER_ROW):
+    _row_accts = ACCT_CFG[_row_start:_row_start + _CARDS_PER_ROW]
+    cols = st.columns(_CARDS_PER_ROW)
+    for col, cfg in zip(cols, _row_accts):
+        bal  = _load_latest_balance(cfg["id"])
+        te   = bal.get("total_equity")
+        cb   = bal.get("cash_balance")
+        mu   = bal.get("margin_used")
+        ma   = bal.get("margin_available")
+        mp   = bal.get("margin_usage_pct")
+        dp   = bal.get("day_pnl")
+        ts   = (bal.get("sync_time") or "")[:16]
+        with col:
+            # ── 余额卡片 ──
+            st.markdown(f"""
 <div class='acct-card'>
-  <div class='acct-title'>{cfg['label']}</div>
+  <div class='acct-title'>{cfg['number']} · {cfg['label']}</div>
   <div class='mrow'><span class='mlbl'>总资产净值</span>
     <span class='mval' style='font-size:16px'>{_fmt_m(te)}</span></div>
   <div class='mrow'><span class='mlbl'>现金余额</span>
@@ -4289,7 +4295,11 @@ for col, cfg in zip(cols, ACCT_CFG):
 df_bal = _load_balance_history(730)
 if not df_bal.empty:
     df_bal["sync_time"] = pd.to_datetime(df_bal["sync_time"], format="mixed", utc=True)
-clr = {ACCT_CFG[0]["id"]: _GREEN, ACCT_CFG[1]["id"]: _BLUE}
+# 轮转调色板，不再只给前两个账户分配颜色——第3个账户开始全都会是同一个
+# _AMB，10个账户里除了前两个全部撞色，图上分不清是哪个账户。
+_ACCT_PALETTE = [_GREEN, _BLUE, _AMB, _RED, "#B26EFF", "#40E0D0", "#FFB6C1",
+                 "#8FBC8F", "#FFD700", "#87CEEB"]
+clr = {c["id"]: _ACCT_PALETTE[i % len(_ACCT_PALETTE)] for i, c in enumerate(ACCT_CFG)}
 lbl = {c["id"]: c["label"] for c in ACCT_CFG}
 
 # 保证金使用率

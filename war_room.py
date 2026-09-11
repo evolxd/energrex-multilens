@@ -10,6 +10,7 @@ import datetime, sqlite3, json, socket
 import streamlit as st
 import pytz
 
+from account.accounts import list_accounts as _list_accounts
 from scoring.mispricing_monitor import SEVERE_STATES, WATCH_STATES, thesis_state_for_ticker
 from scoring.position_exposure import compute_exposures
 
@@ -46,6 +47,17 @@ footer {{visibility:hidden;}} #MainMenu {{visibility:hidden;}}
 import _sidebar as _sb
 _sb.render()
 
+# ── 账户选择器（跟账户监控页侧边栏共用同一个 session_state key："sb_acct"，
+# 两个页面切账户是同一件事，不是各切各的）───────────────────────────
+ACCT_CFG = _list_accounts()
+_acct_opts = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
+with st.sidebar:
+    st.divider()
+    _sel_display = st.selectbox("账户编号", list(_acct_opts.keys()),
+                                key="sb_acct", label_visibility="collapsed")
+_sel_cfg = _acct_opts[_sel_display]
+_ACCT_ID = _sel_cfg["id"]
+
 # ═══════════════════════════════════════════════════
 # 数据读取
 # ═══════════════════════════════════════════════════
@@ -58,8 +70,9 @@ def _db_conn():
 
 
 @st.cache_data(ttl=60)
-def _load_war_data():
-    """读取简报 + 账户余额。TTL=60s。"""
+def _load_war_data(acct_id: str):
+    """读取简报 + 账户余额。TTL=60s。acct_id 进了函数签名，Streamlit
+    按参数分别缓存——切账户不会读到上一个账户缓存的简报。"""
     result = {"briefing": None, "accounts": [], "has_db": False}
     conn = _db_conn()
     if conn is None:
@@ -68,12 +81,12 @@ def _load_war_data():
 
     today = datetime.date.today().isoformat()
 
-    # Daily briefing (account_1 优先)
+    # Daily briefing（选中的账户）
     try:
         row = conn.execute(
             "SELECT gen_time, snap_json, recs_json FROM daily_briefing "
-            "WHERE acct_id='account_1' AND date=? ORDER BY id DESC LIMIT 1",
-            (today,)).fetchone()
+            "WHERE acct_id=? AND date=? ORDER BY id DESC LIMIT 1",
+            (acct_id, today)).fetchone()
         if row:
             result["briefing"] = {
                 "gen_time": (row["gen_time"] or "")[:16].replace("T", " "),
@@ -107,7 +120,7 @@ def _load_war_data():
 
 
 @st.cache_data(ttl=60)
-def _load_thesis_alerts() -> list[dict]:
+def _load_thesis_alerts(acct_id: str) -> list[dict]:
     """Held tickers whose mispricing thesis has moved to SEVERE/WATCH.
 
     Deliberately separate from daily_briefing's recs above: those are
@@ -115,12 +128,20 @@ def _load_thesis_alerts() -> list[dict]:
     scan). This is "the reason you bought it may no longer hold" -- a
     different question with a different response, so it gets its own block
     instead of being folded into the same card list.
+
+    2026-09-11: this used to query positions/options_positions/account_balance
+    with no account_id filter at all -- with only one account ever synced that
+    was invisible, but it silently blended every account's holdings into one
+    thesis-alert list. Now scoped to the selected account, matching every
+    other per-account query on this page.
     """
     try:
         from account.db import db
 
         conn = db()
-        latest = conn.execute("SELECT MAX(sync_time) FROM positions").fetchone()
+        latest = conn.execute(
+            "SELECT MAX(sync_time) FROM positions WHERE account_id=?",
+            (acct_id,)).fetchone()
         sync_time = latest[0] if latest else None
         # Latest row per symbol, not "every row sharing one exact global
         # sync_time" -- see account/repository.py::load_positions for why
@@ -131,11 +152,12 @@ def _load_thesis_alerts() -> list[dict]:
                 for r in conn.execute(
                     """
                     SELECT symbol, market_value FROM positions p1
-                    WHERE p1.sync_time = (
+                    WHERE p1.account_id = ? AND p1.sync_time = (
                         SELECT MAX(p2.sync_time) FROM positions p2
-                        WHERE p2.symbol = p1.symbol
+                        WHERE p2.symbol = p1.symbol AND p2.account_id = p1.account_id
                     )
-                    """
+                    """,
+                    (acct_id,),
                 )
             ]
             if sync_time
@@ -143,10 +165,13 @@ def _load_thesis_alerts() -> list[dict]:
         )
         options = [
             dict(r)
-            for r in conn.execute("SELECT symbol, market_value FROM options_positions")
+            for r in conn.execute(
+                "SELECT symbol, market_value FROM options_positions WHERE account_id=?",
+                (acct_id,))
         ]
         bal = conn.execute(
-            "SELECT total_equity FROM account_balance ORDER BY sync_time DESC LIMIT 1"
+            "SELECT total_equity FROM account_balance WHERE account_id=? "
+            "ORDER BY sync_time DESC LIMIT 1", (acct_id,)
         ).fetchone()
         conn.close()
         equity = float(bal[0]) if bal and bal[0] else None
@@ -179,11 +204,12 @@ def _chrome_ok() -> bool:
 # ═══════════════════════════════════════════════════
 # 渲染
 # ═══════════════════════════════════════════════════
-_data  = _load_war_data()
+_data  = _load_war_data(_ACCT_ID)
 _brief = _data.get("briefing")
 _snap  = _brief["snap"] if _brief else {}
 _accts = _data.get("accounts", [])
 _chrome = _chrome_ok()
+_ACCT_LABEL = {c["id"]: f"{c['number']} · {c['label']}" for c in ACCT_CFG}
 
 _now_et = datetime.datetime.now(
     pytz.timezone("America/New_York"))
@@ -328,11 +354,21 @@ with _left:
                 f"生成于 {_brief['gen_time']} ET</span>"
                 if _brief else
                 f"<span style='font-size:11px;color:{_A}'>尚未生成，今日 09:35 ET 自动生成</span>")
-    st.markdown(
-        f"<div style='font-size:14px;font-weight:700;color:{_TXT};"
-        f"margin-bottom:6px'>⚡ 今日操作简报 &nbsp; {_gen_tag}</div>",
-        unsafe_allow_html=True,
-    )
+    _hdr_col, _btn_col = st.columns([5, 1])
+    with _hdr_col:
+        st.markdown(
+            f"<div style='font-size:14px;font-weight:700;color:{_TXT};"
+            f"margin-bottom:6px'>⚡ 今日操作简报（{_sel_cfg['label']}） &nbsp; {_gen_tag}</div>",
+            unsafe_allow_html=True,
+        )
+    with _btn_col:
+        if st.button("🔄 重新生成", key="war_regen_briefing", use_container_width=True,
+                     help="用这个账户当前的实时持仓重新生成今日简报"):
+            import _cascade
+            with st.spinner("生成中…"):
+                _cascade._get_am()["_generate_and_save_daily_briefing"](_ACCT_ID)
+            _load_war_data.clear()
+            st.rerun()
 
     if _brief and _brief["recs"]:
         _recs = _brief["recs"]
@@ -387,7 +423,7 @@ with _right:
             _ca  = _ac.get("cash")
             _pnl = _ac.get("pnl")
             _tid = _ac.get("id", "")
-            _lbl = "账户一" if "1" in _tid else "账户二"
+            _lbl = _ACCT_LABEL.get(_tid, _tid)
             _pnl_col = (_G if (_pnl or 0) >= 0 else _R)
 
             _rows_html = ""
@@ -428,7 +464,7 @@ with _right:
         )
 
 # ─── 行 2.5：持仓论点监控（跟上面的机械层信号是两回事，见函数注释）───
-_thesis_alerts = _load_thesis_alerts()
+_thesis_alerts = _load_thesis_alerts(_ACCT_ID)
 if _thesis_alerts:
     st.markdown(
         f"<div style='font-size:14px;font-weight:700;color:{_TXT};"
