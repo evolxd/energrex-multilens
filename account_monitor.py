@@ -55,6 +55,8 @@ if _env.exists():
 from account.accounts import list_accounts as _list_accounts
 from account.accounts import add_account as _add_account
 from account.accounts import rename_account as _rename_account
+from account.accounts import archive_account as _archive_account
+from account.accounts import unarchive_account as _unarchive_account
 
 ACCT_CFG = _list_accounts()
 
@@ -3885,6 +3887,29 @@ with st.sidebar:
             _new_acct = _add_account()
             st.success(f"已新增 {_new_acct['number']} · {_new_acct['label']}")
             st.rerun()
+
+        st.divider()
+        st.caption("归档：从选择器里隐藏，不删历史数据，随时能恢复")
+        _confirm_archive = st.checkbox(
+            f"确认归档 {_sel_cfg['number']} · {_sel_cfg['label']}",
+            key=f"confirm_archive_{_sel_cfg['id']}")
+        if st.button("🗄️ 归档这个账户", key="btn_archive_acct",
+                     use_container_width=True, disabled=not _confirm_archive):
+            _archive_account(_sel_cfg["id"])
+            st.success(f"已归档 {_sel_cfg['number']} · {_sel_cfg['label']}")
+            st.rerun()
+
+        _archived = [c for c in _list_accounts(include_archived=True)
+                     if c["id"] not in {a["id"] for a in ACCT_CFG}]
+        if _archived:
+            st.caption(f"已归档（{len(_archived)}）")
+            for _arc in _archived:
+                _ac1, _ac2 = st.columns([3, 1])
+                _ac1.caption(f"{_arc['number']} · {_arc['label']}")
+                if _ac2.button("恢复", key=f"unarchive_{_arc['id']}",
+                               use_container_width=True):
+                    _unarchive_account(_arc["id"])
+                    st.rerun()
 
     # 监控状态
     if ws["last_time"]:
