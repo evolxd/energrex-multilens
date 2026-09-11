@@ -12,6 +12,17 @@ from account.db import db
 ET = ZoneInfo("America/New_York")
 
 
+def compute_margin_usage_pct(margin_used: float | None, total_equity: float | None) -> float | None:
+    """融资余额占账户净值的比例。margin_used 为 None 代表"这次没读到"，不是"是0"——
+    这两种情况不能都映射成 0.0，否则图表上"真的没借钱"和"这次没抓到这个字段"会
+    长得一模一样，没法区分。真的读到了 0（Firstrade 页面明确显示 $0.00）时正常返回
+    0.0。total_equity 缺失或为 0 时同样返回 None（分母不成立，不是"用了0%"）。
+    """
+    if margin_used is None or not total_equity:
+        return None
+    return margin_used / total_equity * 100
+
+
 def record_daily_nav(acct_id: str, nav: float, date: str | None = None) -> None:
     """Store or replace the daily NAV snapshot for an account."""
     if date is None:

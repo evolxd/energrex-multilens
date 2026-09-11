@@ -273,6 +273,7 @@ def _compute_twr_series(acct_id: str, start_date: str) -> tuple:
 # ────────────────────────────────────────────────────────
 # 期权持仓辅助函数
 # ────────────────────────────────────────────────────────
+from account.repository import compute_margin_usage_pct as _compute_margin_usage_pct
 from account.repository import load_balance_history as _load_balance_history
 from account.repository import load_latest_balance as _load_latest_balance
 from account.repository import load_positions as _load_positions
@@ -3220,13 +3221,8 @@ def _scrape_balance(driver, acct_id: str) -> bool:
             _log.warning("Balance parse returned all None")
             return False
 
-        mu = data.get("margin_used") or 0
-        te = data.get("total_equity")
-        if mu and te:
-            # 融资余额占账户净值的比例（衡量杠杆程度）
-            data["margin_usage_pct"] = mu / te * 100
-        else:
-            data["margin_usage_pct"] = 0.0
+        data["margin_usage_pct"] = _compute_margin_usage_pct(
+            data.get("margin_used"), data.get("total_equity"))
 
         _save_balance(acct_id, data)
         _log.info(f"Balance saved for {acct_id}: {data}")
