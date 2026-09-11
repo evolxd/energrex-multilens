@@ -4334,8 +4334,7 @@ st.divider()
 st.markdown("#### 持仓明细")
 
 _pos_tabs = st.tabs(["🏦 期权持仓", "📊 交易绩效", "📅 事件日历", "💡 交易建议", "📋 交易历史",
-                     "🔍 数据核查"]
-                    + [c["label"] for c in ACCT_CFG])
+                     "🔍 数据核查", "👤 股票持仓"])
 
 # ── 期权持仓 Tab ──────────────────────────────────────
 with _pos_tabs[0]:
@@ -6170,130 +6169,134 @@ with _pos_tabs[5]:
             "修正方式：在「🏦 期权持仓」Tab 编辑器中手动更正 unit_cost 后保存。"
         )
 
-# ── 股票持仓 Tabs ──────────────────────────────────────────────
-for _ptab, _pcfg in zip(_pos_tabs[6:], ACCT_CFG):
-    with _ptab:
-        _df_all   = _load_positions(_pcfg["id"])
-        _stocks   = (_df_all[_df_all["position_type"] == "stock"].copy()
-                     if not _df_all.empty else pd.DataFrame())
+# ── 股票持仓（账户选择器，不是按账户数量长 Tab）──────────────────────
+with _pos_tabs[6]:
+    _acct_opts_stock = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
+    _sel_stock_display = st.selectbox("账户", list(_acct_opts_stock.keys()),
+                                      key="sb_stock_acct")
+    _pcfg = _acct_opts_stock[_sel_stock_display]
 
-        # ── 汇总指标 ────────────────────────────────────────────────
+    _df_all   = _load_positions(_pcfg["id"])
+    _stocks   = (_df_all[_df_all["position_type"] == "stock"].copy()
+                 if not _df_all.empty else pd.DataFrame())
+
+    # ── 汇总指标 ────────────────────────────────────────────────
+    if not _stocks.empty:
+        _smv  = pd.to_numeric(_stocks["market_value"],   errors="coerce").fillna(0).sum()
+        _spnl = pd.to_numeric(_stocks["unrealized_pnl"], errors="coerce").fillna(0).sum()
+        _sm1, _sm2, _sm3, _sm4 = st.columns(4)
+        _sm1.metric("股票总市值", f"${_smv:,.0f}")
+        _sm2.metric("总浮动盈亏", f"${_spnl:,.2f}", delta=f"{_spnl:+,.2f}")
+        _sm3.metric("持仓只数",   f"{len(_stocks)}")
+        _updated_at = _stocks["sync_time"].max() if "sync_time" in _stocks.columns else None
+        if _updated_at:
+            try:
+                _dt = datetime.datetime.fromisoformat(str(_updated_at))
+                _sm4.metric("数据时间", _dt.strftime("%m/%d %H:%M"))
+            except Exception:
+                pass
+        st.markdown("")
+
+    # 股票行情更新请使用左侧边栏「📈 更新行情」
+
+    # ── 持仓只读展示 ─────────────────────────────────────────
+    if not _stocks.empty:
+        _sd = _stocks.copy()
+        # 补算 unit_cost（若列为空则从 cost_basis / qty 推算）
+        _sd["unit_cost"] = pd.to_numeric(_sd.get("unit_cost"), errors="coerce")
+        _mask_uc = _sd["unit_cost"].isna()
+        if _mask_uc.any():
+            _sd.loc[_mask_uc, "unit_cost"] = (
+                pd.to_numeric(_sd.loc[_mask_uc, "cost_basis"], errors="coerce") /
+                pd.to_numeric(_sd.loc[_mask_uc, "quantity"],   errors="coerce")
+            ).round(2)
+        _show_cols = ["symbol","description","quantity","unit_cost",
+                      "current_price","market_value","unrealized_pnl","unrealized_pnl_pct"]
+        _avail = [c for c in _show_cols if c in _sd.columns]
+        st.dataframe(
+            _sd[_avail].rename(columns={
+                "symbol":"代码","description":"名称","quantity":"数量",
+                "unit_cost":"单价成本","current_price":"现价",
+                "market_value":"市值","unrealized_pnl":"浮盈亏",
+                "unrealized_pnl_pct":"盈亏%",
+            }),
+            use_container_width=True, hide_index=True,
+            height=min(45 + len(_sd) * 36, 420),
+            column_config={
+                "单价成本": st.column_config.NumberColumn(format="$%.2f"),
+                "现价":     st.column_config.NumberColumn(format="$%.2f"),
+                "市值":     st.column_config.NumberColumn(format="$%.2f"),
+                "浮盈亏":   st.column_config.NumberColumn(format="$%.2f"),
+                "盈亏%":    st.column_config.NumberColumn(format="%.2f%%"),
+            })
+        st.markdown("")
+
+    # ── 手动录入 / 编辑持仓 ──────────────────────────────────
+    with st.expander("✏️ 手动录入 / 编辑持仓", expanded=_stocks.empty):
+        st.caption("数量/单价成本为权威数据，现价可留空（由刷新按钮自动填入）。"
+                   "直接粘贴 Excel 数据或逐行填写，完成后点「💾 保存」。")
+
+        # 准备编辑用 DataFrame
         if not _stocks.empty:
-            _smv  = pd.to_numeric(_stocks["market_value"],   errors="coerce").fillna(0).sum()
-            _spnl = pd.to_numeric(_stocks["unrealized_pnl"], errors="coerce").fillna(0).sum()
-            _sm1, _sm2, _sm3, _sm4 = st.columns(4)
-            _sm1.metric("股票总市值", f"${_smv:,.0f}")
-            _sm2.metric("总浮动盈亏", f"${_spnl:,.2f}", delta=f"{_spnl:+,.2f}")
-            _sm3.metric("持仓只数",   f"{len(_stocks)}")
-            _updated_at = _stocks["sync_time"].max() if "sync_time" in _stocks.columns else None
-            if _updated_at:
-                try:
-                    _dt = datetime.datetime.fromisoformat(str(_updated_at))
-                    _sm4.metric("数据时间", _dt.strftime("%m/%d %H:%M"))
-                except Exception:
-                    pass
-            st.markdown("")
-
-        # 股票行情更新请使用左侧边栏「📈 更新行情」
-
-        # ── 持仓只读展示 ─────────────────────────────────────────
-        if not _stocks.empty:
-            _sd = _stocks.copy()
-            # 补算 unit_cost（若列为空则从 cost_basis / qty 推算）
-            _sd["unit_cost"] = pd.to_numeric(_sd.get("unit_cost"), errors="coerce")
-            _mask_uc = _sd["unit_cost"].isna()
-            if _mask_uc.any():
-                _sd.loc[_mask_uc, "unit_cost"] = (
-                    pd.to_numeric(_sd.loc[_mask_uc, "cost_basis"], errors="coerce") /
-                    pd.to_numeric(_sd.loc[_mask_uc, "quantity"],   errors="coerce")
+            _edit_src = _stocks.reindex(
+                columns=["symbol","description","quantity","unit_cost","current_price"]
+            ).copy()
+            _edit_src["unit_cost"] = pd.to_numeric(_edit_src.get("unit_cost"), errors="coerce")
+            _mask_uc2 = _edit_src["unit_cost"].isna()
+            if _mask_uc2.any():
+                _edit_src.loc[_mask_uc2, "unit_cost"] = (
+                    pd.to_numeric(_stocks.loc[_mask_uc2, "cost_basis"], errors="coerce") /
+                    pd.to_numeric(_stocks.loc[_mask_uc2, "quantity"],   errors="coerce")
                 ).round(2)
-            _show_cols = ["symbol","description","quantity","unit_cost",
-                          "current_price","market_value","unrealized_pnl","unrealized_pnl_pct"]
-            _avail = [c for c in _show_cols if c in _sd.columns]
-            st.dataframe(
-                _sd[_avail].rename(columns={
-                    "symbol":"代码","description":"名称","quantity":"数量",
-                    "unit_cost":"单价成本","current_price":"现价",
-                    "market_value":"市值","unrealized_pnl":"浮盈亏",
-                    "unrealized_pnl_pct":"盈亏%",
-                }),
-                use_container_width=True, hide_index=True,
-                height=min(45 + len(_sd) * 36, 420),
-                column_config={
-                    "单价成本": st.column_config.NumberColumn(format="$%.2f"),
-                    "现价":     st.column_config.NumberColumn(format="$%.2f"),
-                    "市值":     st.column_config.NumberColumn(format="$%.2f"),
-                    "浮盈亏":   st.column_config.NumberColumn(format="$%.2f"),
-                    "盈亏%":    st.column_config.NumberColumn(format="%.2f%%"),
-                })
-            st.markdown("")
+        else:
+            _edit_src = pd.DataFrame({
+                "symbol":        ["", "", "", "", ""],
+                "description":   ["", "", "", "", ""],
+                "quantity":      [0,  0,  0,  0,  0 ],
+                "unit_cost":     [0.0,0.0,0.0,0.0,0.0],
+                "current_price": [None,None,None,None,None],
+            })
 
-        # ── 手动录入 / 编辑持仓 ──────────────────────────────────
-        with st.expander("✏️ 手动录入 / 编辑持仓", expanded=_stocks.empty):
-            st.caption("数量/单价成本为权威数据，现价可留空（由刷新按钮自动填入）。"
-                       "直接粘贴 Excel 数据或逐行填写，完成后点「💾 保存」。")
+        _edited_stocks = st.data_editor(
+            _edit_src,
+            num_rows="dynamic",
+            use_container_width=True,
+            key=f"stock_editor_{_pcfg['id']}",
+            column_config={
+                "symbol":        st.column_config.TextColumn("代号", help="如 ARM、AVGO", width="small"),
+                "description":   st.column_config.TextColumn("名称/备注", width="medium"),
+                "quantity":      st.column_config.NumberColumn("数量", min_value=0, step=1),
+                "unit_cost":     st.column_config.NumberColumn("单价成本", format="$%.4f",
+                                                               help="每股买入成本"),
+                "current_price": st.column_config.NumberColumn("现价（可选）", format="$%.4f"),
+            },
+        )
 
-            # 准备编辑用 DataFrame
-            if not _stocks.empty:
-                _edit_src = _stocks.reindex(
-                    columns=["symbol","description","quantity","unit_cost","current_price"]
-                ).copy()
-                _edit_src["unit_cost"] = pd.to_numeric(_edit_src.get("unit_cost"), errors="coerce")
-                _mask_uc2 = _edit_src["unit_cost"].isna()
-                if _mask_uc2.any():
-                    _edit_src.loc[_mask_uc2, "unit_cost"] = (
-                        pd.to_numeric(_stocks.loc[_mask_uc2, "cost_basis"], errors="coerce") /
-                        pd.to_numeric(_stocks.loc[_mask_uc2, "quantity"],   errors="coerce")
-                    ).round(2)
-            else:
-                _edit_src = pd.DataFrame({
-                    "symbol":        ["", "", "", "", ""],
-                    "description":   ["", "", "", "", ""],
-                    "quantity":      [0,  0,  0,  0,  0 ],
-                    "unit_cost":     [0.0,0.0,0.0,0.0,0.0],
-                    "current_price": [None,None,None,None,None],
-                })
-
-            _edited_stocks = st.data_editor(
-                _edit_src,
-                num_rows="dynamic",
-                use_container_width=True,
-                key=f"stock_editor_{_pcfg['id']}",
-                column_config={
-                    "symbol":        st.column_config.TextColumn("代号", help="如 ARM、AVGO", width="small"),
-                    "description":   st.column_config.TextColumn("名称/备注", width="medium"),
-                    "quantity":      st.column_config.NumberColumn("数量", min_value=0, step=1),
-                    "unit_cost":     st.column_config.NumberColumn("单价成本", format="$%.4f",
-                                                                   help="每股买入成本"),
-                    "current_price": st.column_config.NumberColumn("现价（可选）", format="$%.4f"),
-                },
-            )
-
-            _sc1, _sc2 = st.columns([1, 3])
-            with _sc1:
-                if st.button("💾 保存持仓", key=f"save_stk_{_pcfg['id']}", type="primary"):
-                    _save_rows = [
-                        r for r in _edited_stocks.to_dict("records")
-                        if str(r.get("symbol", "")).strip()
-                    ]
-                    if _save_rows:
-                        _n = _save_stock_positions(_pcfg["id"], _save_rows)
-                        st.success(f"已保存 {_n} 只股票持仓")
-                        st.rerun()
-                    else:
-                        st.warning("没有有效数据（代号不能为空）")
-            with _sc2:
-                # 可选：从 Firstrade xlsx 批量导入（这个账户专属的下载子文件夹）
-                _dl_dir  = _account_download_dir(_pcfg["id"])
-                _xl_list = sorted(_dl_dir.glob("*positions*.xlsx"),
-                                  key=lambda f: f.stat().st_mtime, reverse=True)
-                if _xl_list:
-                    if st.button("📂 从 xlsx 批量导入",
-                                 key=f"bulk_import_{_pcfg['id']}",
-                                 help=f"从 {_dl_dir}/{_xl_list[0].name} 导入，覆盖现有数据"):
-                        _sn, _on = _import_from_xlsx_file(_xl_list[0], _pcfg["id"])
-                        st.success(f"已导入 {_sn} 只股票 + {_on} 张期权")
-                        st.rerun()
+        _sc1, _sc2 = st.columns([1, 3])
+        with _sc1:
+            if st.button("💾 保存持仓", key=f"save_stk_{_pcfg['id']}", type="primary"):
+                _save_rows = [
+                    r for r in _edited_stocks.to_dict("records")
+                    if str(r.get("symbol", "")).strip()
+                ]
+                if _save_rows:
+                    _n = _save_stock_positions(_pcfg["id"], _save_rows)
+                    st.success(f"已保存 {_n} 只股票持仓")
+                    st.rerun()
+                else:
+                    st.warning("没有有效数据（代号不能为空）")
+        with _sc2:
+            # 可选：从 Firstrade xlsx 批量导入（这个账户专属的下载子文件夹）
+            _dl_dir  = _account_download_dir(_pcfg["id"])
+            _xl_list = sorted(_dl_dir.glob("*positions*.xlsx"),
+                              key=lambda f: f.stat().st_mtime, reverse=True)
+            if _xl_list:
+                if st.button("📂 从 xlsx 批量导入",
+                             key=f"bulk_import_{_pcfg['id']}",
+                             help=f"从 {_dl_dir}/{_xl_list[0].name} 导入，覆盖现有数据"):
+                    _sn, _on = _import_from_xlsx_file(_xl_list[0], _pcfg["id"])
+                    st.success(f"已导入 {_sn} 只股票 + {_on} 张期权")
+                    st.rerun()
 
 # 页脚
 st.divider()
