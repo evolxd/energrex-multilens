@@ -50,10 +50,10 @@ _sb.render()
 # ── 账户选择器（跟账户监控页侧边栏共用同一个 session_state key："sb_acct"，
 # 两个页面切账户是同一件事，不是各切各的）───────────────────────────
 ACCT_CFG = _list_accounts()
-_acct_opts = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
+_acct_opts = {c["label"]: c for c in ACCT_CFG}
 with st.sidebar:
     st.divider()
-    _sel_display = st.selectbox("账户编号", list(_acct_opts.keys()),
+    _sel_display = st.selectbox("账户", list(_acct_opts.keys()),
                                 key="sb_acct", label_visibility="collapsed")
 _sel_cfg = _acct_opts[_sel_display]
 _ACCT_ID = _sel_cfg["id"]
@@ -209,7 +209,7 @@ _brief = _data.get("briefing")
 _snap  = _brief["snap"] if _brief else {}
 _accts = _data.get("accounts", [])
 _chrome = _chrome_ok()
-_ACCT_LABEL = {c["id"]: f"{c['number']} · {c['label']}" for c in ACCT_CFG}
+_ACCT_LABEL = {c["id"]: c["label"] for c in ACCT_CFG}
 
 _now_et = datetime.datetime.now(
     pytz.timezone("America/New_York"))

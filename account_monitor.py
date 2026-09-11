@@ -3870,7 +3870,7 @@ with st.sidebar:
     st.divider()
 
     # 账户编号选择器——放在最前面，因为手动上传要知道导入到哪个账户
-    _acct_opts = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
+    _acct_opts = {c['label']: c for c in ACCT_CFG}
     _sel_display = st.selectbox("账户编号", list(_acct_opts.keys()),
                                 key="sb_acct", label_visibility="collapsed")
     _sel_cfg = _acct_opts[_sel_display]
@@ -3885,18 +3885,18 @@ with st.sidebar:
             st.rerun()
         if _bc2.button("＋ 新增账户", key="btn_add_acct", use_container_width=True):
             _new_acct = _add_account()
-            st.success(f"已新增 {_new_acct['number']} · {_new_acct['label']}")
+            st.success(f"已新增 {_new_acct['label']}")
             st.rerun()
 
         st.divider()
         st.caption("归档：从选择器里隐藏，不删历史数据，随时能恢复")
         _confirm_archive = st.checkbox(
-            f"确认归档 {_sel_cfg['number']} · {_sel_cfg['label']}",
+            f"确认归档 {_sel_cfg['label']}",
             key=f"confirm_archive_{_sel_cfg['id']}")
         if st.button("🗄️ 归档这个账户", key="btn_archive_acct",
                      use_container_width=True, disabled=not _confirm_archive):
             _archive_account(_sel_cfg["id"])
-            st.success(f"已归档 {_sel_cfg['number']} · {_sel_cfg['label']}")
+            st.success(f"已归档 {_sel_cfg['label']}")
             st.rerun()
 
         _archived = [c for c in _list_accounts(include_archived=True)
@@ -3905,7 +3905,7 @@ with st.sidebar:
             st.caption(f"已归档（{len(_archived)}）")
             for _arc in _archived:
                 _ac1, _ac2 = st.columns([3, 1])
-                _ac1.caption(f"{_arc['number']} · {_arc['label']}")
+                _ac1.caption(f"{_arc['label']}")
                 if _ac2.button("恢复", key=f"unarchive_{_arc['id']}",
                                use_container_width=True):
                     _unarchive_account(_arc["id"])
@@ -4242,7 +4242,7 @@ st.divider()
 # ════════════════════════════════════════════════════════
 _sel_cfg = next(c for c in ACCT_CFG if c["label"] == sel_acct_label)
 
-with st.expander(f"账户总览 — {_sel_cfg['number']} · {_sel_cfg['label']}", expanded=False):
+with st.expander(f"账户总览 — {_sel_cfg['label']}", expanded=False):
     # ── CDP 同步状态（只读，同步入口在左侧边栏）─────────────────
     _ss           = _sync_state()
     _chrome_alive = _chrome_reachable()
@@ -4288,7 +4288,7 @@ with st.expander(f"账户总览 — {_sel_cfg['number']} · {_sel_cfg['label']}"
     _ts  = (_bal.get("sync_time") or "")[:16]
     st.markdown(f"""
 <div class='acct-card'>
-  <div class='acct-title'>{_sel_cfg['number']} · {_sel_cfg['label']}</div>
+  <div class='acct-title'>{_sel_cfg['label']}</div>
   <div class='mrow'><span class='mlbl'>总资产净值</span>
     <span class='mval' style='font-size:16px'>{_fmt_m(_te)}</span></div>
   <div class='mrow'><span class='mlbl'>现金余额</span>
@@ -6191,7 +6191,7 @@ with _pos_tabs[5]:
 
 # ── 股票持仓（账户选择器，不是按账户数量长 Tab）──────────────────────
 with _pos_tabs[6]:
-    _acct_opts_stock = {f"{c['number']} · {c['label']}": c for c in ACCT_CFG}
+    _acct_opts_stock = {c['label']: c for c in ACCT_CFG}
     _sel_stock_display = st.selectbox("账户", list(_acct_opts_stock.keys()),
                                       key="sb_stock_acct")
     _pcfg = _acct_opts_stock[_sel_stock_display]
