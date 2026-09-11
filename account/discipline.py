@@ -24,18 +24,93 @@ import sqlite3
 
 from account.db import db as _db
 
-# ── 维度定义（设计文档 §2） ──────────────────────────────────
-DIMENSIONS = ("止盈纪律", "止损纪律", "到期处理", "对冲纪律")
+# ── 维度定义 ────────────────────────────────────────────────
+# DIMENSIONS：所有会被记录进 discipline_signals 的维度（含"止盈纪律"——
+#   v2 里它只做展示 + 喂复合信号，不算纪律分，但历史还记）。
+# SCORED_DIMENSIONS：进百分制纪律分的 A 类维度（设计见
+#   docs/DISCIPLINE_AND_REVIEW_ARCHITECTURE.md §1）。v1 只有 4 个里的 3 个
+#   （止盈踢出去了）；其余 12 个的扫描源在 account/risk_signals.py，
+#   随 stage 2/3 接进来，这里先把维度名和权重定死。
+DIMENSIONS = (
+    "止盈纪律", "止损纪律", "到期处理", "对冲纪律",
+    "单票超限", "集中度超限", "现金底线", "流动性天数",
+    "杠杆超限", "压力测试超红线", "强制去风险",
+    "熔断票交易", "开仓恶化breach", "偏离Kelly", "无case交易",
+    "止盈回调复合",
+)
 
-# 响应窗口——用户已确认按这几个数字实现。"到期处理"没有固定天数窗口，
-# 规则是"必须在 DTE=0 前处理完"，由 record_and_resolve_signals 单独判断，
-# 不走这个字典的"超过N天算超期"逻辑，所以这里是 None。
+SCORED_DIMENSIONS = tuple(d for d in DIMENSIONS if d != "止盈纪律")
+
+# 三档权重：按"忽视它的最大伤害"分（设计文档 §2.3）
+DIMENSION_WEIGHT: dict[str, int] = {
+    # 高 (3)：忽视 = 灾难性 / 不可逆损失
+    "止损纪律": 3, "杠杆超限": 3, "压力测试超红线": 3,
+    "强制去风险": 3, "止盈回调复合": 3,
+    # 中 (2)：忽视 = 风险画像恶化，但不至于当场爆
+    "到期处理": 2, "对冲纪律": 2, "单票超限": 2, "集中度超限": 2,
+    "熔断票交易": 2, "开仓恶化breach": 2,
+    # 低 (1)：忽视 = 次优但可恢复
+    "现金底线": 1, "流动性天数": 1, "偏离Kelly": 1, "无case交易": 1,
+}
+
+# 门④违规类——下单即违规、是你造成的，事件分上限压到 0.75（其余上限 1.0）
+MEN4_VIOLATION_DIMENSIONS = {"开仓恶化breach", "偏离Kelly", "无case交易", "熔断票交易"}
+
+# 响应窗口（设计文档 §5，v1 默认，跑真实数据再调）。"到期处理"没有固定
+# 天数窗口——规则是 DTE=0 前处理完，由 record_and_resolve_signals 单独判，
+# 所以是 None。
 RESPONSE_WINDOW_DAYS: dict[str, int | None] = {
     "止盈纪律": 2,
     "止损纪律": 2,
     "到期处理": None,
     "对冲纪律": 1,
+    "单票超限": 2, "集中度超限": 2, "现金底线": 2, "流动性天数": 2,
+    "杠杆超限": 2, "压力测试超红线": 2, "强制去风险": 2,
+    "止盈回调复合": 3,
+    "开仓恶化breach": 3, "偏离Kelly": 3,
+    "无case交易": 5, "熔断票交易": 5,
 }
+
+# 事件分时间衰减：迟响应从上限起，每迟一个自然日扣 DECAY_RATE，扣满归 0
+DECAY_RATE = 0.15  # → 迟满约 7 天（1.0/0.15≈6.7）事件分归 0
+
+# 纪律分分档（百分制，90% 及格）
+GRADE_TIERS = (
+    (95.0, "优秀"),
+    (90.0, "及格"),
+    (80.0, "警示"),
+    (0.0,  "严重失守"),
+)
+
+
+def _cap_for(dimension: str) -> float:
+    """门④违规类事件分上限 0.75，其余 1.0。"""
+    return 0.75 if dimension in MEN4_VIOLATION_DIMENSIONS else 1.0
+
+
+def event_score(dimension: str, status: str, response_days: int | None) -> float:
+    """一个信号"了结"那刻的事件分（设计文档 §2.2）。
+
+    - 窗口内你真的调了仓 → 上限（1.0 或门④违规的 0.75）
+    - 超窗口后才调（迟响应）→ max(0, 上限 − DECAY_RATE × 迟了几天)
+    - 自动漂回 / 从没解决 / 到期被动了结 → 0（不响应就是不响应，运气不洗白）
+
+    still-open 的行不调这个（事件分留 NULL，汇总时当临时 0）。
+    """
+    if status != "acted":
+        return 0.0
+    window = RESPONSE_WINDOW_DAYS.get(dimension) or 0
+    days_late = max(0, (response_days or 0) - window)
+    if days_late == 0:
+        return _cap_for(dimension)
+    return max(0.0, _cap_for(dimension) - DECAY_RATE * days_late)
+
+
+def _grade(score: float) -> str:
+    for threshold, label in GRADE_TIERS:
+        if score >= threshold:
+            return label
+    return GRADE_TIERS[-1][1]
 
 
 def scan_pnl_dte_signals(acct_id: str, today: _dt.date | None = None) -> list[dict]:
@@ -189,16 +264,17 @@ def record_and_resolve_signals(
                 resp_days = (closed - first_seen).days
             except Exception:
                 resp_days = None
+            _es = event_score(row["dimension"], "acted", resp_days)
             conn.execute(
                 "UPDATE discipline_signals SET status='acted', resolved_date=?, "
-                "resolved_via=?, response_days=? WHERE id=?",
-                (closed_s, f"{trade['symbol']} 平仓于 {closed_s}", resp_days, row["id"]),
+                "resolved_via=?, response_days=?, event_score=? WHERE id=?",
+                (closed_s, f"{trade['symbol']} 平仓于 {closed_s}", resp_days, _es, row["id"]),
             )
             summary["acted"] += 1
         else:
             conn.execute(
-                "UPDATE discipline_signals SET status='self_resolved', resolved_date=? "
-                "WHERE id=?",
+                "UPDATE discipline_signals SET status='self_resolved', resolved_date=?, "
+                "event_score=0.0 WHERE id=?",
                 (today_s, row["id"]),
             )
             summary["self_resolved"] += 1
@@ -223,7 +299,7 @@ def record_and_resolve_signals(
             if exp <= today:
                 conn.execute(
                     "UPDATE discipline_signals SET status='expired_unhandled', "
-                    "resolved_date=? WHERE id=?",
+                    "resolved_date=?, event_score=0.0 WHERE id=?",
                     (today_s, row["id"]),
                 )
                 summary["expired_unhandled"] += 1
@@ -265,6 +341,100 @@ def get_overdue_signals(acct_id: str, today: _dt.date | None = None) -> list[dic
             out.append({"dimension": dim, "symbol": r["symbol"],
                         "days_open": days_open, "window": window})
     return out
+
+
+def compute_discipline_score(
+    acct_id: str,
+    since: _dt.date | None = None,
+    until: _dt.date | None = None,
+) -> dict:
+    """设计文档 §2：百分制纪律分（合规率），90% 及格。
+
+    纪律分 = Σ(事件分 × 维度权重) / Σ(维度权重) × 100%，下限 0（没有负分，
+    严重程度靠三档权重表达）。
+
+    计入的事件：
+      - 周期内 first_seen 的、已了结的信号（acted/self_resolved/expired）——
+        用存的 event_score（老行为空时现算）
+      - 周期内 first_seen 的、还 open 且**已超响应窗口**的信号——算临时 0，
+        一直拖累直到了结（窗口内还没超期的 open 信号不算，你还有时间）
+      - review_tag 是"有意例外"/"不认同信号"的整条剔除（§6：书面豁免）
+
+    返回 {score, grade, n_events, by_dimension:{dim:{score,n,weight}},
+    pending_review}。
+    """
+    until = until or _dt.date.today()
+    conn = _db()
+    conn.row_factory = sqlite3.Row
+
+    total_weighted = 0.0
+    total_weight   = 0.0
+    n_events       = 0
+    pending_review = 0
+    by_dimension: dict[str, dict] = {}
+
+    for dim in SCORED_DIMENSIONS:
+        weight = DIMENSION_WEIGHT.get(dim, 1)
+        window = RESPONSE_WINDOW_DAYS.get(dim)
+
+        where  = "account_id=? AND dimension=?"
+        params: list = [acct_id, dim]
+        if since:
+            where += " AND first_seen_date >= ?"
+            params.append(since.isoformat())
+        where += " AND first_seen_date <= ?"
+        params.append(until.isoformat())
+
+        rows = conn.execute(
+            f"SELECT status, response_days, event_score, review_tag, first_seen_date "
+            f"FROM discipline_signals WHERE {where}",
+            params,
+        ).fetchall()
+
+        dim_scores: list[float] = []
+        for r in rows:
+            if r["review_tag"] in ("有意例外", "不认同信号"):
+                continue  # §6 书面豁免，整条剔除
+            status = r["status"]
+            if status in ("acted", "self_resolved", "expired_unhandled"):
+                es = r["event_score"]
+                if es is None:
+                    es = event_score(dim, status, r["response_days"])
+                dim_scores.append(float(es))
+                if float(es) < _cap_for(dim) and not r["review_tag"]:
+                    pending_review += 1
+            elif status == "open" and window is not None:
+                # 还 open 且已超响应窗口 → 算临时 0，一直拖累直到了结。
+                # 窗口内还没超期的不算（你还有时间）；到期处理 window 是
+                # None，open 期间不算 0。
+                fs = _dt.date.fromisoformat(str(r["first_seen_date"])[:10])
+                if (until - fs).days > window:
+                    dim_scores.append(0.0)
+
+        if dim_scores:
+            dim_avg = sum(dim_scores) / len(dim_scores)
+            by_dimension[dim] = {
+                "score": round(dim_avg * 100, 1),
+                "n": len(dim_scores),
+                "weight": weight,
+            }
+            total_weighted += dim_avg * weight
+            total_weight   += weight
+            n_events       += len(dim_scores)
+
+    score = (total_weighted / total_weight * 100) if total_weight else None
+    score = max(0.0, round(score, 1)) if score is not None else None
+
+    conn.close()
+    return {
+        "score": score,
+        "grade": _grade(score) if score is not None else None,
+        "n_events": n_events,
+        "since": since.isoformat() if since else None,
+        "until": until.isoformat(),
+        "by_dimension": by_dimension,
+        "pending_review": pending_review,
+    }
 
 
 def compute_discipline_scores(

@@ -160,6 +160,9 @@ def init_db() -> None:
         resolved_date   TEXT,
         resolved_via    TEXT,
         response_days   INTEGER,
+        event_score     REAL,
+        review_tag      TEXT,
+        review_note     TEXT,
         UNIQUE(account_id, dimension, symbol, first_seen_date)
     );
     """)
@@ -187,8 +190,10 @@ def init_db() -> None:
             pass
 
     # discipline_signals 的列已经在上面 CREATE TABLE 里了，这几行是同样的
-    # 兜底模式，防的是"表已存在但是更老的schema"这种以后可能出现的情况。
-    for column in ["resolved_via TEXT", "response_days INTEGER"]:
+    # 兜底模式，防的是"表已存在但是更老的schema"这种情况（event_score/
+    # review_tag/review_note 是 2026-09-10 纪律架构 v2 加的）。
+    for column in ["resolved_via TEXT", "response_days INTEGER",
+                   "event_score REAL", "review_tag TEXT", "review_note TEXT"]:
         try:
             conn.execute(f"ALTER TABLE discipline_signals ADD COLUMN {column}")
         except Exception:

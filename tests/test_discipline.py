@@ -301,5 +301,139 @@ class ScanAndHedgeSignalTests(unittest.TestCase):
         self.assertEqual(out[0]["symbol"], "QQQ_HEDGE_MISSING")
 
 
+class V2ScoringTests(unittest.TestCase):
+    """docs/DISCIPLINE_AND_REVIEW_ARCHITECTURE.md §2 -- 百分制纪律分、事件分
+    时间衰减、门④违规上限 0.75、review_tag 剔除、超期 open 算临时 0。"""
+
+    _tmp = None
+    _original_db_path = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls._original_db_path = account_db.DB_PATH
+        account_db.DB_PATH = pathlib.Path(cls._tmp.name) / "test_disc_v2.db"
+        account_db.init_db()
+
+    @classmethod
+    def tearDownClass(cls):
+        account_db.DB_PATH = cls._original_db_path
+        if cls._tmp:
+            cls._tmp.cleanup()
+
+    def setUp(self):
+        conn = account_db.db()
+        conn.execute("DELETE FROM discipline_signals WHERE account_id=?", (ACCT,))
+        conn.commit()
+        conn.close()
+
+    def _seed_resolved(self, dimension, symbol, first_seen, status,
+                       response_days=None, event_score=None, review_tag=None):
+        conn = account_db.db()
+        conn.execute(
+            "INSERT INTO discipline_signals "
+            "(account_id, dimension, symbol, first_seen_date, last_seen_date, "
+            " status, resolved_date, response_days, event_score, review_tag) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (ACCT, dimension, symbol, first_seen, first_seen, status,
+             first_seen, response_days, event_score, review_tag),
+        )
+        conn.commit()
+        conn.close()
+
+    # ── event_score decay ──────────────────────────────────────────
+
+    def test_event_score_in_window_is_full_cap(self):
+        # 止损纪律 window=2; responded day 1 -> 1.0
+        self.assertAlmostEqual(disc.event_score("止损纪律", "acted", 1), 1.0)
+
+    def test_event_score_late_decays_linearly_015_per_day(self):
+        # window 2, responded day 5 -> 3 days late -> 1.0 - 0.15*3 = 0.55
+        self.assertAlmostEqual(disc.event_score("止损纪律", "acted", 5), 0.55)
+
+    def test_event_score_late_past_seven_days_is_zero(self):
+        self.assertEqual(disc.event_score("止损纪律", "acted", 12), 0.0)
+
+    def test_men4_violation_cap_is_075(self):
+        # 无case交易 window=5; responded within -> 0.75 not 1.0
+        self.assertAlmostEqual(disc.event_score("无case交易", "acted", 3), 0.75)
+        # men4 late: 0.75 - 0.15*days_late
+        self.assertAlmostEqual(disc.event_score("无case交易", "acted", 7), 0.75 - 0.15 * 2)
+
+    def test_event_score_non_acted_is_zero(self):
+        for st in ("self_resolved", "expired_unhandled", "open"):
+            self.assertEqual(disc.event_score("单票超限", st, None), 0.0)
+
+    # ── compute_discipline_score aggregation ───────────────────────
+
+    def test_score_is_weighted_and_percent(self):
+        # 止损纪律 (weight 3): one acted-in-window event_score 1.0
+        # 单票超限 (weight 2): one self_resolved event_score 0.0
+        self._seed_resolved("止损纪律", "AAA", "2026-01-05", "acted",
+                            response_days=1, event_score=1.0)
+        self._seed_resolved("单票超限", "BBB", "2026-01-06", "self_resolved",
+                            event_score=0.0)
+        out = disc.compute_discipline_score(
+            ACCT, since=datetime.date(2026, 1, 1), until=datetime.date(2026, 1, 31))
+        # per-dim avg: 止损=1.0, 单票=0.0
+        # weighted = (1.0*3 + 0.0*2) / (3+2) * 100 = 60.0
+        self.assertAlmostEqual(out["score"], 60.0)
+        self.assertEqual(out["grade"], "严重失守")
+        self.assertEqual(out["n_events"], 2)
+
+    def test_review_tag_deliberate_exception_excludes_the_row(self):
+        self._seed_resolved("止损纪律", "AAA", "2026-01-05", "self_resolved",
+                            event_score=0.0, review_tag="有意例外")
+        self._seed_resolved("止损纪律", "CCC", "2026-01-06", "acted",
+                            response_days=1, event_score=1.0)
+        out = disc.compute_discipline_score(
+            ACCT, since=datetime.date(2026, 1, 1), until=datetime.date(2026, 1, 31))
+        # only the 1.0 event counts -> 100%
+        self.assertAlmostEqual(out["score"], 100.0)
+        self.assertEqual(out["n_events"], 1)
+
+    def test_open_past_window_counts_as_provisional_zero(self):
+        # 单票超限 window=2; open since 10 days ago -> provisional 0 drags score
+        conn = account_db.db()
+        conn.execute(
+            "INSERT INTO discipline_signals "
+            "(account_id, dimension, symbol, first_seen_date, last_seen_date, status) "
+            "VALUES (?,?,?,?,?,'open')",
+            (ACCT, "单票超限", "DDD", "2026-01-01", "2026-01-01"),
+        )
+        conn.commit()
+        conn.close()
+        out = disc.compute_discipline_score(
+            ACCT, since=datetime.date(2026, 1, 1), until=datetime.date(2026, 1, 20))
+        self.assertEqual(out["score"], 0.0)
+        self.assertEqual(out["n_events"], 1)  # the provisional-0 open signal
+
+    def test_open_within_window_not_yet_counted(self):
+        conn = account_db.db()
+        conn.execute(
+            "INSERT INTO discipline_signals "
+            "(account_id, dimension, symbol, first_seen_date, last_seen_date, status) "
+            "VALUES (?,?,?,?,?,'open')",
+            (ACCT, "单票超限", "EEE", "2026-01-19", "2026-01-19"),
+        )
+        conn.commit()
+        conn.close()
+        out = disc.compute_discipline_score(
+            ACCT, since=datetime.date(2026, 1, 1), until=datetime.date(2026, 1, 20))
+        # 1 day open < window 2 -> not counted, no scored events at all
+        self.assertIsNone(out["score"])
+        self.assertEqual(out["n_events"], 0)
+
+    def test_zhiying_dimension_is_recorded_but_not_scored(self):
+        self.assertIn("止盈纪律", disc.DIMENSIONS)
+        self.assertNotIn("止盈纪律", disc.SCORED_DIMENSIONS)
+        self._seed_resolved("止盈纪律", "AAA", "2026-01-05", "self_resolved",
+                            event_score=0.0)
+        out = disc.compute_discipline_score(
+            ACCT, since=datetime.date(2026, 1, 1), until=datetime.date(2026, 1, 31))
+        # 止盈 not scored -> no events
+        self.assertEqual(out["n_events"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
