@@ -4237,83 +4237,72 @@ if _nexp_date_war:
 st.divider()
 
 # ════════════════════════════════════════════════════════
-# 账户卡片
+# 账户卡片——只显示侧边栏选中的这一个账户，不是把10个账户全摊开。
+# 挑哪个账户已经在侧边栏选过一次了，这里没必要让人在10张卡片里再挑一遍。
 # ════════════════════════════════════════════════════════
-st.markdown("#### 账户总览")
-
-# ── CDP 同步状态（只读，同步入口在左侧边栏）─────────────────
-_ss           = _sync_state()
-_chrome_alive = _chrome_reachable()
-_ss["chrome_ok"] = _chrome_alive
 _sel_cfg = next(c for c in ACCT_CFG if c["label"] == sel_acct_label)
 
-if _chrome_alive:
-    if _ss["last_time"]:
-        _ts_disp = _ss["last_time"].strftime("%m-%d %H:%M") + " ET"
-        if _ss["last_status"] in ("ok", "partial"):
-            st.success(f"✅ Chrome 已连接 · 上次同步: {_ts_disp}")
-        elif _ss["last_status"] == "running":
-            st.info("🔄 同步中…")
+with st.expander(f"账户总览 — {_sel_cfg['number']} · {_sel_cfg['label']}", expanded=False):
+    # ── CDP 同步状态（只读，同步入口在左侧边栏）─────────────────
+    _ss           = _sync_state()
+    _chrome_alive = _chrome_reachable()
+    _ss["chrome_ok"] = _chrome_alive
+
+    if _chrome_alive:
+        if _ss["last_time"]:
+            _ts_disp = _ss["last_time"].strftime("%m-%d %H:%M") + " ET"
+            if _ss["last_status"] in ("ok", "partial"):
+                st.success(f"✅ Chrome 已连接 · 上次同步: {_ts_disp}")
+            elif _ss["last_status"] == "running":
+                st.info("🔄 同步中…")
+            else:
+                st.error(f"❌ 同步失败 · {_ss.get('last_error','')}")
         else:
-            st.error(f"❌ 同步失败 · {_ss.get('last_error','')}")
+            st.info("🟢 Chrome 已连接，等待首次自动同步（09:35 / 12:30 / 15:30 / 16:30 ET）")
     else:
-        st.info("🟢 Chrome 已连接，等待首次自动同步（09:35 / 12:30 / 15:30 / 16:30 ET）")
-else:
-    st.warning("🔴 Chrome 未连接 — 请运行 `start_chrome.bat` 并登录 Firstrade，或从左侧边栏点击「⚡ 同步账户」")
+        st.warning("🔴 Chrome 未连接 — 请运行 `start_chrome.bat` 并登录 Firstrade，或从左侧边栏点击「⚡ 同步账户」")
 
+    def _fmt_m(v, d="—"):
+        return f"${v:,.2f}" if v is not None else d
 
-def _fmt_m(v, d="—"):
-    return f"${v:,.2f}" if v is not None else d
+    def _fmt_p(v, d="—"):
+        return f"{v:.1f}%" if v is not None else d
 
-def _fmt_p(v, d="—"):
-    return f"{v:.1f}%" if v is not None else d
+    def _pnl_cls(v):
+        if v is None: return "mval"
+        return "mval g" if v >= 0 else "mval r"
 
-def _pnl_cls(v):
-    if v is None: return "mval"
-    return "mval g" if v >= 0 else "mval r"
+    def _margin_cls(v):
+        if v is None: return "mval"
+        if v < 50: return "mval g"
+        if v < 75: return "mval a"
+        return "mval r"
 
-def _margin_cls(v):
-    if v is None: return "mval"
-    if v < 50: return "mval g"
-    if v < 75: return "mval a"
-    return "mval r"
-
-
-# 每行最多4张卡片——账户数量已经可以远超2个（见"管理账户"），固定2列的
-# st.columns(2) + zip(cols, ACCT_CFG) 会让第3个账户开始被 zip 直接截断、
-# 静默不显示，不是留白，是账户真的从这个总览里消失了。
-_CARDS_PER_ROW = 4
-for _row_start in range(0, len(ACCT_CFG), _CARDS_PER_ROW):
-    _row_accts = ACCT_CFG[_row_start:_row_start + _CARDS_PER_ROW]
-    cols = st.columns(_CARDS_PER_ROW)
-    for col, cfg in zip(cols, _row_accts):
-        bal  = _load_latest_balance(cfg["id"])
-        te   = bal.get("total_equity")
-        cb   = bal.get("cash_balance")
-        mu   = bal.get("margin_used")
-        ma   = bal.get("margin_available")
-        mp   = bal.get("margin_usage_pct")
-        dp   = bal.get("day_pnl")
-        ts   = (bal.get("sync_time") or "")[:16]
-        with col:
-            # ── 余额卡片 ──
-            st.markdown(f"""
+    _bal = _load_latest_balance(_sel_cfg["id"])
+    _te  = _bal.get("total_equity")
+    _cb  = _bal.get("cash_balance")
+    _mu  = _bal.get("margin_used")
+    _ma  = _bal.get("margin_available")
+    _mp  = _bal.get("margin_usage_pct")
+    _dp  = _bal.get("day_pnl")
+    _ts  = (_bal.get("sync_time") or "")[:16]
+    st.markdown(f"""
 <div class='acct-card'>
-  <div class='acct-title'>{cfg['number']} · {cfg['label']}</div>
+  <div class='acct-title'>{_sel_cfg['number']} · {_sel_cfg['label']}</div>
   <div class='mrow'><span class='mlbl'>总资产净值</span>
-    <span class='mval' style='font-size:16px'>{_fmt_m(te)}</span></div>
+    <span class='mval' style='font-size:16px'>{_fmt_m(_te)}</span></div>
   <div class='mrow'><span class='mlbl'>现金余额</span>
-    <span class='mval'>{_fmt_m(cb)}</span></div>
+    <span class='mval'>{_fmt_m(_cb)}</span></div>
   <div class='mrow'><span class='mlbl'>保证金已用</span>
-    <span class='mval'>{_fmt_m(mu)}</span></div>
+    <span class='mval'>{_fmt_m(_mu)}</span></div>
   <div class='mrow'><span class='mlbl'>保证金可用</span>
-    <span class='mval'>{_fmt_m(ma)}</span></div>
+    <span class='mval'>{_fmt_m(_ma)}</span></div>
   <div class='mrow'><span class='mlbl'>保证金使用率</span>
-    <span class='{_margin_cls(mp)}'>{_fmt_p(mp)}</span></div>
+    <span class='{_margin_cls(_mp)}'>{_fmt_p(_mp)}</span></div>
   <div class='mrow'><span class='mlbl'>当日盈亏</span>
-    <span class='{_pnl_cls(dp)}'>{_fmt_m(dp)}</span></div>
+    <span class='{_pnl_cls(_dp)}'>{_fmt_m(_dp)}</span></div>
   <div style='color:{_MUTED};font-size:10px;margin-top:8px'>
-    {'最后更新: ' + ts + ' ET' if ts else '⏳ 等待自动同步（运行 start_chrome.bat 并登录）'}</div>
+    {'最后更新: ' + _ts + ' ET' if _ts else '⏳ 等待自动同步（运行 start_chrome.bat 并登录）'}</div>
 </div>""", unsafe_allow_html=True)
 
 # 保证金使用率所需数据
