@@ -647,9 +647,15 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     und_prices = _fetch_underlying_prices(tuple(sorted(_price_lookup_syms))) if _price_lookup_syms else {}
     _iv_map    = _get_atm_iv_batch(tuple(sorted(underlyings))) if underlyings else {}
 
+    # _BETA_SPY（每周刷新，见 _refresh_beta_spy）不是 _BETA_BASE（硬编码兜底
+    # 表）——2026-09-10 审计发现之前这里一直传的是 _BETA_BASE，导致风险快照
+    # （BD杠杆/压力测试）和 QQQ 对冲方案用了两把不同的尺子：beta 漂移之后，
+    # 对冲的规模和它要对冲的敞口口径不一致。_BETA_SPY 启动时已经是
+    # {**_BETA_BASE, **缓存}，缺失标的照样有 _BETA_BASE 兜底，不存在漏标的
+    # 的风险。
     stress = _compute_portfolio_stress_test(
         stks, opts,
-        underlying_prices=und_prices, iv_map=_iv_map, beta_map=_BETA_BASE,
+        underlying_prices=und_prices, iv_map=_iv_map, beta_map=_BETA_SPY,
     )
     gross, delta_notl, beta_delta = (
         stress["gross_notional"], stress["delta_notional"], stress["beta_delta"]
