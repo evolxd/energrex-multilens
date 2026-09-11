@@ -572,32 +572,68 @@ def build_recommendations(
         idx += 1
 
     # 3. New opportunity candidates: high AI score + IV regime fit + risk headroom
-    if not risk_snapshot.get("error") and leverage < limits["max_leverage"] * 0.75:
-        candidates = [(t, s) for t, s in ai_scores.items()
-                      if s >= 70 and t not in held_underlyings]
-        for t, s in sorted(candidates, key=lambda x: -x[1])[:3]:
-            if iv_status in ("HIGH_IV", "EXTREME_IV"):
-                strat = "卖出 Put Credit Spread（高 IV 收权利金，限定风险）"
-                reason = f"IV Regime={iv_status} 适合卖权；{t} AI评分={s:.0f}"
-            elif iv_status == "LOW_IV":
-                strat = "买入 Call Debit Spread（低 IV 低成本买权）"
-                reason = f"IV Regime=LOW_IV 适合买权；{t} AI评分={s:.0f}"
-            else:
-                strat = "观望或小仓 Bull Call Spread（中性 IV）"
-                reason = f"{t} AI评分={s:.0f}，IV 正常区间"
-            recs.append({
-                "序号":   idx, "优先级": "🟢 机会", "标的": t,
-                "组合":   "新开仓候选", "手数": 0, "到期": "—", "DTE": "—",
-                "AI评分": score_label(s),
-                "行动建议": strat,
-                "触发原因": reason,
-                "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
-                "_sim_action": {"type": "no_sim",
-                                "label": f"新开仓 {t}（需指定具体参数，暂不支持模拟）"},
-            })
-            idx += 1
+    recs += new_opportunity_candidates(
+        risk_snapshot=risk_snapshot, iv_regime=iv_regime, ai_scores=ai_scores,
+        held_underlyings=held_underlyings, risk_limits=limits, start_idx=idx,
+    )
 
     return recs
+
+
+def new_opportunity_candidates(
+    *,
+    risk_snapshot: dict,
+    iv_regime: dict,
+    ai_scores: dict,
+    held_underlyings: set[str],
+    risk_limits: dict | None = None,
+    start_idx: int = 1,
+) -> list[dict]:
+    """高 AI 评分 + IV regime 匹配 + 风险余量允许 → 候选新仓（不含已持仓标的）。
+
+    2026-09-10 从 build_recommendations() 里抽出来——这是门④"下场前验证"
+    真正对应的内容（门④之前是空占位页，这块逻辑一直混在作战室"今日操作
+    简报"里的第3段，跟现有持仓管理的建议堆在一起，没人特意去看）。
+    build_recommendations() 继续调这个函数，作战室的展示不变；
+    pre_trade_check.py（门④）直接调它单独展示。
+
+    只是"AI评分≥70 + IV regime 配策略方向"这层很基础的初筛——不看硬约束
+    余量（门③仓位管理才有）、不看 Kelly 建议（门③仓位建议才有），是"值得
+    进一步看"的候选池，不是可以直接下单的建议。
+    """
+    limits = risk_limits or DEFAULT_RISK_LIMITS
+    iv_status = iv_regime.get("status", "NO_DATA")
+    leverage = risk_snapshot.get("leverage_delta") or risk_snapshot.get("leverage") or 0.0
+
+    out: list[dict] = []
+    idx = start_idx
+    if risk_snapshot.get("error") or leverage >= limits["max_leverage"] * 0.75:
+        return out
+
+    candidates = [(t, s) for t, s in ai_scores.items()
+                  if s >= 70 and t not in held_underlyings]
+    for t, s in sorted(candidates, key=lambda x: -x[1])[:3]:
+        if iv_status in ("HIGH_IV", "EXTREME_IV"):
+            strat = "卖出 Put Credit Spread（高 IV 收权利金，限定风险）"
+            reason = f"IV Regime={iv_status} 适合卖权；{t} AI评分={s:.0f}"
+        elif iv_status == "LOW_IV":
+            strat = "买入 Call Debit Spread（低 IV 低成本买权）"
+            reason = f"IV Regime=LOW_IV 适合买权；{t} AI评分={s:.0f}"
+        else:
+            strat = "观望或小仓 Bull Call Spread（中性 IV）"
+            reason = f"{t} AI评分={s:.0f}，IV 正常区间"
+        out.append({
+            "序号":   idx, "优先级": "🟢 机会", "标的": t,
+            "组合":   "新开仓候选", "手数": 0, "到期": "—", "DTE": "—",
+            "AI评分": score_label(s),
+            "行动建议": strat,
+            "触发原因": reason,
+            "最大盈利": "—", "最大亏损": "= 权利金", "当前盈亏": "—",
+            "_sim_action": {"type": "no_sim",
+                            "label": f"新开仓 {t}（需指定具体参数，暂不支持模拟）"},
+        })
+        idx += 1
+    return out
 
 
 def compute_exit_analysis(

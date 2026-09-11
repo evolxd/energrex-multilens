@@ -19,6 +19,7 @@ from account.risk import (
     compute_twr_drawdown,
     delta_drift_trigger,
     load_options_cost_ratio_limit,
+    new_opportunity_candidates,
     score_label,
     summarize_portfolio_greeks,
     vix_spike_trigger,
@@ -357,6 +358,28 @@ class BuildRecommendationsTests(unittest.TestCase):
             ai_scores={"AAAA": 90},
         )
         self.assertIn("Put Credit Spread", recs[0]["行动建议"])
+
+    def test_new_opportunity_candidates_is_directly_callable(self):
+        """2026-09-10：抽出来给 pre_trade_check.py（门④）单独调用，不用再
+        经过 build_recommendations() 混进持仓管理那堆建议里。"""
+        out = new_opportunity_candidates(
+            risk_snapshot=self._snapshot(leverage_delta=0.5),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={"NVDA": 88, "PLTR": 72},
+            held_underlyings=set(),
+        )
+        self.assertEqual([r["标的"] for r in out], ["NVDA", "PLTR"])
+        self.assertEqual(out[0]["序号"], 1)  # start_idx 默认从1开始
+
+    def test_new_opportunity_candidates_start_idx_continues_numbering(self):
+        out = new_opportunity_candidates(
+            risk_snapshot=self._snapshot(leverage_delta=0.5),
+            iv_regime={"status": "NORMAL"},
+            ai_scores={"NVDA": 88},
+            held_underlyings=set(),
+            start_idx=5,
+        )
+        self.assertEqual(out[0]["序号"], 5)
 
 
 class ComputeExitAnalysisTests(unittest.TestCase):
