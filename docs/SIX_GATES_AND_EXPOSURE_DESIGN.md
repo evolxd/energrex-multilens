@@ -77,6 +77,7 @@
 | 六位大师视角交叉验证 | `energrex-valuation` skill：Damodaran / Cathie Wood / Jensen Huang / Howard Marks / Mary Meeker / Peter Thiel |
 | 方法论回测 | `scoring/weight_config_backtest.py`、`spread_decomposition_backtest.py`、`risk_subcomponent_backtest.py` |
 | 方法论健康度趋势 | `scoring/methodology_trend.py` |
+| **下单前检查（开仓恶化breach / 偏离Kelly / 无case交易 / 熔断票）** | **还未建**——Firstrade 没 API 抓不到下单那一刻，改成"事后从 `transactions` 检测、违规记进门⑤台账"。设计见 [`DISCIPLINE_AND_REVIEW_ARCHITECTURE.md`](DISCIPLINE_AND_REVIEW_ARCHITECTURE.md) §1(#12–14)、§4 |
 
 #### ⑤ 纪律
 | 入口 | 现有实现 |
@@ -272,6 +273,11 @@ Kelly 只是在这层封顶之下决定"往哪个方向多分配一点"，不能
 
 **用户决定：先搁置，以后再加**——不因为这次审查顺带做，等门①-④的核心链路
 先落地。
+
+**2026-09-10 更新**：第 3 条"下跌离场警告"不再是搁置状态——它变成了纪律
+架构里的"回调模块"，因为"止盈+重大回调"要靠它触发一个高权重纪律信号。
+设计见 [`DISCIPLINE_AND_REVIEW_ARCHITECTURE.md`](DISCIPLINE_AND_REVIEW_ARCHITECTURE.md) §7。
+第 1、2 条（Bull Call/Put 进场用的短期动能/支撑强度）仍然搁置。
 
 ---
 
