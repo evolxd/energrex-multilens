@@ -3539,7 +3539,10 @@ elif page == "📝 数据编辑":
         if not _visible_fields:
             continue
 
-        # 统计组内 pending 数
+        # 统计组内 pending / estimated 数——estimated 之前没被计入过，
+        # 导致一个全是"估算值"、一个都没核对过的组也会被标成"✅ 全部已验证"
+        # （estimated 字段在下面的输入行里以前也没有勾选框，想核对都点不了，
+        # 见 2026-09-12 用户反馈：DLO 的 AI 暴露填了数但分数纹丝不动）。
         _g_pend = sum(
             1 for _, fld, *_, ds, _, _ in _grp_fields
             if _field_eff_status(fld, ds, existing, ed_ticker) == "pending"
@@ -3548,16 +3551,22 @@ elif page == "📝 数据编辑":
             1 for _, fld, *_, ds, _, _ in _grp_fields
             if _field_eff_status(fld, ds, existing, ed_ticker) == "legacy_verified"
         )
+        _g_est = sum(
+            1 for _, fld, *_, ds, _, _ in _grp_fields
+            if _field_eff_status(fld, ds, existing, ed_ticker) == "estimated"
+        )
         _exp_title = (
             f"{_grp_name}  —  🟡 {_g_pend} 个待审核"
             if _g_pend else
             (f"{_grp_name}  —  🗂 {_g_legacy} 个历史核对待补来源"
              if _g_legacy else
+            (f"{_grp_name}  —  ✍️ {_g_est} 个估算值待核对（不核对不参与评分）"
+             if _g_est else
             f"{_grp_name}  —  ✅ 全部已验证"
-            )
+            ))
         )
 
-        with st.expander(_exp_title, expanded=(_g_pend > 0)):
+        with st.expander(_exp_title, expanded=(_g_pend > 0 or _g_est > 0)):
             if _grp_name == "外部参照（不参与评分）":
                 st.markdown(
                     "<div style='background:rgba(16,43,73,0.72);"
@@ -3702,7 +3711,7 @@ elif page == "📝 数据编辑":
                         )
                         st.caption(_guide.action)
 
-                # [5] 已核对复选框（pending 字段）或 状态注释
+                # [5] 已核对复选框（pending / estimated 字段）或 状态注释
                 with _rc[5]:
                     if fstat in ("pending", "legacy_verified"):
                         # 历史记录已经做过数值核对；预先勾选后只须补填来源，
@@ -3714,13 +3723,23 @@ elif page == "📝 数据编辑":
                             key=f"chk_{ed_ticker}_{field}",
                             label_visibility="collapsed",
                         )
+                    elif fstat == "estimated":
+                        # 2026-09-12 修复：这里以前只显示"估算"两个字，没有勾选
+                        # 框——填了数字也没有任何办法把它标成已核对，导致
+                        # trusted_override_value() 永远拒收（design：status
+                        # 必须是 verified 才会进评分），分数纹丝不动，界面却在
+                        # 组标题上骗人说"全部已验证"。这里不预勾选（估算值
+                        # 没有历史可信记录），但要给一个真正能点的核对入口。
+                        confirm_chk[field] = st.checkbox(
+                            "chk", value=False,
+                            key=f"chk_{ed_ticker}_{field}",
+                            label_visibility="collapsed",
+                            help="勾选后连同下方「核对来源」一起保存，才会真正进入评分——"
+                                 "光填数字、不勾选，这一项永远按缺数据处理。",
+                        )
                     elif fstat == "optional":
                         st.markdown(
                             "<div style='font-size:9px;color:#56d9ff;padding:10px 0'>可选</div>",
-                            unsafe_allow_html=True)
-                    elif fstat == "estimated":
-                        st.markdown(
-                            "<div style='font-size:9px;color:#4A5568;padding:10px 0'>估算</div>",
                             unsafe_allow_html=True)
 
     st.divider()

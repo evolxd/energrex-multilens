@@ -196,11 +196,18 @@ def guide_for_field(field: str, ticker: str, label: str = "") -> SourceGuide:
 
 
 def should_show_field(status: str, view: str) -> bool:
-    """Keep the default queue focused without removing the full editor."""
+    """Keep the default queue focused without removing the full editor.
+
+    2026-09-12：estimated 加进了待核验队列（原来只有"全部字段"能看到）。
+    这类字段现在也有真正的核对勾选框了（app.py 的编辑行），是跟 pending
+    一样"用户能采取行动"的待办项，不该只藏在"全部字段"里才看得到——
+    之前藏起来正是用户填了 AI 暴露的数据、却找不到入口把它标成已核对、
+    分数也就永远进不去的原因之一。
+    """
     if view == "全部字段":
         return True
     if view == "待核验 + 可选":
-        return status in {"pending", "legacy_verified", "optional"}
+        return status in {"pending", "legacy_verified", "optional", "estimated"}
     # 历史核对但缺少来源的项目必须留在默认工作队列中：
     # 用户应看到日期并只补证据，而不是把同一数字重新核一遍。
-    return status in {"pending", "legacy_verified"}
+    return status in {"pending", "legacy_verified", "estimated"}

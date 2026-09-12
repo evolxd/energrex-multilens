@@ -26,3 +26,12 @@ def test_queue_view_defaults_to_pending_only():
     assert not should_show_field("verified_auto", "只看待核验")
     assert should_show_field("optional", "待核验 + 可选")
     assert should_show_field("verified_auto", "全部字段")
+
+
+def test_estimated_fields_show_up_in_review_queues():
+    """2026-09-12 回归测试：estimated 字段（AI暴露组的6个字段）以前只在
+    "全部字段"能看到，两个更窄的队列视图都会把它们过滤掉——用户想找到
+    "该核对什么"的时候，这些字段压根不会出现在候选列表里。"""
+    assert should_show_field("estimated", "只看待核验")
+    assert should_show_field("estimated", "待核验 + 可选")
+    assert should_show_field("estimated", "全部字段")
