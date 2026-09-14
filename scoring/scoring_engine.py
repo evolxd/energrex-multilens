@@ -32,6 +32,15 @@ class CompanyCategory(str, Enum):
     MATERIALS     = "原材料"           # 2026-08-28: 铜矿等，跟AI数据中心/电网建设的
                                         # 需求叙事相关，但业务性质(采矿)跟上面任何一类
                                         # 都不一样，硬塞进SEMI_EQUIP会污染那个分组
+    AERO_DEFENSE  = "航空航天/国防"     # 2026-09-14: BA/LMT/RTX/NOC/GD/LHX等，
+                                        # 之前被硬塞进SEMI_EQUIP，详见quant_engine.py
+                                        # SECTOR_BASELINES里同批次的修复
+    MACHINERY     = "工业机械"          # 2026-09-14: EMR/ETN/ITW/DOV/PH等多元工业设备，
+                                        # 之前同样被硬塞进SEMI_EQUIP
+    MEDICAL_DEVICES = "医疗器械"        # 2026-09-14: ABT/BSX/MDT/SYK/ZBH等，
+                                        # 之前被硬塞进SEMI_EQUIP
+    DIAGNOSTICS   = "诊断/医疗服务"     # 2026-09-14: LH/IQV/ICLR/MEDP/NTRA等实验室/
+                                        # CRO/诊断服务，之前被硬塞进AI_SOFTWARE
 
 
 # ─────────────────────────────────────────────
@@ -258,241 +267,241 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "WOLF": CompanyCategory.AI_CHIP,  # 2026-08-28 yfinance行业分类批量补入
     "XYZ": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入
     "ZETA": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入
-    "A": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AADX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ABT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ACHR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ADPT": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ADSE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ADVB": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AEIS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AHCO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AIR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ALMR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AME": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AMPX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AMSC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "A": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "AADX": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "ABT": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ACHR": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "ADPT": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "ADSE": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ADVB": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "AEIS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "AHCO": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "AIR": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "ALMR": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "AME": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "AMPX": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "AMSC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "AMWL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AORT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AOS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ARXS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ATEC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ATKR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ATRO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AVAV": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AVNS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AVR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AXGN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AXON": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "AYI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BA": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BBNX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BDSX": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BETA": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BFLY": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BIAF": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BIO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BIOQ": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BLLN": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BRKR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BSX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "AORT": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "AOS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ARXS": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "ATEC": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ATKR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ATRO": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "AVAV": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "AVNS": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "AVR": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "AXGN": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "AXON": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "AYI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "BA": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "BBNX": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "BDSX": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "BE": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "BETA": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "BFLY": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "BIAF": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "BIO": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "BIOQ": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "BLLN": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "BRKR": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "BSX": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
     "BTSG": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BVS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "BWXT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "BVS": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "BW": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "BWXT": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
     "CARL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CBLL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CDNA": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CDRE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "CBLL": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "CDNA": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "CDRE": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
     "CERT": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CMI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "CMI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "CMPD": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CNMD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CRL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CSTL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CSW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "CNMD": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "CR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "CRL": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "CSTL": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "CSW": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "CTEV": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "CXT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DCI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DCO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DCTH": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DGX": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DHR": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "CW": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "CXT": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "DCI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "DCO": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "DCTH": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "DGX": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "DHR": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
     "DOCS": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DOV": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DPC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "DOV": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "DPC": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
     "DRIO": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DRS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "DXCM": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "EAF": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "EMR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ENOV": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ENR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ENS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "EPAC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ESP": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ESTA": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ETN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "EW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FAC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FCEL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FELE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FLGT": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FLS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FLY": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FPS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FRNM": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "FTAI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GEHC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GGG": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GH": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GHM": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GKOS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GMED": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GNRC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GRAL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GRC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GTES": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "GTLS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HAE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HAWK": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HAYW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HII": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HLIO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "DRS": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "DXCM": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "EAF": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "EMR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ENOV": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ENR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ENS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "EPAC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ESP": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ESTA": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ETN": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "EW": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "FAC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "FCEL": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "FELE": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "FLGT": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "FLS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "FLY": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "FPS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "FRNM": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "FTAI": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "GD": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "GEHC": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "GGG": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "GH": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "GHM": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "GKOS": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "GMED": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "GNRC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "GRAL": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "GRC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "GTES": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "GTLS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "HAE": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "HAWK": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "HAYW": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "HII": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "HLIO": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "HNGE": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HONA": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "HONA": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
     "HQY": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "HSTM": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "HTFL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HUBB": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HWM": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "HXL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IART": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ICLR": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IDXGD": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IDXX": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IEX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ILMN": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "INIO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "INMD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "INSP": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IQV": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IRMD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "IRTC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ITGR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ITT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ITW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "JBTM": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "KAI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "KE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "KIDS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "KRMN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "KTOS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LH": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LHX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LIVN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LMRI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LMT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LOAR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LTBR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "LYNX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MDT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MEDP": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MFP": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "HUBB": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "HWM": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "HXL": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "IART": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ICLR": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "IDXGD": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "IDXX": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "IEX": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ILMN": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "INIO": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "INMD": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "INSP": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "IQV": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "IR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "IRMD": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "IRTC": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ITGR": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ITT": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "ITW": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "JBTM": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "KAI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "KE": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "KIDS": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "KRMN": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "KTOS": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "LH": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "LHX": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "LIVN": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "LMRI": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "LMT": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "LOAR": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "LTBR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "LYNX": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "MDT": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "MEDP": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "MFP": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "MFPVV": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MIDD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MIR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MRCY": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MTD": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "MWA": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NDRA": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NDSN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NEO": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NEOG": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NNE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NOC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NPK": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NPO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "MIDD": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "MIR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "MRCY": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "MTD": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "MWA": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "NDRA": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "NDSN": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "NEO": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "NEOG": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "NNE": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "NOC": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "NPK": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "NPO": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "NRC": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NTRA": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NVCR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "NVT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "OESX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "NTRA": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "NVCR": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "NVT": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "OESX": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "OMCL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "OMDA": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "OPRX": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "OTIS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PEN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PH": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "OTIS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "PEN": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "PH": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "PHR": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "PINC": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PLPC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PNR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PODD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "POWL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PRCT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PRPO": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "PL": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "PLPC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "PNR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "PODD": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "POWL": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "PRCT": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "PRPO": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
     "PRVA": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "PSNL": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "QDEL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "QGEN": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RCAT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RDNT": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RDW": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RFIL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RKLB": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RRX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RTX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "RVTY": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SARO": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SHC": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SIBN": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "PSNL": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "QDEL": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "QGEN": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "RCAT": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "RDNT": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "RDW": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "RFIL": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "RKLB": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "RRX": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "RTX": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "RVTY": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "SARO": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "SHC": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "SIBN": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
     "SLP": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SMR": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "SMR": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "SOPH": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SPCX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "SPCX": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
     "SPOK": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "STE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "STI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SXI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SYK": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "SYM": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "STE": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "STI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "SXI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "SYK": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "SYM": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
     "TALK": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "TBRG": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TDG": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "TDG": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
     "TDOC": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TMDX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TMO": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TNC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TNDM": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "TMDX": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "TMO": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "TNC": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "TNDM": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
     "TWST": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TXG": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "TXT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "UFPT": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ULBI": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "VCYT": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "VOYG": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "VREX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "VSEC": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "VVX": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "WAT": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "TXG": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "TXT": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "UFPT": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "ULBI": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "VCYT": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "VOYG": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "VREX": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
+    "VSEC": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "VVX": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "WAT": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
     "WAY": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
     "WEAV": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "WGS": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "WTS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "WWD": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "XE": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "XGN": CompanyCategory.AI_SOFTWARE,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "XPON": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "XYL": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "YSS": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
-    "ZBH": CompanyCategory.SEMI_EQUIP,  # 2026-08-28 yfinance行业分类批量补入(健康/工业)
+    "WGS": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "WTS": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "WWD": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "XE": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "XGN": CompanyCategory.DIAGNOSTICS,  # 2026-09-14 yfinance核实：AI_SOFTWARE->DIAGNOSTICS
+    "XPON": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "XYL": CompanyCategory.MACHINERY,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MACHINERY
+    "YSS": CompanyCategory.AERO_DEFENSE,  # 2026-09-14 yfinance核实：SEMI_EQUIP->AERO_DEFENSE
+    "ZBH": CompanyCategory.MEDICAL_DEVICES,  # 2026-09-14 yfinance核实：SEMI_EQUIP->MEDICAL_DEVICES
     "SCCO": CompanyCategory.MATERIALS,  # 2026-08-28 铜矿，补FCX盲区时一并加入
     "FCX":  CompanyCategory.MATERIALS,  # 2026-08-28 真实持仓里一直有，之前完全没覆盖
     "IE":   CompanyCategory.MATERIALS,  # 2026-08-28 铜矿
@@ -551,6 +560,39 @@ WEIGHT_CONFIG: dict[CompanyCategory, WeightConfig] = {
     CompanyCategory.MEGA_TECH: WeightConfig(
         valuation=0.20, growth=0.25, quality=0.30,
         ai_exposure=0.15, expectation_gap=0.10
+    ).validate(),
+
+    # 2026-09-14: 原材料+四个非科技新类目此前完全没有 WEIGHT_CONFIG 条目
+    # （MATERIALS 自 2026-08-28 建类目起就缺，SCCO/FCX/IE/CUAI 这类票只要
+    # 点开 app.py 的单股详情页就会在 `WEIGHT_CONFIG[cat]` 这行直接 KeyError
+    # 崩溃——这是本次一并修的既有 bug，不是新引入的）。这张表本身只用于
+    # app.py 单股详情页的展示汇总和 weight_config_backtest.py 的权重方案
+    # 回测对照，不是生产 final_score 实际用的公式（生产用
+    # ai_profile.py::PROFILE_WEIGHTS，对所有票恒定），所以这里的数字只
+    # 要求"不崩溃、方向合理"，不要求跟 SECTOR_BASELINES 锚点研究同等精度。
+    CompanyCategory.MATERIALS: WeightConfig(
+        valuation=0.30, growth=0.25, quality=0.20,
+        ai_exposure=0.10, expectation_gap=0.15
+    ).validate(),
+
+    CompanyCategory.AERO_DEFENSE: WeightConfig(
+        valuation=0.25, growth=0.20, quality=0.30,
+        ai_exposure=0.10, expectation_gap=0.15
+    ).validate(),
+
+    CompanyCategory.MACHINERY: WeightConfig(
+        valuation=0.30, growth=0.20, quality=0.30,
+        ai_exposure=0.10, expectation_gap=0.10
+    ).validate(),
+
+    CompanyCategory.MEDICAL_DEVICES: WeightConfig(
+        valuation=0.20, growth=0.25, quality=0.30,
+        ai_exposure=0.10, expectation_gap=0.15
+    ).validate(),
+
+    CompanyCategory.DIAGNOSTICS: WeightConfig(
+        valuation=0.20, growth=0.30, quality=0.20,
+        ai_exposure=0.10, expectation_gap=0.20
     ).validate(),
 }
 
