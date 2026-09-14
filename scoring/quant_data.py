@@ -87,359 +87,359 @@ QUANT_META: dict[str, dict] = {
     "MBLY":  {"sector_tag": "Hardware"},  # autonomous driving chips (AI_CHIP)
     "DOCU":  {"sector_tag": "SaaS"},   # e-signature / contract lifecycle SaaS
     "BBAI":  {"sector_tag": "SaaS"},   # AI analytics software
-    "ACIW": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ACMR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ADIG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "AEHR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "AIP": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "AKAM": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ALAB": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ALGM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ALMU": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ALOT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "AMBQ": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "AMKR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ASYS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "AXTI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "BKFG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "BLSH": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "BOX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "BRAI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CAMT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CBRS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CEVA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CHKP": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "COHU": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CORZ": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CPAY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CRCT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CRDO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CRSR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "CRWV": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "DBX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "DIOD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "DLO": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "DOCN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "DOX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ENTG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "FFIV": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "FORM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "FOUR": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "GDDY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "GEN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "GFS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "GSIT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "HPQ": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ICHR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "INFQ": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "INTT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "IONQ": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "IOT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "IPGP": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "KLIC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "LASR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "LSCC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "MBGL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "MPWR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "MRAM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "MTSI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "MXL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "NTAP": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "NTSK": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "NVEC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "NVMI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "NVTS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ON": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "OSS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "PAY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "PI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "PLAB": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "POET": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "POWI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "PSQL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "PXLW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "Q": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "QBTS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "QLYS": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "QMCO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "QRVO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "QUBT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "QUIK": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "RBCN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "RBRK": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "RELY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "RGTI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "RMBS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SAIL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SCIA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SITM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SKHY": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SKYT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SLAB": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SMTC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SNDK": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SSYS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "STX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SWKS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "SYNA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "TACT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "TENB": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "TER": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "TOST": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "TRT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "TWLO": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "UCTT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "UMAC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "VECO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "VELO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "VRNS": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "VRSN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "VSH": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "WDC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "WEX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "WIX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "WOLF": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入,capex_rev待研究
-    "XYZ": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "ZETA": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入,capex_rev待研究
-    "A": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AADX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ABT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ACHR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ADPT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ADSE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ADVB": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AEIS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AHCO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AIR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ALMR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AME": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AMPX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AMSC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AMWL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AORT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AOS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ARXS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ATEC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ATKR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ATRO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AVAV": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AVNS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AVR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AXGN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AXON": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "AYI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BBNX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BDSX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BETA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BFLY": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BIAF": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BIO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BIOQ": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BLLN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BRKR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BSX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BTSG": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BVS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "BWXT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CARL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CBLL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CDNA": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CDRE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CERT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CMI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CMPD": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CNMD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CRL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CSTL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CSW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CTEV": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "CXT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DCI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DCO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DCTH": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DGX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DHR": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DOCS": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DOV": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DPC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DRIO": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DRS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "DXCM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "EAF": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "EMR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ENOV": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ENR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ENS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "EPAC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ESP": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ESTA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ETN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "EW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FAC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FCEL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FELE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FLGT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FLS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FLY": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FPS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FRNM": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "FTAI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GEHC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GGG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GH": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GHM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GKOS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GMED": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GNRC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GRAL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GRC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GTES": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "GTLS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HAE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HAWK": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HAYW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HII": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HLIO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HNGE": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HONA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HQY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HSTM": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HTFL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HUBB": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HWM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "HXL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IART": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ICLR": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IDXGD": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IDXX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IEX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ILMN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "INIO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "INMD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "INSP": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IQV": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IRMD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "IRTC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ITGR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ITT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ITW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "JBTM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "KAI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "KE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "KIDS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "KRMN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "KTOS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LH": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LHX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LIVN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LMRI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LMT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LOAR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LTBR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "LYNX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MDT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MEDP": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MFP": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
+    "ACIW": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "ACMR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ADIG": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "AEHR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "AIP": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "AKAM": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "ALAB": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ALGM": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ALMU": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ALOT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "AMBQ": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "AMKR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ASYS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "AXTI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "BKFG": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "BLSH": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "BOX": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "BRAI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CAMT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CBRS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CEVA": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CHKP": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "COHU": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CORZ": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "CPAY": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "CRCT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CRDO": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CRSR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "CRWV": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "DBX": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "DIOD": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "DLO": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "DOCN": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "DOX": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "ENTG": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "FFIV": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "FORM": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "FOUR": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "GDDY": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "GEN": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "GFS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "GSIT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "HPQ": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ICHR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "INFQ": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "INTT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "IONQ": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "IOT": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "IPGP": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "KLIC": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "LASR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "LSCC": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "MBGL": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "MPWR": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "MRAM": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "MTSI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "MXL": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "NTAP": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "NTSK": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "NVEC": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "NVMI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "NVTS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "ON": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "OSS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "PAY": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "PI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "PLAB": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "POET": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "POWI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "PSQL": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "PXLW": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "Q": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "QBTS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "QLYS": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "QMCO": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "QRVO": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "QUBT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "QUIK": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "RBCN": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "RBRK": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "RELY": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "RGTI": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "RMBS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SAIL": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "SCIA": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SITM": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SKHY": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SKYT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SLAB": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SMTC": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SNDK": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SSYS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "STX": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SWKS": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "SYNA": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "TACT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "TENB": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "TER": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "TOST": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "TRT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "TWLO": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "UCTT": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "UMAC": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "VECO": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "VELO": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "VRNS": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "VRSN": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "VSH": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "WDC": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "WEX": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "WIX": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "WOLF": {"sector_tag": "Hardware"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 Hardware
+    "XYZ": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "ZETA": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：确认属实，维持 SaaS
+    "A": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "AADX": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "ABT": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ACHR": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "ADPT": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "ADSE": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ADVB": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "AEIS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "AHCO": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "AIR": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "ALMR": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "AME": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "AMPX": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "AMSC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "AMWL": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "AORT": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "AOS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ARXS": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "ATEC": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ATKR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ATRO": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "AVAV": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "AVNS": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "AVR": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "AXGN": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "AXON": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "AYI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "BA": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "BBNX": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "BDSX": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "BE": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "BETA": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "BFLY": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "BIAF": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "BIO": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "BIOQ": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "BLLN": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "BRKR": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "BSX": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "BTSG": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "BVS": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "BW": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "BWXT": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "CARL": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "CBLL": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "CDNA": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "CDRE": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "CERT": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "CMI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "CMPD": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "CNMD": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "CR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "CRL": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "CSTL": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "CSW": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "CTEV": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "CW": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "CXT": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "DCI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "DCO": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "DCTH": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "DGX": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "DHR": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "DOCS": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "DOV": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "DPC": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "DRIO": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "DRS": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "DXCM": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "EAF": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "EMR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ENOV": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ENR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ENS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "EPAC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ESP": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ESTA": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ETN": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "EW": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "FAC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "FCEL": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "FELE": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "FLGT": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "FLS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "FLY": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "FPS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "FRNM": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "FTAI": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "GD": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "GEHC": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "GGG": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "GH": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "GHM": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "GKOS": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "GMED": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "GNRC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "GRAL": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "GRC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "GTES": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "GTLS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "HAE": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "HAWK": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "HAYW": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "HII": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "HLIO": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "HNGE": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "HONA": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "HQY": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "HSTM": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "HTFL": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "HUBB": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "HWM": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "HXL": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "IART": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ICLR": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "IDXGD": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "IDXX": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "IEX": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ILMN": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "INIO": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "INMD": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "INSP": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "IQV": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "IR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "IRMD": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "IRTC": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ITGR": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ITT": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "ITW": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "JBTM": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "KAI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "KE": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "KIDS": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "KRMN": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "KTOS": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "LH": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "LHX": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "LIVN": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "LMRI": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "LMT": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "LOAR": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "LTBR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "LYNX": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "MDT": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "MEDP": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "MFP": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
     "MFPVV": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MIDD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MIR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MRCY": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MTD": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "MWA": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NDRA": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NDSN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NEO": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NEOG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NNE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NOC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NPK": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NPO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NRC": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NTRA": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NVCR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "NVT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "OESX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "OMCL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "OMDA": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "OPRX": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "OTIS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PEN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PH": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PHR": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
+    "MIDD": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "MIR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "MRCY": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "MTD": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "MWA": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "NDRA": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "NDSN": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "NEO": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "NEOG": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "NNE": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "NOC": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "NPK": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "NPO": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "NRC": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "NTRA": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "NVCR": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "NVT": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "OESX": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "OMCL": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "OMDA": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "OPRX": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "OTIS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "PEN": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "PH": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "PHR": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
     "PINC": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PLPC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PNR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PODD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "POWL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PRCT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PRPO": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PRVA": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "PSNL": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "QDEL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "QGEN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RCAT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RDNT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RDW": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RFIL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RKLB": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RRX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RTX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "RVTY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SARO": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SHC": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SIBN": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SLP": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SMR": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SOPH": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SPCX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SPOK": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "STE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "STI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SXI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SYK": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SYM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TALK": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
+    "PL": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "PLPC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "PNR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "PODD": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "POWL": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "PRCT": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "PRPO": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "PRVA": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "PSNL": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "QDEL": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "QGEN": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "RCAT": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "RDNT": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "RDW": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "RFIL": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "RKLB": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "RRX": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "RTX": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "RVTY": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "SARO": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "SHC": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "SIBN": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "SLP": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "SMR": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "SOPH": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "SPCX": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "SPOK": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "STE": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "STI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "SXI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "SYK": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "SYM": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "TALK": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
     "TBRG": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TDG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TDOC": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TMDX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TMO": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TNC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TNDM": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
+    "TDG": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "TDOC": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "TMDX": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "TMO": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "TNC": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "TNDM": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
     "TWST": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TXG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "TXT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "UFPT": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ULBI": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "VCYT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "VOYG": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "VREX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "VSEC": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "VVX": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "WAT": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "WAY": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "WEAV": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "WGS": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "WTS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "WWD": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "XE": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "XGN": {"sector_tag": "SaaS"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "XPON": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "XYL": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "YSS": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "ZBH": {"sector_tag": "Hardware"},  # 2026-08-28 批量补入(健康/工业),capex_rev待研究
-    "SCCO": {"sector_tag": "Hardware"},  # 2026-08-28 铜矿，补FCX盲区时一并加入,capex_rev待研究
-    "FCX": {"sector_tag": "Hardware"},  # 2026-08-28 真实持仓里一直有，之前完全没覆盖,capex_rev待研究
-    "IE": {"sector_tag": "Hardware"},  # 2026-08-28 铜矿,capex_rev待研究
-    "CUAI": {"sector_tag": "Hardware"},  # 2026-08-28 铜矿,capex_rev待研究
+    "TXG": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "TXT": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "UFPT": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "ULBI": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "VCYT": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "VOYG": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "VREX": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "VSEC": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "VVX": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "WAT": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "WAY": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "WEAV": {"sector_tag": "SaaS"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→SaaS
+    "WGS": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "WTS": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "WWD": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "XE": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "XGN": {"sector_tag": "Diagnostics"},  # 2026-09-14 yfinance真实sector/industry核实：SaaS→Diagnostics
+    "XPON": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "XYL": {"sector_tag": "Machinery"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Machinery
+    "YSS": {"sector_tag": "AeroDefense"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→AeroDefense
+    "ZBH": {"sector_tag": "MedicalDevices"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→MedicalDevices
+    "SCCO": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
+    "FCX": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
+    "IE": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
+    "CUAI": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
 }
 
 

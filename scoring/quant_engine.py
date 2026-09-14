@@ -137,6 +137,115 @@ SECTOR_BASELINES: dict[str, dict[str, dict]] = {
         "ai_backlog":     {"best": 0.70,  "worst": 0.05,  "dir": "positive"},
         "arr_growth":     {"best": 0.30,  "worst": 0.00,  "dir": "positive"},
     },
+
+    # 2026-09-14: 五个新增非科技类目。之前 353 只票（2026-08-28 批量导入）
+    # 全部被硬塞进 Hardware/SaaS，注释自己写着"capex_rev待研究"，代表没人
+    # 核实过拿科技股锚点套在波音/雅培这些公司身上是否合理。这里的
+    # best/worst 锚点来自 Damodaran NYU Stern 行业数据表（2026年1月更新，
+    # mgnroc.html/margin.html/vebitda.html/pedata.html），取的是"行业平均值"
+    # 而不是百分位分布——最优/最差区间是围绕这个真实平均值按跟 Hardware/
+    # SaaS/Cybersecurity 同等比例的宽度画的，不是瞎猜的，但也不是从分布
+    # 数据反推出来的百分位，跟已有三类的精度不完全对等。ERG/FCF Yield/
+    # D/E 三项 Damodaran 页面没有直接给数、按行业常识估的范围，标注见下。
+    "AeroDefense": {
+        # 波音/洛马/雷神/诺格/通用动力/L3Harris 这类；Damodaran "Aerospace/Defense"：
+        # fwdPE=45.87, EV/EBITDA=21.58, 毛利率=17.48%, 净利率=4.99%,
+        # 营业利润率=7.76%, ROIC=21.29%, 5年预期(EPS)增速=25.04%（79家公司）
+        "peg":            {"best": 1.20,  "worst": 4.50,  "dir": "negative"},
+        "ev_ebitda":      {"best": 15.0,  "worst": 32.0,  "dir": "negative"},
+        "erg":            {"best": 1.00,  "worst": 5.00,  "dir": "negative"},   # 估算，无直接数据
+        "forward_pe":     {"best": 28.0,  "worst": 65.0,  "dir": "negative"},
+        "fcf_yield":      {"best": 0.035, "worst": 0.005, "dir": "positive"},   # 估算，资本开支重
+        "rev_growth":     {"best": 0.15,  "worst": -0.05, "dir": "positive"},   # 估算：营收增速通常远低于EPS增速(份额回购放大)
+        "eps_growth":     {"best": 0.35,  "worst": -0.15, "dir": "positive"},
+        "fcf_growth":     {"best": 0.30,  "worst": -0.20, "dir": "positive"},
+        "ntm_guidance":   {"best": 0.12,  "worst": -0.03, "dir": "positive"},
+        "gross_margin":   {"best": 0.24,  "worst": 0.10,  "dir": "positive"},
+        "fcf_margin":     {"best": 0.10,  "worst": -0.02, "dir": "positive"},
+        "roic":           {"best": 0.20,  "worst": -0.05, "dir": "positive"},   # ROIC-WACC超额，WACC按~9%估
+        "de_ratio":       {"best": 0.00,  "worst": 1.50,  "dir": "negative"},
+        "operating_margin":{"best": 0.14, "worst": -0.05, "dir": "positive"},
+    },
+    "Machinery": {
+        # 艾默生/伊顿/丹纳赫工业分部/开利/奥的斯这类多元工业设备；Damodaran "Machinery"：
+        # fwdPE=24.06, EV/EBITDA=16.22, 毛利率=37.47%, 净利率=10.58%,
+        # 营业利润率=13.97%, ROIC=27.27%, 5年预期增速=13.55%（105家公司）
+        "peg":            {"best": 0.80,  "worst": 3.00,  "dir": "negative"},
+        "ev_ebitda":      {"best": 10.0,  "worst": 24.0,  "dir": "negative"},
+        "erg":            {"best": 0.60,  "worst": 3.00,  "dir": "negative"},   # 估算，无直接数据
+        "forward_pe":     {"best": 15.0,  "worst": 38.0,  "dir": "negative"},
+        "fcf_yield":      {"best": 0.045, "worst": 0.010, "dir": "positive"},   # 估算
+        "rev_growth":     {"best": 0.12,  "worst": -0.05, "dir": "positive"},
+        "eps_growth":     {"best": 0.25,  "worst": -0.15, "dir": "positive"},
+        "fcf_growth":     {"best": 0.20,  "worst": -0.15, "dir": "positive"},
+        "ntm_guidance":   {"best": 0.10,  "worst": -0.03, "dir": "positive"},
+        "gross_margin":   {"best": 0.44,  "worst": 0.28,  "dir": "positive"},
+        "fcf_margin":     {"best": 0.14,  "worst": 0.00,  "dir": "positive"},
+        "roic":           {"best": 0.25,  "worst": -0.05, "dir": "positive"},   # ROIC-WACC超额，WACC按~9%估
+        "de_ratio":       {"best": 0.00,  "worst": 1.80,  "dir": "negative"},
+        "operating_margin":{"best": 0.20, "worst": 0.02,  "dir": "positive"},
+    },
+    "MedicalDevices": {
+        # 雅培/波士顿科学/美敦力/史赛克/泰科这类医疗器械；Damodaran "Healthcare Products"：
+        # fwdPE=42.33, EV/EBITDA=19.78, 毛利率=54.00%, 净利率=9.61%,
+        # 营业利润率=15.08%, ROIC=22.27%, 5年预期增速=11.07%（204家公司）
+        "peg":            {"best": 1.50,  "worst": 5.50,  "dir": "negative"},
+        "ev_ebitda":      {"best": 13.0,  "worst": 30.0,  "dir": "negative"},
+        "erg":            {"best": 1.20,  "worst": 6.00,  "dir": "negative"},   # 估算，无直接数据
+        "forward_pe":     {"best": 25.0,  "worst": 60.0,  "dir": "negative"},
+        "fcf_yield":      {"best": 0.030, "worst": 0.005, "dir": "positive"},   # 估算
+        "rev_growth":     {"best": 0.15,  "worst": -0.03, "dir": "positive"},
+        "eps_growth":     {"best": 0.22,  "worst": -0.10, "dir": "positive"},
+        "fcf_growth":     {"best": 0.20,  "worst": -0.15, "dir": "positive"},
+        "ntm_guidance":   {"best": 0.12,  "worst": -0.02, "dir": "positive"},
+        "gross_margin":   {"best": 0.68,  "worst": 0.45,  "dir": "positive"},
+        "fcf_margin":     {"best": 0.18,  "worst": -0.02, "dir": "positive"},
+        "roic":           {"best": 0.20,  "worst": -0.05, "dir": "positive"},   # ROIC-WACC超额，WACC按~9%估
+        "de_ratio":       {"best": 0.00,  "worst": 1.50,  "dir": "negative"},
+        "operating_margin":{"best": 0.24, "worst": 0.00,  "dir": "positive"},
+    },
+    "Diagnostics": {
+        # LabCorp/IQVIA/ICON/Medpace/Natera/Guardant这类诊断/CRO/实验室服务；
+        # Damodaran "Healthcare Support Services"：fwdPE=55.29, EV/EBITDA=11.17,
+        # 毛利率=12.08%（结构性偏低，代表性转嫁成本压低了这个比例，不是
+        # 经营质量差）, 净利率=1.25%, 营业利润率=2.71%, ROIC=31.86%（轻资产
+        # 模式，资本回报仍然很高）, 5年预期增速=12.57%（104家公司）
+        "peg":            {"best": 2.00,  "worst": 6.50,  "dir": "negative"},
+        "ev_ebitda":      {"best": 7.0,   "worst": 18.0,  "dir": "negative"},
+        "erg":            {"best": 1.50,  "worst": 7.00,  "dir": "negative"},   # 估算，无直接数据
+        "forward_pe":     {"best": 35.0,  "worst": 75.0,  "dir": "negative"},
+        "fcf_yield":      {"best": 0.025, "worst": 0.000, "dir": "positive"},   # 估算
+        "rev_growth":     {"best": 0.15,  "worst": -0.05, "dir": "positive"},
+        "eps_growth":     {"best": 0.25,  "worst": -0.15, "dir": "positive"},
+        "fcf_growth":     {"best": 0.20,  "worst": -0.20, "dir": "positive"},
+        "ntm_guidance":   {"best": 0.12,  "worst": -0.03, "dir": "positive"},
+        "gross_margin":   {"best": 0.20,  "worst": 0.05,  "dir": "positive"},   # 刻意低区间，跟科技股毛利率不是一个量级
+        "fcf_margin":     {"best": 0.08,  "worst": -0.05, "dir": "positive"},
+        "roic":           {"best": 0.30,  "worst": 0.00,  "dir": "positive"},   # ROIC-WACC超额，轻资产模式偏高
+        "de_ratio":       {"best": 0.00,  "worst": 1.20,  "dir": "negative"},
+        "operating_margin":{"best": 0.06, "worst": -0.05, "dir": "positive"},   # 结构性偏低，非经营质量信号
+    },
+    "Materials": {
+        # 秘鲁铜业/自由港/CUAI这类矿业；Damodaran "Metals & Mining"：
+        # fwdPE=29.82, EV/EBITDA=11.39, 毛利率=34.68%, 净利率=10.52%,
+        # ROIC=27.22%, 5年预期增速=34.42%（73家公司，异常高——反映当前
+        # AI数据中心/电网建设拉动的铜需求叙事，不是矿业正常稳态增速，
+        # 跟 scoring_engine.py CompanyCategory.MATERIALS 注释里的判断一致）
+        "peg":            {"best": 0.50,  "worst": 2.50,  "dir": "negative"},
+        "ev_ebitda":      {"best": 7.0,   "worst": 18.0,  "dir": "negative"},
+        "erg":            {"best": 0.80,  "worst": 4.00,  "dir": "negative"},   # 估算，无直接数据
+        "forward_pe":     {"best": 18.0,  "worst": 45.0,  "dir": "negative"},
+        "fcf_yield":      {"best": 0.030, "worst": -0.010,"dir": "positive"},   # 估算，扩产期可能FCF为负
+        "rev_growth":     {"best": 0.25,  "worst": -0.10, "dir": "positive"},   # 大宗商品价格驱动，波动大
+        "eps_growth":     {"best": 0.45,  "worst": -0.25, "dir": "positive"},
+        "fcf_growth":     {"best": 0.35,  "worst": -0.30, "dir": "positive"},
+        "ntm_guidance":   {"best": 0.15,  "worst": -0.05, "dir": "positive"},
+        "gross_margin":   {"best": 0.42,  "worst": 0.20,  "dir": "positive"},
+        "fcf_margin":     {"best": 0.15,  "worst": -0.05, "dir": "positive"},
+        "roic":           {"best": 0.25,  "worst": -0.10, "dir": "positive"},   # ROIC-WACC超额，随大宗周期波动大
+        "de_ratio":       {"best": 0.00,  "worst": 1.20,  "dir": "negative"},
+        "operating_margin":{"best": 0.28, "worst": -0.05, "dir": "positive"},
+    },
 }
 
 # DIM_WEIGHTS, CIRCUIT_*, RISK_MAX_PENALTY → imported from formula.py
