@@ -958,6 +958,9 @@ def compute_qqq_hedge_plan(
     current_option_cost: float,
     plan_dte: int = 90,
     today: datetime.date | None = None,
+    vix_spike: bool = False,
+    event_risk: bool = False,
+    trend_break: bool = False,
 ) -> dict:
     """Three QQQ put-debit-spread hedge plans (A=$35-wide, B=$60-wide,
     C=keep existing + top up) that bring beta-weighted Delta down toward
@@ -968,6 +971,12 @@ def compute_qqq_hedge_plan(
     dollar amount -- it does none of those fetches itself, and delegates the
     protective-put governance check to account.hedge_governance, which is
     already deterministic/pure.
+
+    vix_spike / event_risk / trend_break: real-data trigger inputs (see
+    account.systemic_risk_signal, added 2026-09-14) forwarded to
+    evaluate_protective_put_hedges(). All three default to False, matching
+    this function's behavior before that module existed -- passing none of
+    them keeps the only trigger active being BETA_DELTA_EXCESS, as before.
     """
     today = today or datetime.date.today()
     qqq_iv = qqq_iv_pct / 100.0
@@ -1047,6 +1056,9 @@ def compute_qqq_hedge_plan(
         beta_delta_pct=current_bdr * 100,
         target_beta_delta_pct=target_bd_ratio * 100,
         today=today,
+        vix_spike=vix_spike,
+        event_risk=event_risk,
+        trend_break=trend_break,
     )
 
     return {

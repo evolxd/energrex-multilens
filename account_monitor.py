@@ -319,6 +319,8 @@ from account.risk import load_options_cost_ratio_limit as _load_options_cost_rat
 from account.risk import score_label as _score_label_impl
 from account.risk import summarize_portfolio_greeks as _summarize_portfolio_greeks
 from account.risk import vix_spike_trigger as _vix_spike_trigger
+from account.systemic_risk_signal import fomc_event_risk as _fomc_event_risk
+from account.systemic_risk_signal import qqq_trend_break as _qqq_trend_break
 from account.marketdata import fetch_option_quote as _fetch_option_quote_md
 from account.marketdata import fetch_underlying_prices as _fetch_underlying_prices_md
 from account.marketdata import get_atm_iv_batch as _get_atm_iv_batch_md
@@ -980,6 +982,20 @@ def _get_vix_snapshot() -> dict:
     return _get_vix_snapshot_md()
 
 
+@st.cache_data(ttl=3600)
+def _fetch_qqq_close_history():
+    """QQQ 1年收盘价，供 account.systemic_risk_signal.qqq_trend_break() 算
+    真实的50/200日均线位置——跟 refresh_scores.py::_compute_momentum() 用的
+    是同一套 yfinance 取数方式，只是标的换成 QQQ。1小时缓存：均线这种东西
+    盘中刷新意义不大，不用跟报价一样按5分钟缓存。
+    """
+    import yfinance as yf
+    try:
+        return yf.Ticker("QQQ").history(period="1y")["Close"]
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=600)
 def _get_atm_iv_batch(tickers: tuple) -> dict[str, dict]:
     return _get_atm_iv_batch_md(tickers, api_key=_MD_KEY)
@@ -1314,12 +1330,20 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     ocr_now = _compute_options_cost_ratio(acct_id)
     current_option_cost = (ocr_now["ratio"] or 0) * equity
 
+    # 2026-09-14：三个此前永远是 False 的对冲触发开关，改成真实数据算出来的值。
+    _vix_trigger = _vix_spike_trigger(_get_vix_snapshot())
+    _trend = _qqq_trend_break(_fetch_qqq_close_history())
+    _event_risk = _fomc_event_risk(datetime.date.today())
+
     return _compute_qqq_hedge_plan_impl(
         equity=equity, current_bd=current_bd, current_bdr=current_bdr,
         target_bd_ratio=target_bd_ratio,
         qqq_price=qqq_price, qqq_iv_pct=qqq_iv_pct, beta_qqq=b_qqq,
         existing_legs=existing_legs, existing_bd=existing_bd, n_existing=n_existing,
         current_option_cost=current_option_cost,
+        vix_spike=_vix_trigger is not None,
+        event_risk=_event_risk,
+        trend_break=_trend["trend_break"],
     )
 
 

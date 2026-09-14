@@ -631,6 +631,48 @@ class ComputeQqqHedgePlanTests(unittest.TestCase):
         self.assertIn("hedge_governance", result)
         self.assertIsInstance(result["hedge_governance"], dict)
 
+    def test_vix_event_trend_flags_reach_hedge_governance_trigger_reasons(self):
+        """2026-09-14: these three kwargs used to not exist at all, so every
+        call site left hedge_governance's trigger check depending solely on
+        BETA_DELTA_EXCESS. Confirms they now actually reach
+        evaluate_protective_put_hedges() rather than being accepted and
+        silently dropped."""
+        legs = [{
+            "sym": "QQQ260830P00470000", "qty": 1, "type": "P",
+            "strike": 470.0, "expiry": "2026-08-30",
+            "delta": -0.3, "price": 10.0, "market_value": 1000.0,
+        }]
+        baseline = compute_qqq_hedge_plan(
+            equity=500000, current_bd=600000, current_bdr=1.2, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-30000.0, n_existing=1,
+            current_option_cost=1000.0, today=datetime.date(2026, 6, 1),
+        )
+        # current_bdr (1.2) is under target (1.5): with every trigger left at
+        # its default False, no trigger should be active.
+        self.assertFalse(baseline["hedge_governance"]["trigger_active"])
+
+        with_trend_break = compute_qqq_hedge_plan(
+            equity=500000, current_bd=600000, current_bdr=1.2, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-30000.0, n_existing=1,
+            current_option_cost=1000.0, today=datetime.date(2026, 6, 1),
+            trend_break=True,
+        )
+        self.assertTrue(with_trend_break["hedge_governance"]["trigger_active"])
+        self.assertIn("TREND_BREAK", with_trend_break["hedge_governance"]["trigger_reasons"])
+
+        with_vix_and_event = compute_qqq_hedge_plan(
+            equity=500000, current_bd=600000, current_bdr=1.2, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=legs, existing_bd=-30000.0, n_existing=1,
+            current_option_cost=1000.0, today=datetime.date(2026, 6, 1),
+            vix_spike=True, event_risk=True,
+        )
+        reasons = with_vix_and_event["hedge_governance"]["trigger_reasons"]
+        self.assertIn("VIX_SPIKE", reasons)
+        self.assertIn("EVENT_RISK", reasons)
+
 
 class CheckOtmSpreadAlertsTests(unittest.TestCase):
     def _leg(self, symbol, qty, unit_cost, market_value, strike=None, current_price=None):
