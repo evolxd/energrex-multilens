@@ -48,6 +48,7 @@ from quant_engine import (
     CIRCUIT_MULTIPLIER,
 )
 from quant_data import QUANT_META, QUANT_STANDALONE, QUANT_AI_EXPOSURE
+from scoring_engine import UnknownTickerError
 
 try:
     from mock_data import MOCK_STOCKS
@@ -642,7 +643,11 @@ def main():
             print(f"  [ERROR] No data found for {ticker} — skipping")
             continue
 
-        result = score_ticker(ticker, data)
+        try:
+            result = score_ticker(ticker, data)
+        except UnknownTickerError as exc:
+            print(f"  [ERROR] {exc}")
+            continue
 
         if not args.summary:
             print_audit_report(result, data)

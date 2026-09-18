@@ -512,9 +512,25 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "COST": CompanyCategory.RETAIL,  # 2026-09-17 用户单独要求收录，仓储会员零售
 }
 
+class UnknownTickerError(ValueError):
+    """ticker 不在 TICKER_CATEGORY 里时抛出。
+
+    2026-09 之前 get_category() 对未知 ticker 默默默认成 AI_SOFTWARE——COST
+    (仓储会员零售) 曾经因此被套用 AI 软件的权重和 AI 暴露基准，算出一个
+    看起来正常、实际毫无意义的分数。宁可在这里报错，也不要悄悄给错答案。
+    """
+
+
 def get_category(ticker: str) -> CompanyCategory:
-    """自动识别公司类型，未知 ticker 默认 AI_SOFTWARE"""
-    return TICKER_CATEGORY.get(ticker.upper(), CompanyCategory.AI_SOFTWARE)
+    """识别公司类型；不在 TICKER_CATEGORY 里就报错，不再默认落到 AI_SOFTWARE。"""
+    ticker = ticker.upper()
+    if ticker not in TICKER_CATEGORY:
+        raise UnknownTickerError(
+            f"'{ticker}' 不在 TICKER_CATEGORY 里，没有类目可用于打分。"
+            f"如果这是一只新股票，先在 scoring_engine.py::TICKER_CATEGORY 里"
+            f"给它指定类目，再继续跑评分。"
+        )
+    return TICKER_CATEGORY[ticker]
 
 
 # ─────────────────────────────────────────────
