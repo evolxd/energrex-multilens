@@ -20,6 +20,7 @@ from plotly.subplots import make_subplots
 
 from scoring_engine import get_category, WEIGHT_CONFIG, calc_damodaran_report, safe_val
 from quant_engine import score_ticker, compute_global_score
+from ai_profile import CORE_ELIGIBLE_CATEGORIES
 from basis_check import basis_conflicts, basis_conflict_reason
 from score_split import split_scores
 from kelly_position import suggested_position_pct, band_detail, kelly_meta
@@ -3528,7 +3529,15 @@ elif page == "📝 数据编辑":
     new_values: dict    = {}   # field → new numeric value
     confirm_chk: dict   = {}   # field → bool
 
+    # 2026-09-19：AI暴露字段组以前不管行业一律显示——COST这种零售股的
+    # 编辑页也会跳出"网安AI暴露""先进封装暴露"这类完全不相关的输入框。
+    # 就算真填了数，ai_profile.score_ai_role()对不在CORE_ELIGIBLE_CATEGORIES
+    # 里的公司永远把AI暴露子分拉回中性50分（见quant_engine.py score_ticker），
+    # 填这些框对分数没有任何影响，界面上还留着等于在诱导做无意义的事。
+    _ed_category = get_category(ed_ticker)
     for _grp_name, _grp_fields in _FG.items():
+        if _grp_name == "AI暴露（估算）" and _ed_category.name not in CORE_ELIGIBLE_CATEGORIES:
+            continue
         _visible_fields = []
         for _field_row in _grp_fields:
             _row_status = _field_eff_status(

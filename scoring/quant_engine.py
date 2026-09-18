@@ -246,6 +246,30 @@ SECTOR_BASELINES: dict[str, dict[str, dict]] = {
         "de_ratio":       {"best": 0.00,  "worst": 1.20,  "dir": "negative"},
         "operating_margin":{"best": 0.28, "worst": -0.05, "dir": "positive"},
     },
+    "WarehouseRetail": {
+        # 2026-09-17: 用户单独要求收录COST（好市多）。仓储会员零售在Damodaran
+        # 分类里没有独立的行业组——它的经济结构（商品几乎不赚钱，靠会员费+周转率）
+        # 介于"Retail (Grocery and Food)"(毛利率仅1.5%/ROIC 6.98%，太极端)和
+        # "Retail (General)"(毛利率33.18%/PE 46.68，对COST偏高)之间，这里取两者
+        # 中间偏Grocery一侧，不是精确锚点——跟RXRX/SDGR/TEM缺Biotech类目是同一种
+        # 已知近似，等有更细的仓储会员同类(Sam's Club母公司Walmart/BJ's)数据再收窄。
+        # Damodaran Jan2026: Grocery fwdPE=14.34/growth=11.14%/ROIC=6.98%；
+        # General fwdPE=23.97/growth=11.71%/ROIC=20.60%/毛利率=33.18%/净利率=5.61%
+        "peg":            {"best": 1.00,  "worst": 3.50,  "dir": "negative"},
+        "ev_ebitda":      {"best": 10.0,  "worst": 22.0,  "dir": "negative"},
+        "erg":            {"best": 0.80,  "worst": 4.00,  "dir": "negative"},   # 估算，无直接数据
+        "forward_pe":     {"best": 16.0,  "worst": 42.0,  "dir": "negative"},   # 上限拉高：优质仓储会员零售常年溢价于一般零售
+        "fcf_yield":      {"best": 0.035, "worst": 0.005, "dir": "positive"},   # 估算
+        "rev_growth":     {"best": 0.12,  "worst": -0.02, "dir": "positive"},
+        "eps_growth":     {"best": 0.18,  "worst": -0.10, "dir": "positive"},
+        "fcf_growth":     {"best": 0.15,  "worst": -0.15, "dir": "positive"},
+        "ntm_guidance":   {"best": 0.10,  "worst": -0.02, "dir": "positive"},
+        "gross_margin":   {"best": 0.16,  "worst": 0.08,  "dir": "positive"},   # 刻意低区间：商品近成本价出售，靠会员费赚钱，不是经营质量差
+        "fcf_margin":     {"best": 0.035, "worst": 0.005, "dir": "positive"},
+        "roic":           {"best": 0.15,  "worst": -0.05, "dir": "positive"},   # ROIC-WACC超额，WACC按防御型低beta估~7%
+        "de_ratio":       {"best": 0.00,  "worst": 1.20,  "dir": "negative"},
+        "operating_margin":{"best": 0.07, "worst": 0.01,  "dir": "positive"},   # 结构性偏低，跟毛利率同理
+    },
 }
 
 # DIM_WEIGHTS, CIRCUIT_*, RISK_MAX_PENALTY → imported from formula.py

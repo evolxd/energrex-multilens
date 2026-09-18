@@ -440,6 +440,8 @@ QUANT_META: dict[str, dict] = {
     "FCX": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
     "IE": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
     "CUAI": {"sector_tag": "Materials"},  # 2026-09-14 yfinance真实sector/industry核实：Hardware→Materials
+
+    "COST": {"sector_tag": "WarehouseRetail"},  # 2026-09-17 用户单独要求收录
 }
 
 

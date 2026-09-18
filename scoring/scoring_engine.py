@@ -41,6 +41,8 @@ class CompanyCategory(str, Enum):
                                         # 之前被硬塞进SEMI_EQUIP
     DIAGNOSTICS   = "诊断/医疗服务"     # 2026-09-14: LH/IQV/ICLR/MEDP/NTRA等实验室/
                                         # CRO/诊断服务，之前被硬塞进AI_SOFTWARE
+    RETAIL        = "仓储会员零售"      # 2026-09-17: COST——用户单独要的报告，之前
+                                        # 系统447只票里完全没有零售/消费类目
 
 
 # ─────────────────────────────────────────────
@@ -506,6 +508,8 @@ TICKER_CATEGORY: dict[str, CompanyCategory] = {
     "FCX":  CompanyCategory.MATERIALS,  # 2026-08-28 真实持仓里一直有，之前完全没覆盖
     "IE":   CompanyCategory.MATERIALS,  # 2026-08-28 铜矿
     "CUAI": CompanyCategory.MATERIALS,  # 2026-08-28 铜矿
+
+    "COST": CompanyCategory.RETAIL,  # 2026-09-17 用户单独要求收录，仓储会员零售
 }
 
 def get_category(ticker: str) -> CompanyCategory:
@@ -593,6 +597,11 @@ WEIGHT_CONFIG: dict[CompanyCategory, WeightConfig] = {
     CompanyCategory.DIAGNOSTICS: WeightConfig(
         valuation=0.20, growth=0.30, quality=0.20,
         ai_exposure=0.10, expectation_gap=0.20
+    ).validate(),
+
+    CompanyCategory.RETAIL: WeightConfig(
+        valuation=0.25, growth=0.20, quality=0.30,
+        ai_exposure=0.05, expectation_gap=0.20
     ).validate(),
 }
 
