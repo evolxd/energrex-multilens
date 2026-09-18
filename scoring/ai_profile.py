@@ -132,8 +132,23 @@ def classify_ai_profile(data: dict, category_name: str) -> AIProfile:
     )
 
 
-def score_ai_role(raw_ai_score: float, profile_key: str) -> float:
-    """Keep AI core signals; give other business models a neutral AI baseline."""
+def score_ai_role(
+    raw_ai_score: float,
+    profile_key: str,
+    peer_industry_score: float | None = None,
+) -> float:
+    """Keep AI core signals; route everyone else to a real industry-standing
+    read when one exists, otherwise a neutral baseline.
+
+    2026-09-18 用户拍板："永远只在经典AI股里去算AI暴露，其他的就算行业暴露"——
+    不再用同一个中性50分把所有非核心AI公司糊在一起。profile_key仍然只有
+    AI_CHIP/AI_SOFTWARE能拿到AI_CORE（这个白名单本身是刻意设计，2026-09-19
+    确认过不扩大），但非核心公司现在有了第二条出路：peer_industry_score
+    ——由refresh_scores.py在批处理层用同类目quality_score百分位算出来的
+    "本行业内地位"读数，同类目样本不够（<5家）时仍然是None，退回中性50。
+    """
     if profile_key == AI_CORE:
         return float(raw_ai_score)
+    if peer_industry_score is not None:
+        return float(peer_industry_score)
     return AI_NEUTRAL_SCORE

@@ -35,9 +35,9 @@ from formula import (
 )
 from scoring_engine import calc_wacc, get_category
 try:
-    from .ai_profile import classify_ai_profile, score_ai_role
+    from .ai_profile import classify_ai_profile, score_ai_role, AI_CORE
 except ImportError:
-    from ai_profile import classify_ai_profile, score_ai_role
+    from ai_profile import classify_ai_profile, score_ai_role, AI_CORE
 try:
     from .decision_policy import score_band
 except ImportError:
@@ -898,10 +898,22 @@ def compute_global_score(dim_scores: dict[str, float], weights: dict[str, float]
 # Master scoring entry point
 # ─────────────────────────────────────────────────────────────────────
 
-def score_ticker(ticker: str, data: dict) -> ScoreResult:
+def score_ticker(
+    ticker: str,
+    data: dict,
+    peer_industry_exposure: float | None = None,
+) -> ScoreResult:
     """
     Score a single ticker from a merged data dict.
     data must contain fields from both yfinance_fetcher and mock/quant_data.
+
+    peer_industry_exposure: 2026-09-18用户拍板"经典AI股才算AI暴露，其他的
+    算行业暴露"之后新增——非AI_CORE公司的AI暴露子分，不再统一按中性50分
+    处理，改用refresh_scores.py在批处理层算出的"同类目quality_score百分位"
+    (需要同类目≥5家有效样本才会算，样本不够时仍是None，退回中性50，
+    行为跟改之前一样)。这里只是把外部传入的值转交给score_ai_role()，
+    真正的百分位计算在refresh_scores.py（需要看到全量df才能算百分位，
+    单只票的score_ticker()天生看不到"同类目其他公司"这个信息）。
     """
     sector = data.get("sector_tag", "Hardware")
     if sector not in SECTOR_BASELINES:
@@ -929,12 +941,24 @@ def score_ticker(ticker: str, data: dict) -> ScoreResult:
     for dim in dims:
         if dim.key == "ai_exposure":
             ai_raw_exposure_score = dim.dim_score
-            adjusted_ai_score = score_ai_role(dim.dim_score, ai_profile.key)
+            adjusted_ai_score = score_ai_role(
+                dim.dim_score, ai_profile.key, peer_industry_exposure
+            )
             if adjusted_ai_score != dim.dim_score:
+                if ai_profile.key != AI_CORE and peer_industry_exposure is not None:
+                    dim.label = "④ 行业暴露 (INDUSTRY STANDING)"
+                    note_formula = (
+                        "非经典AI类目 -> 用同类目quality_score百分位替代；"
+                        "AI原始信号仅留作审计参考"
+                    )
+                    note_label = "行业暴露替代"
+                else:
+                    note_formula = "AI enabled/traditional -> neutral 50; verified contribution uses accelerator bonus"
+                    note_label = "AI role neutral baseline"
                 dim.entries.append(AuditEntry(
-                    "AI role neutral baseline",
+                    note_label,
                     dim.dim_score,
-                    "AI enabled/traditional -> neutral 50; verified contribution uses accelerator bonus",
+                    note_formula,
                     adjusted_ai_score,
                     0.0,
                     note=f"Raw AI signal {dim.dim_score:.1f} retained for audit only",

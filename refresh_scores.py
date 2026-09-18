@@ -94,6 +94,62 @@ def add_sector_ai_exposure_percentile(df: "pd.DataFrame") -> "pd.DataFrame":
     )
     return df
 
+
+def compute_industry_exposure_percentiles(
+    df: "pd.DataFrame", min_peers: int = _SMALL_GROUP_THRESHOLD
+) -> dict[str, float]:
+    """非经典AI公司的"行业暴露"读数：同CompanyCategory类目内quality_score
+    的百分位排名。
+
+    2026-09-18用户拍板："永远只在经典AI股里去算AI暴露，其他的就算行业暴露"。
+    quality_score已经是每只票都在算的真实读数(毛利率/FCF利润率/ROIC/D-E)，
+    不需要新的手填数据——同行业内质量分排得越高，代表越有竞争优势，这就是
+    "行业暴露/行业地位"这个概念的最小可行版本。
+
+    用当前df(本次refresh开始前、上一轮写盘的结果)里已有的quality_score
+    做同类目分布基准，不等这一批刷新完再算——数据会随着每天refresh自然
+    收敛，不追求单次绝对精确。同类目样本(min_peers，跟现有ai_行业内百分位
+    用的_SMALL_GROUP_THRESHOLD=10保持一致)不够时，该类目所有票都不计算，
+    调用方应retain退回中性50分，不是拿小样本硬算。
+    """
+    from scoring_engine import get_category
+
+    # "quality_score" 是 refresh_scores.py 内部字段名，CSV 里实际列名是
+    # 中文列名(如 "qlt_质量得分(...)")，2026-09-18 第一版直接找 df.columns
+    # 里叫"quality_score"的列，一个都找不到，函数悄悄返回{}——那一整轮
+    # 4/448只票的final_score看起来"改了"，实际上一个都没变，是这里的bug，
+    # 不是行业内没有足够样本。必须走跟其余代码一致的 _build_col_maps()
+    # 前缀映射才能拿到真实列名。
+    _, _score_col_map = _build_col_maps(df)
+    qlt_col = _score_col_map.get("quality_score")
+    if qlt_col is None or qlt_col not in df.columns or "ticker" not in df.columns:
+        return {}
+
+    by_category: dict[str, list[tuple[str, float]]] = {}
+    for _, row in df.iterrows():
+        ticker = row.get("ticker")
+        if not ticker or pd.isna(ticker):
+            continue
+        try:
+            q = float(row.get(qlt_col))
+        except (TypeError, ValueError):
+            continue
+        if pd.isna(q):
+            continue
+        cat = get_category(str(ticker)).name
+        by_category.setdefault(cat, []).append((str(ticker), q))
+
+    result: dict[str, float] = {}
+    for _cat, items in by_category.items():
+        if len(items) < min_peers:
+            continue
+        values = sorted(v for _, v in items)
+        n = len(values)
+        for ticker, q in items:
+            rank = sum(1 for v in values if v <= q)
+            result[ticker] = round(rank / n * 100.0, 2)
+    return result
+
 # ── 日志 ──────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -566,6 +622,10 @@ def refresh_all(
     log("⏳ 评分中…")
     ok_cnt, err_cnt = 0, 0
 
+    # 非经典AI公司的"行业暴露"读数：用刷新前(上一轮写盘)的quality_score算
+    # 同类目百分位。见compute_industry_exposure_percentiles()文档字符串。
+    _industry_pct = compute_industry_exposure_percentiles(df)
+
     for ticker in targets:
         row_mask = df["ticker"] == ticker
         row      = df[row_mask].iloc[0]
@@ -627,6 +687,10 @@ def refresh_all(
         # 评分
         try:
             result = score_ticker(ticker, data)
+            if result.ai_profile_key != "AI_CORE":
+                peer_pct = _industry_pct.get(ticker)
+                if peer_pct is not None:
+                    result = score_ticker(ticker, data, peer_industry_exposure=peer_pct)
             ok_cnt += 1
         except Exception as e:
             _log.error(f"{ticker} score_ticker error: {e}")
@@ -815,6 +879,8 @@ def refresh_prices_only(
     except Exception:
         _user_overrides = {}
 
+    _industry_pct = compute_industry_exposure_percentiles(df)
+
     ok_cnt = 0
     for ticker in targets:
         price = prices.get(ticker)
@@ -853,6 +919,10 @@ def refresh_prices_only(
 
         try:
             result = score_ticker(ticker, data)
+            if result.ai_profile_key != "AI_CORE":
+                peer_pct = _industry_pct.get(ticker)
+                if peer_pct is not None:
+                    result = score_ticker(ticker, data, peer_industry_exposure=peer_pct)
             ok_cnt += 1
         except Exception as e:
             _log.error(f"{ticker} price_refresh score error: {e}")

@@ -842,8 +842,28 @@ def _external_consensus_report(ticker: str, base_data: dict, row: pd.Series, ove
         "color": color,
     }
 
+def _dim4_label(row: pd.Series) -> str:
+    """④ 维度该叫"AI暴露"还是"行业暴露"。
+
+    2026-09-18用户拍板"经典AI股才算AI暴露，其他的算行业暴露"之后，非
+    AI_CORE公司的这个子分不再统一是中性50——refresh_scores.py会在同类目
+    peer数量够(≥10)时换成quality_score同类目百分位。这里没有单独一列
+    记录"是否被替换过"，用 profile!=AI_CORE 且 分数!=50 做判定：真中性
+    50分（样本不够/AI_CORE本身刚好也算出50）时label还是"AI暴露"，跟原始
+    含义一致，不会显示误导性的"行业暴露0样本"。
+    """
+    try:
+        profile = str(row.get("ai_profile_key", "") or "")
+        score = float(row.get("ai_exposure_score", 50.0))
+    except (TypeError, ValueError):
+        return "AI暴露"
+    if profile != "AI_CORE" and abs(score - 50.0) > 1e-6:
+        return "行业暴露"
+    return "AI暴露"
+
+
 def make_radar(row: pd.Series, title: str = "") -> go.Figure:
-    cats  = ["估值", "成长", "质量", "AI暴露", "预期差"]
+    cats  = ["估值", "成长", "质量", _dim4_label(row), "预期差"]
     vals  = [
         row["valuation_score"],
         row["growth_score"],
@@ -880,7 +900,7 @@ def make_radar(row: pd.Series, title: str = "") -> go.Figure:
     return fig
 
 def make_score_bar_chart(row: pd.Series) -> go.Figure:
-    labels = ["估值", "成长", "质量", "AI暴露", "预期差"]
+    labels = ["估值", "成长", "质量", _dim4_label(row), "预期差"]
     values = [
         row["valuation_score"], row["growth_score"],
         row["quality_score"],   row["ai_exposure_score"],
@@ -916,7 +936,7 @@ def make_score_bar_chart(row: pd.Series) -> go.Figure:
 
 def render_print_score_visuals(row: pd.Series) -> str:
     """Render print-stable five-factor charts as native responsive SVG."""
-    labels = ["估值", "成长", "质量", "AI暴露", "预期差"]
+    labels = ["估值", "成长", "质量", _dim4_label(row), "预期差"]
     values = [
         float(row["valuation_score"]), float(row["growth_score"]),
         float(row["quality_score"]), float(row["ai_exposure_score"]),
@@ -2213,7 +2233,7 @@ elif page == "🔍 单股详情":
             ("估值", row["valuation_score"], "#2563A6"),
             ("成长", row["growth_score"], "#0F9D8A"),
             ("质量", row["quality_score"], "#2F7D4A"),
-            ("AI暴露", row["ai_exposure_score"], "#C88918"),
+            (_dim4_label(row), row["ai_exposure_score"], "#C88918"),
             ("预期差", row["expectation_gap_score"], "#B6536B"),
         ]
         _score_legend_html = "".join(
@@ -2777,7 +2797,12 @@ elif page == "⚖️ 对比分析":
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # ── 子分雷达叠加 ────────────────────────────────────
-    cats_radar = ["估值", "成长", "质量", "AI暴露", "预期差"]
+    # 两只票的④维度可能一个是真AI暴露、一个是行业暴露替代——一条共享轴
+    # 没法同时精确标两个含义，两边label不同时退回"AI暴露/行业暴露"，
+    # 不武断地只显示其中一个。
+    _dim4_1, _dim4_2 = _dim4_label(r1), _dim4_label(r2)
+    _dim4_shared = _dim4_1 if _dim4_1 == _dim4_2 else f"{_dim4_1}/{_dim4_2}"
+    cats_radar = ["估值", "成长", "质量", _dim4_shared, "预期差"]
     v1 = [r1["valuation_score"], r1["growth_score"], r1["quality_score"],
           r1["ai_exposure_score"], r1["expectation_gap_score"]]
     v2 = [r2["valuation_score"], r2["growth_score"], r2["quality_score"],
