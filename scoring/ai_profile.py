@@ -57,6 +57,17 @@ PROFILE_WEIGHTS = {
 CORE_ELIGIBLE_CATEGORIES = {
     "AI_CHIP",
     "AI_SOFTWARE",
+    # 2026-09-19 用户拍板扩大：MSFT/GOOGL/AMZN/META/AAPL(MEGA_TECH)和
+    # PANW/CRWD/FTNT/ZS/OKTA(CYBERSECURITY)确实有真实、非平凡的AI暴露。
+    # 已知风险：这几家的 ai_revenue_exposure_pct/ai_profit_exposure_pct
+    # 目前仍是人工估算/代理值（"AI收入/利润暴露均值"或"AI平台/产业链代理
+    # 值"），不像NVDA/MRVL/PLTR有SEC 10-Q/8-K自动提取支撑（confidence
+    # H/M）。用户已知晓这个数据质量差距、明确要求现在就放开，不是等数据
+    # 溯源升级之后再做——分类阈值(classify_ai_profile里的exposure>=0.30)
+    # 没变，所以不是整个类目一次性通过：同一批公司里AAPL(0.19)/FTNT
+    # (0.235)现有暴露值仍低于门槛，还是会走AI_ENABLED/行业暴露那条路。
+    "MEGA_TECH",
+    "CYBERSECURITY",
 }
 
 
@@ -141,9 +152,10 @@ def score_ai_role(
     read when one exists, otherwise a neutral baseline.
 
     2026-09-18 用户拍板："永远只在经典AI股里去算AI暴露，其他的就算行业暴露"——
-    不再用同一个中性50分把所有非核心AI公司糊在一起。profile_key仍然只有
-    AI_CHIP/AI_SOFTWARE能拿到AI_CORE（这个白名单本身是刻意设计，2026-09-19
-    确认过不扩大），但非核心公司现在有了第二条出路：peer_industry_score
+    不再用同一个中性50分把所有非核心AI公司糊在一起。profile_key能拿到
+    AI_CORE的类目见CORE_ELIGIBLE_CATEGORIES（2026-09-19一度确认不扩大，
+    同一天晚些时候用户又推翻这个决定，把MEGA_TECH/CYBERSECURITY加了进去，
+    见该常量上的注释），非核心公司现在有了第二条出路：peer_industry_score
     ——由refresh_scores.py在批处理层用同类目quality_score百分位算出来的
     "本行业内地位"读数，同类目样本不够（<5家）时仍然是None，退回中性50。
     """

@@ -39,13 +39,29 @@ def test_core_ai_company_keeps_ai_as_a_weighted_dimension():
     assert profile.bonus == 0.0
 
 
-@pytest.mark.parametrize("category", ["CYBERSECURITY", "SEMI_EQUIP", "MEGA_TECH"])
-def test_ai_beneficiary_categories_use_enabled_profile_not_core(category):
+def test_non_core_eligible_categories_still_use_enabled_profile_not_core():
+    # SEMI_EQUIP was never added to CORE_ELIGIBLE_CATEGORIES -- high exposure
+    # there still routes to AI_ENABLED (neutral/peer-industry treatment).
+    profile = classify_ai_profile(
+        {"ai_revenue_exposure_pct": 0.60, "ai_profit_exposure_pct": 0.70},
+        "SEMI_EQUIP",
+    )
+    assert profile.key == AI_ENABLED
+    assert profile.weights["ai_exposure"] == 0.20
+    assert profile.bonus == 0.0
+
+
+@pytest.mark.parametrize("category", ["CYBERSECURITY", "MEGA_TECH"])
+def test_newly_core_eligible_categories_route_to_core_above_threshold(category):
+    # 2026-09-19: user expanded CORE_ELIGIBLE_CATEGORIES to include
+    # MEGA_TECH/CYBERSECURITY despite their ai_revenue_exposure_pct still
+    # being manual estimates (not SEC-extracted like NVDA/MRVL/PLTR) --
+    # a known, accepted data-quality tradeoff, not an oversight.
     profile = classify_ai_profile(
         {"ai_revenue_exposure_pct": 0.60, "ai_profit_exposure_pct": 0.70},
         category,
     )
-    assert profile.key == AI_ENABLED
+    assert profile.key == AI_CORE
     assert profile.weights["ai_exposure"] == 0.20
     assert profile.bonus == 0.0
 
@@ -85,6 +101,29 @@ def test_low_ai_score_uses_neutral_baseline_for_enabled_company():
         dim_weights=profile.weights, positive_adjustment=profile.bonus,
     )
     assert low_ai == high_ai
+
+
+def test_msft_like_core_profile_lets_ai_score_actually_move_final_score():
+    # Contrast with test_low_ai_score_uses_neutral_baseline_for_enabled_company:
+    # once MEGA_TECH is core-eligible, an exposure that clears the 0.30
+    # threshold (MSFT's real ai_revenue_exposure_pct is ~0.365) means the AI
+    # dimension is no longer routed to a neutral/peer baseline -- it can and
+    # should move the score, same as for AI_CHIP/AI_SOFTWARE.
+    profile = classify_ai_profile({"ai_revenue_exposure_pct": 0.365}, "MEGA_TECH")
+    assert profile.key == AI_CORE
+    common = {
+        "valuation": 70, "growth": 55, "quality": 75,
+        "expectation_gap": 50, "momentum": 60,
+    }
+    low_ai = compute_base_score(
+        {**common, "ai_exposure": score_ai_role(0, profile.key)}, 4, False,
+        dim_weights=profile.weights, positive_adjustment=profile.bonus,
+    )
+    high_ai = compute_base_score(
+        {**common, "ai_exposure": score_ai_role(100, profile.key)}, 4, False,
+        dim_weights=profile.weights, positive_adjustment=profile.bonus,
+    )
+    assert low_ai != high_ai
 
 
 def test_ftnt_like_enabled_profile_does_not_receive_quality_weight_transfer():
