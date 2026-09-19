@@ -129,10 +129,20 @@ def render_status() -> None:
                     _s.update(label=msg)
                 try:
                     _summ = _casc.run_sync_cascade(step=_sync_step)
-                    _stat.update(label="✅ 账户同步 + 级联完成", state="complete")
+                    # 没抛异常 ≠ 同步成功：级联可能在"未登录/Chrome 起不来"
+                    # 时提前中止并返回一份全 0 的 summary。以前这里无条件标
+                    # "✅ 完成"，中止被渲染成成功。
+                    if _summ.get("status", "ok") != "ok":
+                        _stat.update(
+                            label=f"⏸ 同步未完成：{_summ.get('halt_reason', '')}",
+                            state="error")
+                    else:
+                        _stat.update(label="✅ 账户同步 + 级联完成", state="complete")
                 except Exception as _e:
                     _stat.update(label=f"❌ 错误: {_e}", state="error")
-            if _summ:
+            if _summ and _summ.get("status", "ok") != "ok":
+                st.warning(f"⏸ {_summ.get('halt_reason', '同步未完成')}")
+            elif _summ:
                 _eq  = _summ.get("equity",       0)
                 _bd  = _summ.get("bd_pct",        0)
                 _pnl = _summ.get("pnl",           0)

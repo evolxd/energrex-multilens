@@ -2714,6 +2714,7 @@ _CDP_ADDR         = "localhost:9222"
 _FT_BALANCE_URL   = "https://invest.firstrade.com/app/balance"
 _FT_HISTORY_URL   = "https://invest.firstrade.com/app/history"
 _FT_POSITIONS_URL = "https://invest.firstrade.com/app/positions"
+_FT_LOGIN_URL     = "https://invest.firstrade.com/cgi-bin/login"
 _POSITIONS_WRITE  = True    # 每次同步后自动 UPSERT options_positions
 
 # JS：从页面纯文本提取余额数字
@@ -3687,6 +3688,35 @@ def _launch_chrome_cdp() -> bool:
     return False
 
 
+def _open_login_tab() -> bool:
+    """在 CDP 连着的那个 Chrome 里开一个 Firstrade 登录标签页并置前。
+
+    走 CDP 的 HTTP 接口（PUT /json/new?url=...），不需要 WebDriver——调用点
+    在"还没建立 driver"的阶段，而且这一步失败不该阻断同步流程，只是退化成
+    让用户自己开页面。
+    """
+    import urllib.parse
+    try:
+        url = f"http://{_CDP_ADDR}/json/new?{urllib.parse.quote(_FT_LOGIN_URL, safe=':/?=&')}"
+        req = urllib.request.Request(url, method="PUT")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            tab = json.loads(resp.read())
+        target_id = tab.get("id")
+        _log.info(f"[chrome] 已打开登录页 tab={target_id}")
+        if target_id:
+            try:  # 置前，否则新标签页可能开在后台，用户看不见
+                activate = f"http://{_CDP_ADDR}/json/activate/{target_id}"
+                with urllib.request.urlopen(activate, timeout=3):
+                    pass
+            except Exception as _act_exc:
+                _log.debug(f"[chrome] activate 失败（标签页已开）: {_act_exc}")
+        return True
+    except Exception as exc:
+        # 新版 Chrome 对 PUT /json/new 有过收紧，失败就退回让用户手动开
+        _log.warning(f"[chrome] 打开登录页失败: {exc}")
+        return False
+
+
 def _check_ft_login() -> bool:
     """
     检测是否已登录 Firstrade。
@@ -3736,7 +3766,15 @@ def _ensure_chrome(step=None) -> str:
         return "ready"
     else:
         _s("🔐 Firstrade 需要登录")
-        _s("   → 请在弹出的 Chrome 窗口完成登录，然后再次点击「⚡ 同步账户」")
+        # 2026-09-19：这里以前只打印"请在弹出的 Chrome 窗口完成登录"就返回，
+        # 但没有任何代码去弹那个窗口——唯一会导航到 Firstrade 的是
+        # _launch_chrome_cdp()，而它只在 Chrome 完全没运行时才跑。Chrome 已经
+        # 开着（绝大多数情况）时走的是上面的 else 分支，什么都不做，于是用户
+        # 盯着一个根本不存在的登录窗口等，同步永远不会成功。现在真的去开。
+        if _open_login_tab():
+            _s("   → 已在 Chrome 中打开 Firstrade 登录页，登录完成后再次点击「⚡ 同步账户」")
+        else:
+            _s(f"   → 请手动在 Chrome 打开 {_FT_LOGIN_URL} 登录，然后再次点击「⚡ 同步账户」")
         return "needs_login"
 
 

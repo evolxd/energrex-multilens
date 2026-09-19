@@ -314,17 +314,26 @@ def run_sync_cascade(step=None) -> dict:
         if step:
             step(msg)
 
+    # status 让调用方能区分"跑完了"和"根本没跑"。以前这两种情况返回的
+    # dict 长得一模一样（全 0），_sidebar.py 只要没抛异常就标成
+    # "✅ 账户同步 + 级联完成" 并弹绿框"净值 $0 · 盈亏 $0"——中止被渲染成
+    # 成功，用户只会以为账户真的是 0。
     summary: dict = {"equity": 0.0, "bd_pct": 0.0, "pnl": 0.0,
-                     "exit_signals": 0, "kelly_strategies": 0}
+                     "exit_signals": 0, "kelly_strategies": 0,
+                     "status": "ok", "halt_reason": ""}
     am = _get_am()
 
     # 0 ── 确保 Chrome 就绪（自动启动 + 登录检测）
     chrome_status = am["_ensure_chrome"](_s)
     if chrome_status == "needs_login":
         _s("⏸  同步暂停：请登录后再次点击「⚡ 同步账户」")
+        summary["status"] = "needs_login"
+        summary["halt_reason"] = "Firstrade 未登录——已打开登录页，登录后再点一次同步"
         return summary
     if chrome_status == "no_chrome":
         _s("❌ 无法启动 Chrome，同步取消")
+        summary["status"] = "no_chrome"
+        summary["halt_reason"] = "Chrome 未启动（未找到可执行文件或 CDP 15s 未就绪）"
         return summary
 
     # 1 ── 账户同步（含步骤 1.5 持仓对比）
