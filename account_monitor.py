@@ -303,6 +303,8 @@ from account.options import option_market_value as _option_market_value
 from account.options import OCC_RE as _OCC_RE
 from account.options import parse_occ as _parse_occ
 from account.options import parse_occ_sym as _parse_occ_sym
+from account.positions_xlsx import parse_stocks_xlsx as _parse_stocks_xlsx
+from account.positions_xlsx import stock_snapshot_rows
 from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
 from account.risk import bs_greeks as _bs_greeks
 from account.risk import build_recommendations as _build_recommendations
@@ -3020,6 +3022,56 @@ def _parse_positions_xlsx(xlsx_path: pathlib.Path, acct_id: str) -> list[dict]:
     return results
 
 
+def _sync_stocks_from_xlsx(xlsx_path: pathlib.Path, acct_id: str) -> dict:
+    """把 xlsx 股票 sheet 同步进 positions 表，返回简报 dict。
+
+    解析不到任何股票行时什么都不写——宁可保留上一份旧快照，也不要因为
+    一次 Firstrade 改版/下载残缺就把整个股票组合清空成"已清仓"。
+    """
+    out = {"ok": False, "count": 0, "closed": [], "summary": ""}
+    try:
+        parsed = _parse_stocks_xlsx(xlsx_path)
+        if not parsed:
+            out["summary"] = "xlsx 未解析到股票行，保留原有快照不动"
+            _log.warning(f"[pos-xl] {out['summary']}")
+            return out
+
+        conn = _db()
+        previous = [
+            r[0] for r in conn.execute(
+                """
+                SELECT symbol FROM positions p1
+                WHERE p1.account_id = ?
+                  AND p1.position_type = 'stock'
+                  AND p1.sync_time = (
+                      SELECT MAX(p2.sync_time) FROM positions p2
+                      WHERE p2.symbol = p1.symbol AND p2.account_id = p1.account_id
+                  )
+                  AND IFNULL(p1.quantity, 0) != 0
+                """,
+                (acct_id,),
+            ).fetchall()
+        ]
+        conn.close()
+
+        rows = stock_snapshot_rows(parsed, previous)
+        if _POSITIONS_WRITE:
+            _save_positions(acct_id, rows)
+
+        out["ok"] = True
+        out["count"] = len(parsed)
+        out["closed"] = [r["symbol"] for r in rows if r["quantity"] == 0]
+        out["summary"] = (
+            f"[XLSX] 股票 {len(parsed)} 只已写入"
+            + (f"，清仓 {len(out['closed'])} 只: {out['closed']}" if out["closed"] else "")
+        )
+        _log.info(f"[pos-xl] {out['summary']}")
+    except Exception as e:
+        out["summary"] = f"股票同步出错: {e}"
+        _log.error(f"[pos-xl] {out['summary']}")
+    return out
+
+
 def _scrape_and_diff_positions(driver, acct_id: str) -> dict:
     """
     步骤 1.5：优先通过 xlsx 下载同步持仓，失败则回退 JS 抓取。
@@ -3037,6 +3089,10 @@ def _scrape_and_diff_positions(driver, acct_id: str) -> dict:
             new_rows = _parse_positions_xlsx(xlsx_path, acct_id)
             report["strategy"] = "XLSX"
             report["raw_url"]  = str(xlsx_path)
+            # 股票走独立一条线，就放在这里：下面那段期权逻辑可能回退 JS、也可能
+            # 提前 return（"持仓页 JS 返回空"等），挂在后面会被一起跳过。只要
+            # xlsx 下下来了，股票就一定同步——这正是它此前长期停更的原因。
+            report["stocks"] = _sync_stocks_from_xlsx(xlsx_path, acct_id)
 
         if not new_rows:
             # ── 回退：JS 抓取 ─────────────────────────────
