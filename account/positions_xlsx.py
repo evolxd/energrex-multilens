@@ -133,6 +133,89 @@ def parse_stocks_xlsx(xlsx_path: pathlib.Path) -> list[dict]:
     return results
 
 
+def parse_options_xlsx(xlsx_path: pathlib.Path) -> list[dict]:
+    """Return `options_positions` row dicts for every option line in the export.
+
+    Ported here from `account_monitor._parse_positions_xlsx` so the offline
+    importer can reach it: that module executes a Streamlit page on import, so
+    a command-line tool could not use the parser while it lived there. The
+    account_monitor entry point now delegates to this function, keeping one
+    implementation.
+
+    A negative quantity means a short leg.
+    """
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(str(xlsx_path), data_only=True, read_only=True)
+    try:
+        sheet = next(
+            (workbook[name] for name in workbook.sheetnames
+             if any(hint in name or hint in name.lower() for hint in _OPTION_SHEET_HINTS)),
+            None,
+        )
+        if sheet is None:
+            return []
+        rows = list(sheet.iter_rows(values_only=True))
+    finally:
+        workbook.close()
+
+    header: list[str] | None = None
+    header_index = 0
+    for index, row in enumerate(rows):
+        values = [str(cell or "").strip() for cell in row]
+        if any(key in values for key in _HEADER_KEYS):
+            header, header_index = values, index
+            break
+    if header is None:
+        return []
+
+    column = {name: i for i, name in enumerate(header)}
+
+    def cell(row: tuple, *names: str):
+        for name in names:
+            index = column.get(name)
+            if index is not None and index < len(row):
+                value = row[index]
+                if value is not None and str(value).strip():
+                    return value
+        return None
+
+    results: list[dict] = []
+    seen: set[str] = set()
+    for row in rows[header_index + 1:]:
+        raw_symbol = cell(row, "代号", "Symbol")
+        if not raw_symbol:
+            continue
+        symbol = str(raw_symbol).strip().upper().replace(" ", "")
+        if not symbol or symbol in seen:
+            continue
+        occ = parse_occ_sym(symbol)
+        if not occ:
+            continue  # a stock row that wandered into the options sheet
+
+        quantity = _to_number(cell(row, "数量", "Quantity", "Qty"))
+        if quantity is None:
+            continue
+
+        results.append({
+            "symbol": symbol,
+            "direction": "short" if quantity < 0 else "long",
+            "strike": occ["strike"],
+            "expiry": occ["expiry"],
+            "underlying": occ["underlying"],
+            "quantity": int(quantity),          # signed: negative = short
+            "unit_cost": _to_number(cell(row, "Unit Cost", "单位成本", "Avg Cost")),
+            "current_price": _to_number(cell(row, "Last Price", "价格", "Price", "Last")),
+            "market_value": _to_number(cell(row, "Market Value", "市值", "MktVal")),
+            "day_pnl": _to_number(cell(row, "Day Chg $", "$ Day Chg", "当日盈亏")),
+            "total_pnl": _to_number(
+                cell(row, "$ Gain/Loss", "益损 $", "益损$", "Gain/Loss $", "P&L")),
+        })
+        seen.add(symbol)
+
+    return results
+
+
 def stock_snapshot_rows(parsed: list[dict], previous_symbols: Iterable[str]) -> list[dict]:
     """Combine the xlsx snapshot with explicit zero rows for closed positions.
 

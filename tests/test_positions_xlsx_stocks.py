@@ -133,3 +133,48 @@ def test_snapshot_keeps_every_current_holding():
               for s in ("AMD", "ETHU", "VST")]
     rows = stock_snapshot_rows(parsed, previous_symbols=[])
     assert {r["symbol"] for r in rows} == {"AMD", "ETHU", "VST"}
+
+
+# ── options sheet ────────────────────────────────────────────────────────────
+
+def test_options_are_parsed_with_signed_quantities(firstrade_xlsx):
+    from account.positions_xlsx import parse_options_xlsx
+    rows = parse_options_xlsx(firstrade_xlsx)
+    assert [r["symbol"] for r in rows] == ["NVDA270617C00230000"]
+    leg = rows[0]
+    assert leg["direction"] == "long"
+    assert leg["quantity"] == 1
+    assert leg["underlying"] == "NVDA"
+    assert leg["strike"] == 230.0
+    assert leg["expiry"] == "2027-06-17"
+
+
+def test_short_legs_keep_their_negative_quantity(tmp_path):
+    from account.positions_xlsx import parse_options_xlsx
+    wb = openpyxl.Workbook()
+    wb.active.title = "Options"
+    wb.active.append(OPTION_HEADER)
+    wb.active.append(["AVGO261016P00330000", "Broadcom Inc.", -3, 7.6, -2280.0])
+    path = tmp_path / "short.xlsx"
+    wb.save(path)
+
+    leg = parse_options_xlsx(path)[0]
+    assert leg["quantity"] == -3
+    assert leg["direction"] == "short"
+    assert leg["market_value"] == -2280.0
+
+
+def test_stock_rows_do_not_leak_into_the_options_table(firstrade_xlsx):
+    from account.positions_xlsx import parse_options_xlsx
+    symbols = [r["symbol"] for r in parse_options_xlsx(firstrade_xlsx)]
+    assert "AMD" not in symbols and "ETHU" not in symbols
+
+
+def test_missing_options_sheet_yields_nothing(tmp_path):
+    from account.positions_xlsx import parse_options_xlsx
+    wb = openpyxl.Workbook()
+    wb.active.title = "Stocks ETFs"
+    wb.active.append(STOCK_HEADER)
+    path = tmp_path / "stocks_only.xlsx"
+    wb.save(path)
+    assert parse_options_xlsx(path) == []

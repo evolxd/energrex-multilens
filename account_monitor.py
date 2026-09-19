@@ -2959,105 +2959,27 @@ def _parse_scraped_rows(raw: dict, acct_id: str) -> list[dict]:
 
 
 def _parse_positions_xlsx(xlsx_path: pathlib.Path, acct_id: str) -> list[dict]:
+    """期权持仓行。解析本体在 account/positions_xlsx.py。
+
+    2026-09-19 抽走：原实现写在这里，而本模块 import 时会执行整个 Streamlit
+    页面，命令行工具（scripts/import_positions_offline.py）没法复用它。抽到
+    account/ 之后两边共用一份，行为不变；这里补上调用方依赖的
+    account_id/_strategy/_raw_cells 三个字段和日志。
     """
-    解析 Firstrade positions Excel 的期权 sheet，返回 options_positions 行列表。
-    中文表头列：代号(0) 详细说明(1) 数量(2) 价格(3) ... 单位成本(18) 益损$(20) ... 到期日(28)
-    数量为负表示空头。
-    """
-    import openpyxl
-    results: list[dict] = []
+    from account.positions_xlsx import parse_options_xlsx
+
     try:
-        wb = openpyxl.load_workbook(str(xlsx_path), data_only=True, read_only=True)
-        opt_sheet = None
-        for name in wb.sheetnames:
-            if "期权" in name or "option" in name.lower():
-                opt_sheet = wb[name]
-                break
-        if opt_sheet is None:
-            _log.warning(f"[pos-xl] 未找到期权 sheet，可用: {wb.sheetnames}")
-            wb.close()
-            return results
-
-        rows = list(opt_sheet.iter_rows(values_only=True))
-        wb.close()
-
-        # 找表头行（含"代号"或"Symbol"的行）
-        hdr: list[str] | None = None
-        hdr_idx = 0
-        for i, row in enumerate(rows):
-            vals = [str(v or "").strip() for v in row]
-            if "代号" in vals or "Symbol" in vals:
-                hdr = vals
-                hdr_idx = i
-                break
-        if hdr is None:
-            _log.warning("[pos-xl] 未找到表头行")
-            return results
-
-        col: dict[str, int] = {v: i for i, v in enumerate(hdr)}
-
-        def _get(row: tuple, *names: str):
-            for n in names:
-                idx = col.get(n)
-                if idx is not None and idx < len(row):
-                    v = row[idx]
-                    if v is not None and str(v).strip():
-                        return v
-            return None
-
-        def _num(v) -> float | None:
-            if v is None:
-                return None
-            try:
-                return float(str(v).replace(",", "").replace("$", "").strip())
-            except (ValueError, TypeError):
-                return None
-
-        seen: set[str] = set()
-        for row in rows[hdr_idx + 1:]:
-            sym_raw = _get(row, "代号", "Symbol")
-            if not sym_raw:
-                continue
-            sym = str(sym_raw).strip().upper().replace(" ", "")
-            if not sym or sym in seen:
-                continue
-            occ = _parse_occ_sym(sym)
-            if not occ:
-                continue  # 跳过非期权行（股票等）
-
-            qty       = _num(_get(row, "数量", "Quantity", "Qty"))
-            price     = _num(_get(row, "Last Price", "价格", "Price", "Last"))
-            unit_cost = _num(_get(row, "Unit Cost", "单位成本", "Avg Cost"))
-            mv        = _num(_get(row, "Market Value", "市值", "MktVal"))
-            day_pnl   = _num(_get(row, "Day Chg $", "$ Day Chg", "当日盈亏"))
-            total_pnl = _num(_get(row, "$ Gain/Loss", "益损 $", "益损$", "Gain/Loss $", "P&L"))
-
-            if qty is None:
-                continue
-
-            direction = "short" if qty < 0 else "long"
-            results.append({
-                "account_id":    acct_id,
-                "symbol":        sym,
-                "direction":     direction,
-                "strike":        occ["strike"],
-                "expiry":        occ["expiry"],
-                "underlying":    occ["underlying"],
-                "quantity":      int(qty),   # signed: negative = short position
-                "unit_cost":     unit_cost,
-                "current_price": price,
-                "market_value":  mv,
-                "day_pnl":       day_pnl,
-                "total_pnl":     total_pnl,
-                "_strategy":     "XLSX",
-                "_raw_cells":    [],
-            })
-            seen.add(sym)
-
-        _log.info(f"[pos-xl] 解析完成: {len(results)} 个期权持仓 from {xlsx_path.name}")
+        rows = parse_options_xlsx(xlsx_path)
     except Exception as e:
         _log.error(f"[pos-xl] 解析出错: {e}")
-    return results
+        return []
+
+    for row in rows:
+        row["account_id"] = acct_id
+        row["_strategy"] = "XLSX"
+        row["_raw_cells"] = []
+    _log.info(f"[pos-xl] 解析完成: {len(rows)} 个期权持仓 from {xlsx_path.name}")
+    return rows
 
 
 def _sync_stocks_from_xlsx(xlsx_path: pathlib.Path, acct_id: str) -> dict:
