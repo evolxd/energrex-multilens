@@ -63,6 +63,43 @@ ACCT_CFG = _list_accounts()
 _ET  = pytz.timezone("America/New_York")
 _log = logging.getLogger("energrex.account")
 
+
+def _install_log_file_handler() -> None:
+    """把 energrex.* 的日志落盘到 data/logs/account_monitor.log。
+
+    2026-09-19：在此之前这个 logger 从未配过 handler，也没有 basicConfig。
+    Python 的 lastResort 只放行 WARNING 以上到 stderr，于是同步链路里所有
+    _log.info() 诊断——"[pos-dl] 策略3 触发器"、"下载按钮已点击"、
+    "✅ 文件名"——全部被丢弃，连 warning 也只飘在跑 streamlit 的终端里、
+    关掉就没了。持仓从 09-14 起停更 5 天没人发现，正是因为失败时没有任何
+    可回溯的记录。
+
+    Streamlit 每次 rerun 都会重新走一遍模块顶层，靠 handler 上的标记做幂等。
+    """
+    root = logging.getLogger("energrex")
+    marker = "_energrex_file_handler"
+    if any(getattr(h, marker, False) for h in root.handlers):
+        return
+    try:
+        log_dir = pathlib.Path(__file__).parent / "data" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        from logging.handlers import RotatingFileHandler
+        handler = RotatingFileHandler(
+            log_dir / "account_monitor.log",
+            maxBytes=2_000_000, backupCount=3, encoding="utf-8",
+        )
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-7s %(name)s  %(message)s"))
+        setattr(handler, marker, True)
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+    except Exception:
+        # 日志落盘失败绝不能拖垮账户监控本身
+        pass
+
+
+_install_log_file_handler()
+
 _MD_BASE = "https://api.marketdata.app/v1"
 _MD_KEY  = os.environ.get("MARKETDATA_API_KEY", "")
 
@@ -3391,13 +3428,25 @@ def _download_positions_xlsx(driver, download_dir: pathlib.Path = _DOWNLOADS) ->
                 "downloadPath":  str(download_dir),
                 "eventsEnabled": True,
             })
-        except Exception:
-            pass
+        except Exception as _dl_exc:
+            # 以前这里是裸 except: pass。这条命令失败时 Chrome 会继续用它自己的
+            # 下载目录（通常是 ~/Downloads 根目录），而下面的检测只扫
+            # download_dir，于是"文件其实下下来了、程序却报超时"——2026-09-10
+            # 改成每账户子文件夹之后，这个静默失败就成了持仓停更的一条路径。
+            _log.warning(f"[pos-dl] setDownloadBehavior 失败（将同时扫描默认下载目录）: {_dl_exc}")
+
+        # 扫描目标目录 + 全局 ~/Downloads 根目录：即便 CDP 没能改掉 Chrome 的
+        # 下载位置，也要能认出刚下下来的文件，而不是干等到超时。
+        search_dirs: list[pathlib.Path] = [download_dir]
+        if _DOWNLOADS.resolve() != download_dir.resolve():
+            search_dirs.append(_DOWNLOADS)
 
         # 快照现有 xlsx 的修改时间，用于识别新增或被覆盖的文件
         _t_start = time.time()
         before_mtimes: dict[pathlib.Path, float] = {
-            f: f.stat().st_mtime for f in download_dir.glob("*.xlsx")
+            f: f.stat().st_mtime
+            for d in search_dirs if d.exists()
+            for f in d.glob("*.xlsx")
         }
 
         driver.switch_to.new_window("tab")
@@ -3542,14 +3591,17 @@ def _download_positions_xlsx(driver, download_dir: pathlib.Path = _DOWNLOADS) ->
         while time.time() < deadline:
             time.sleep(0.5)
             candidates: list[pathlib.Path] = []
-            for f in download_dir.glob("*.xlsx"):
-                try:
-                    mtime = f.stat().st_mtime
-                    old_mtime = before_mtimes.get(f)
-                    if old_mtime is None or mtime > _t_start:
-                        candidates.append(f)
-                except OSError:
-                    pass
+            for d in search_dirs:
+                if not d.exists():
+                    continue
+                for f in d.glob("*.xlsx"):
+                    try:
+                        mtime = f.stat().st_mtime
+                        old_mtime = before_mtimes.get(f)
+                        if old_mtime is None or mtime > _t_start:
+                            candidates.append(f)
+                    except OSError:
+                        pass
             pos_files = [f for f in candidates if "position" in f.name.lower()]
             hits = pos_files or candidates
             if hits:
@@ -3565,9 +3617,22 @@ def _download_positions_xlsx(driver, download_dir: pathlib.Path = _DOWNLOADS) ->
 
         _close_tab(driver)
         if found:
+            if found.parent.resolve() != download_dir.resolve():
+                # Chrome 没听 CDP 的下载目录设置，文件落在了别处。搬回账户
+                # 专属目录，后续按目录判断账户归属的逻辑才不会串账户。
+                target = download_dir / found.name
+                try:
+                    found.replace(target)
+                    _log.warning(
+                        f"[pos-dl] xlsx 落在 {found.parent}（非账户目录），已移入 {download_dir}")
+                    found = target
+                except OSError as _mv_exc:
+                    _log.warning(f"[pos-dl] 移动 xlsx 失败，就地使用 {found}: {_mv_exc}")
             _log.info(f"[pos-dl] ✅ {found.name}  {found.stat().st_size} bytes")
         else:
-            _log.warning("[pos-dl] 等待 xlsx 超时（30s）")
+            _log.warning(
+                "[pos-dl] 等待 xlsx 超时（30s）——已扫描: "
+                + ", ".join(str(d) for d in search_dirs))
         return found
 
     except Exception as e:
@@ -3825,8 +3890,28 @@ def _auto_sync(acct_id: str = "account_1"):
         ss["bal_ok"]      = bal_ok
         ss["csv_ok"]      = csv_ok
         ss["last_time"]   = datetime.datetime.now(_ET)
-        ss["last_status"] = "ok" if bal_ok else "partial"
-        ss["last_error"]  = "" if bal_ok else "余额页面数据解析失败，请检查页面结构"
+
+        # 股票是否真的更新过，必须进入整体状态。此前 last_status 只看 bal_ok：
+        # xlsx 下载失败 → 静默回退 JS → JS 那条路也只写 options_positions →
+        # 股票表原地不动，而余额抓取成功就报绿灯。用户据此信任了 5 天的旧持仓，
+        # 期间门③/门④拿缺票的数据在算集中度。
+        _stocks = (ss.get("positions_diff") or {}).get("stocks") or {}
+        stocks_ok = bool(_stocks.get("ok"))
+        ss["stocks_ok"] = stocks_ok
+
+        if not bal_ok:
+            ss["last_status"] = "partial"
+            ss["last_error"]  = "余额页面数据解析失败，请检查页面结构"
+        elif not stocks_ok:
+            ss["last_status"] = "partial"
+            ss["last_error"]  = (
+                "股票持仓未更新（xlsx 未下载或未解析到股票行）："
+                + (_stocks.get("summary") or "xlsx 下载失败，已回退 JS，而 JS 只同步期权")
+                + " — 门③硬约束/门④下单前检查正在使用旧的股票持仓"
+            )
+        else:
+            ss["last_status"] = "ok"
+            ss["last_error"]  = ""
     except Exception as e:
         ss["last_status"] = "error"
         ss["last_error"]  = str(e)
