@@ -4246,6 +4246,28 @@ if _war_snap.get("data_stale"):
     _age_h = _war_snap.get("data_age_hours") or 0
     st.error(f"🔴 **持仓数据已 {_age_h/24:.1f} 天未同步** — 上面的压力测试结果基于旧持仓组合，"
              f"如果这期间有调仓，当前数字不代表真实风险，请先同步最新持仓再参考")
+
+# 净值曲线缺口 —— 跟上面那条是两回事：上面看的是"最新一次同步多久以前"，
+# 中间断掉的日子只要今天补上一次同步就不再报警，缺口却已经永久留在曲线里。
+# 这里回答的是"曲线到底缺了哪几天"。
+try:
+    from account.nav_continuity import analyse as _wr_nav_analyse
+    from account.nav_continuity import load_nav_dates as _wr_load_nav_dates
+    _wr_conn = _db()
+    try:
+        _wr_nav_dates = _wr_load_nav_dates(_wr_conn, _war_acct_id)
+    finally:
+        _wr_conn.close()
+    _wr_cont = _wr_nav_analyse(_wr_nav_dates)
+    if _wr_cont.gaps:
+        _wr_recent = "　".join(g.label() for g in _wr_cont.gaps[-3:])
+        st.warning(
+            f"📉 **净值曲线缺 {_wr_cont.missing} 个交易日**（覆盖率 "
+            f"{_wr_cont.coverage_pct}%）　最近缺口：{_wr_recent}"
+            f"　—— 这些点事后补不回来，详见「交易绩效」页"
+        )
+except Exception as _wr_nav_exc:  # noqa: BLE001 - 诊断不该拖垮作战室
+    _log.warning(f"[nav] 作战室曲线完整性检查失败: {_wr_nav_exc}")
 _iv_fb_now = _war_snap.get("iv_fallback_symbols") or []
 if _iv_fb_now:
     st.caption(f"⚠️ {'、'.join(_iv_fb_now)} 未取到实时 IV，压力测试对其使用了默认值 30%，"
@@ -5285,6 +5307,41 @@ with _pos_tabs[1]:
 
         # ── QQQ 对比（切换视图）──
         st.divider()
+
+        # ── 曲线完整性：缺了哪几天，而不只是"最后一次多久以前" ──────────
+        # daily_nav 一天一个点，且只有当天同步成功才写。作战室原有的
+        # "持仓数据已 N 天未同步" 只看最新一行的年龄——中间断了四天、今天
+        # 又成功同步一次，那条警告就恢复绿色，缺口却永远留在曲线里（事后
+        # 补不回来：持仓 xlsx 里没有现金和净值）。这里直接把缺的交易日列出来。
+        try:
+            from account.nav_continuity import analyse as _nav_analyse
+            from account.nav_continuity import load_nav_dates as _load_nav_dates
+            _nav_conn = _db()
+            try:
+                _nav_dates = _load_nav_dates(_nav_conn, _perf_acct_id)
+            finally:
+                _nav_conn.close()
+            _nav_cont = _nav_analyse(_nav_dates)
+            if _nav_cont.gaps:
+                _gap_lines = "　".join(g.label() for g in _nav_cont.gaps[-6:])
+                _more = "" if len(_nav_cont.gaps) <= 6 else f"（仅显示最近 6 段，共 {len(_nav_cont.gaps)} 段）"
+                st.warning(
+                    f"📉 **净值曲线缺 {_nav_cont.missing} 个交易日**"
+                    f"（覆盖率 {_nav_cont.coverage_pct}%，"
+                    f"{_nav_cont.first}~{_nav_cont.last} 实录 {_nav_cont.recorded}/"
+                    f"{_nav_cont.expected} 天）\n\n"
+                    f"缺口：{_gap_lines}{_more}\n\n"
+                    f"缺口那几天没有任何同步成功。这些点事后补不回来——"
+                    f"持仓 xlsx 不含现金/净值，只能靠恢复同步保证之后不再断，"
+                    f"或用月度对账单 PDF 取月末净值做锚点。"
+                )
+            elif _nav_cont.expected:
+                st.caption(
+                    f"✅ 净值曲线连续：{_nav_cont.first} ~ {_nav_cont.last}，"
+                    f"{_nav_cont.recorded} 个交易日无缺口")
+        except Exception as _nav_exc:  # noqa: BLE001 - 诊断信息不该拖垮绩效页
+            _log.warning(f"[nav] 曲线完整性检查失败: {_nav_exc}")
+
         _bm_sel_col, _bm_alpha_col = st.columns([3, 1])
         with _bm_sel_col:
             _bm_view = st.selectbox(
