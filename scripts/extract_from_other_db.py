@@ -26,12 +26,35 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Tables worth reporting on when deciding what else is stranded in the old copy.
-_SURVEY_TABLES = (
-    "accounts", "account_balance", "positions", "options_positions",
-    "transactions", "daily_nav", "option_realized_trades", "daily_briefing",
-    "discipline_signals",
-)
+# Table -> the column that says when each row is about, used to compare the two
+# copies by period rather than by row count alone. Two databases holding 300
+# rows each are a very different problem depending on whether they cover the
+# same dates or different ones.
+_SURVEY_TABLES: dict[str, str | None] = {
+    "accounts": None,
+    "account_balance": "sync_time",
+    "positions": "sync_time",
+    "options_positions": "last_updated",
+    "transactions": "trade_date",
+    "daily_nav": "date",
+    "option_realized_trades": "close_date",
+    "daily_briefing": "date",
+    "discipline_signals": "first_seen_date",
+}
+
+# What each table is, and what moving it would actually buy. Written out because
+# "transactions: 1,240 rows" does not tell you whether it is worth the risk.
+_TABLE_NOTES = {
+    "accounts": "账户名册。搬过来才有那 10 个账户位",
+    "account_balance": "每次同步的净值/现金快照。净值曲线的原料",
+    "positions": "股票持仓历史快照",
+    "options_positions": "期权当前持仓（每次同步全量替换，只有当下这一份）",
+    "transactions": "成交流水。FIFO 配对和已实现盈亏的唯一来源，缺了算不准胜率",
+    "daily_nav": "每日净值点。收益曲线直接读这张表，缺口补不回来",
+    "option_realized_trades": "已平仓期权的配对结果。Kelly 统计和绩效的基础",
+    "daily_briefing": "每日简报快照。过期数据，重新生成即可，不值得搬",
+    "discipline_signals": "纪律信号记录。门⑤的响应率统计靠它",
+}
 
 
 def _resolve_db(target: str) -> pathlib.Path:
@@ -55,14 +78,71 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
-def survey(conn: sqlite3.Connection, label: str) -> None:
-    print(f"\n── {label} ──")
-    for table in _SURVEY_TABLES:
-        if not _table_exists(conn, table):
-            print(f"  {table:<24} （无此表）")
-            continue
-        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        print(f"  {table:<24} {count:>7} 行")
+def _count(conn: sqlite3.Connection, table: str) -> int | None:
+    if not _table_exists(conn, table):
+        return None
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+def _span(conn: sqlite3.Connection, table: str, column: str | None) -> str:
+    """Earliest..latest value of the table's date column, for period comparison."""
+    if not column or not _table_exists(conn, table):
+        return ""
+    try:
+        row = conn.execute(
+            f"SELECT MIN({column}), MAX({column}) FROM {table} "
+            f"WHERE {column} IS NOT NULL AND {column} != ''"
+        ).fetchone()
+    except sqlite3.Error:
+        return ""
+    if not row or not row[0]:
+        return ""
+    return f"{str(row[0])[:10]}~{str(row[1])[:10]}"
+
+
+def _verdict(src_n: int | None, dst_n: int | None, table: str,
+             src_span: str, dst_span: str) -> str:
+    """Whether this table is worth moving, stated plainly.
+
+    Row counts alone cannot answer it: 300 rows in each copy means something
+    different depending on whether the two cover the same dates or different
+    ones. Overlap needs a human; disjoint history is usually just missing data.
+    """
+    if table == "daily_briefing":
+        return "✗ 不必搬（过期快照，重新生成即可）"
+    if table == "accounts":
+        # 没有时间列，而且导入按 id 匹配、已存在的一律跳过，不存在重叠风险。
+        if not src_n:
+            return "— 源库没有账户"
+        extra = src_n - (dst_n or 0)
+        return (f"✓ 本脚本 --import-accounts 可直接导（源库多 {extra} 个）"
+                if extra > 0 else "— 本库已不少于源库，无需导入")
+    if not src_n:
+        return "— 源库没有数据"
+    if not dst_n:
+        return f"✓ 值得搬（本库为空，源库有 {src_n} 行）"
+    if src_span and dst_span and src_span.split("~")[1] < dst_span.split("~")[0]:
+        return "✓ 值得搬（源库是更早的历史，与本库不重叠）"
+    if src_span and dst_span and src_span.split("~")[0] > dst_span.split("~")[1]:
+        return "⚠ 源库更新于本库——先确认哪边才是最新的"
+    return "⚠ 两边都有且时间重叠，需人工判断（不要盲目合并）"
+
+
+def compare(source: sqlite3.Connection, target: sqlite3.Connection) -> None:
+    """Per-table: how much is on each side, covering what period, worth moving?"""
+    print(f"\n{'表名':<24}{'源库':>8}{'本库':>8}   {'源库时间跨度':<24}判断")
+    print("─" * 110)
+    for table, date_col in _SURVEY_TABLES.items():
+        src_n, dst_n = _count(source, table), _count(target, table)
+        src_span = _span(source, table, date_col)
+        dst_span = _span(target, table, date_col)
+        src_txt = "无表" if src_n is None else f"{src_n:,}"
+        dst_txt = "无表" if dst_n is None else f"{dst_n:,}"
+        print(f"{table:<24}{src_txt:>8}{dst_txt:>8}   {src_span or '—':<24}"
+              f"{_verdict(src_n, dst_n, table, src_span, dst_span)}")
+    print("\n各表是什么、搬了有什么用：")
+    for table, note in _TABLE_NOTES.items():
+        print(f"  {table:<24} {note}")
 
 
 def list_accounts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -137,7 +217,13 @@ def main() -> int:
 
     source = _open(source_path)
     try:
-        survey(source, "源库内容")
+        from account.db import DB_PATH, init_db
+        init_db()
+        target_ro = _open(pathlib.Path(DB_PATH))
+        try:
+            compare(source, target_ro)
+        finally:
+            target_ro.close()
 
         accounts = list_accounts(source)
         print(f"\n── 源库里的账户（{len(accounts)} 个）──")
