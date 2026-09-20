@@ -281,6 +281,8 @@ from account.options import option_market_value as _option_market_value
 from account.options import OCC_RE as _OCC_RE
 from account.options import parse_occ as _parse_occ
 from account.options import parse_occ_sym as _parse_occ_sym
+from account.beta_quality import beta_overrides as _derived_beta_overrides
+from account.beta_quality import low_confidence_held as _low_confidence_betas
 from account.positions_xlsx import parse_stocks_xlsx as _parse_stocks_xlsx
 from account.positions_xlsx import stock_snapshot_rows
 from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
@@ -495,6 +497,14 @@ _BETA_BASE = {
     # 对冲仓位测算时单独引用，不是这里要覆盖的默认值。
     "SMH": 1.77,
 }
+
+# 2026-09-20：SPCX 和 ETHU 此前都不在表里，于是 account.risk 的
+# beta_map.get(sym, 1.0) 静默按 1.0 处理——两个大头敞口的市场敏感度被系统性
+# 低估，Beta-Delta 因此偏低（错在"看起来更安全"的方向）。券商给的数不能用
+# （Firstrade 报 SPCX 25.14，而波动率比值给出的上界只有 7.30，算术上就不可能
+# 是回归结果），Alpha Vantage 两个都返回 None。改为用日收益率对 SPY 回归自己
+# 测，连同样本区间和 R² 一起记录在 account/beta_quality.py。
+_BETA_BASE.update(_derived_beta_overrides())
 
 # ── Beta 缓存（yfinance 每周刷新，存 data/beta_cache.json）────────────────
 _BETA_CACHE_PATH  = _ROOT / "data" / "beta_cache.json"
@@ -4104,6 +4114,42 @@ _iv_fb_now = _war_snap.get("iv_fallback_symbols") or []
 if _iv_fb_now:
     st.caption(f"⚠️ {'、'.join(_iv_fb_now)} 未取到实时 IV，压力测试对其使用了默认值 30%，"
                f"实际 Vega 冲击可能被低估或高估")
+
+# beta 拟合太差的持仓：BD 和压力测试都建立在 beta 之上，而对这些标的
+# beta 本身就不是个好的描述（R² 低意味着大盘解释不了它们大部分的波动）。
+# 不标出来的话，一个 R²=0.16 的 beta 和一个 R²=0.7 的 beta 在看板上长得
+# 一模一样，读数的人无从分辨。
+try:
+    _held_syms = {str(s["symbol"] or "").upper()
+                  for s in (_war_snap.get("stock_symbols") or [])}
+    if not _held_syms:
+        _bq_conn = _db()
+        try:
+            _held_syms = {
+                str(r[0] or "").upper() for r in _bq_conn.execute(
+                    "SELECT DISTINCT symbol FROM positions p1 WHERE p1.account_id=? "
+                    "AND IFNULL(p1.quantity,0)!=0 AND p1.sync_time=("
+                    "  SELECT MAX(p2.sync_time) FROM positions p2 "
+                    "  WHERE p2.symbol=p1.symbol AND p2.account_id=p1.account_id)",
+                    (_war_acct_id,)).fetchall()
+            }
+            _held_syms |= {
+                (_parse_occ_sym(str(r[0] or "").upper()) or {}).get("underlying", "")
+                for r in _bq_conn.execute(
+                    "SELECT symbol FROM options_positions WHERE account_id=?",
+                    (_war_acct_id,)).fetchall()
+            }
+        finally:
+            _bq_conn.close()
+    _weak_betas = _low_confidence_betas(_held_syms)
+    if _weak_betas:
+        st.caption(
+            "⚠️ beta 拟合偏弱：" + "　".join(e.describe() for e in _weak_betas)
+            + " —— 大盘只解释了它们一小部分波动，BD 和压力测试对这些持仓的"
+              "刻画有限，按 beta 规模做的对冲效率也会打折"
+        )
+except Exception as _bq_exc:  # noqa: BLE001 - 提示信息不该拖垮作战室
+    _log.warning(f"[beta] 低置信度 beta 提示失败: {_bq_exc}")
 
 # ── B. 卖Call触发提醒（实时）────────────────────────────
 with st.spinner("检查 Long Call 触发条件…"):
