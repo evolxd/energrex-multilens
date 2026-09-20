@@ -4077,6 +4077,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 运行版本标记。Streamlit 每次交互都会重跑页面脚本，所以 account_monitor.py
+# 的改动立刻可见；但 account/*、scoring/* 是 import 进来的模块，缓存在
+# sys.modules 里，git pull 改了它们在重启之前完全不生效——页面看着是新的，
+# 数字还是旧代码算出来的。2026-09-20 就是这样：beta 覆盖、持仓去重、产业链
+# 归类三处改动全都拉下来了，一个都没生效，界面只表现为"时间戳在变、风险数字
+# 一字不动"，看起来像修复失败，其实是根本没加载。
+try:
+    from account.build_info import stale_modules as _stale_modules
+    from account.build_info import summary as _build_summary
+
+    _build_line = _build_summary()
+    _stale_now = _stale_modules()
+    st.markdown(
+        f"<div style='font-size:11px;color:{_RED if _stale_now else _MUTED};"
+        f"text-align:right;margin:-6px 0 4px'>代码版本 {_build_line}</div>",
+        unsafe_allow_html=True,
+    )
+    if _stale_now:
+        st.warning(
+            f"⚠️ 以下模块的文件已更新，但当前进程仍在跑旧版本，**必须重启 "
+            f"Streamlit 才会生效**：{'、'.join(_stale_now)}"
+        )
+except Exception as _bi_exc:  # noqa: BLE001 - 版本标记不该拖垮作战室
+    _log.warning(f"[build] 版本标记失败: {_bi_exc}")
+
 # ── A. 实时风险状态条 ────────────────────────────────────
 with st.spinner("载入风险快照…"):
     _war_snap = _compute_risk_snapshot(_war_acct_id)
