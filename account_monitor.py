@@ -6,9 +6,8 @@ ENERGREX — 账户持仓监控模块
 监控目录：~/Downloads/  检测 export*.csv（当日文件）
 """
 
-import os, pathlib, datetime, sqlite3, threading, time, logging, shutil, re, json
+import os, pathlib, datetime, time, logging, re, json
 import urllib.request
-import numpy as np
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -105,8 +104,6 @@ _MD_KEY  = os.environ.get("MARKETDATA_API_KEY", "")
 
 # Database boundary lives in account.db; these aliases keep the existing
 # account_monitor call sites stable while the monolith is split incrementally.
-from account.db import DB_PATH as _DB_PATH
-from account.db import SCREENSHOT_DIR as _SS_DIR
 from account.db import db as _db
 from account.accounts import account_download_dir as _account_download_dir
 from account.db import init_db as _init_db
@@ -211,59 +208,6 @@ def _effective_base_capital(acct_id: str) -> float:
     return nav + out if (nav + out) > 0 else 34330.88
 
 
-def _get_history_vs_qqq(acct_id: str, base_capital: float | None = None):
-    """
-    返回 (acct_df, qqq_df, base_capital) 用于历史表现 vs QQQ 图表。
-    acct_df: date / cumulative_pnl / rel_pct（按每日平仓P&L累加）
-    qqq_df:  date / close / rel_pct（从 _HIST_START 归一化）
-    base_capital：当前净值 + 历史出金，自动计算（可手动覆盖）。
-    """
-    if base_capital is None:
-        base_capital = _effective_base_capital(acct_id)
-    today = datetime.datetime.now(_ET).strftime("%Y-%m-%d")
-
-    # ── 账户累计P&L（按平仓日聚合）──
-    conn = _db()
-    trades = pd.read_sql_query(
-        "SELECT close_date AS date, SUM(realized_pnl) AS daily_pnl "
-        "FROM option_realized_trades "
-        "WHERE account_id=? AND close_date>=? "
-        "GROUP BY close_date ORDER BY close_date",
-        conn, params=(acct_id, _HIST_START))
-    conn.close()
-
-    if trades.empty:
-        return pd.DataFrame(), pd.DataFrame(), base_capital
-
-    trades["cumulative_pnl"] = trades["daily_pnl"].cumsum()
-    trades["rel_pct"]        = trades["cumulative_pnl"] / base_capital * 100
-
-    # ── QQQ 批量拉取 ──
-    qqq_df = pd.DataFrame()
-    try:
-        import yfinance as yf
-        end = (datetime.datetime.strptime(today, "%Y-%m-%d")
-               + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-        raw = yf.Ticker("QQQ").history(start=_HIST_START, end=end)
-        if not raw.empty:
-            raw.index = pd.to_datetime(raw.index).strftime("%Y-%m-%d")
-            qqq_df = raw.reset_index()[["Date", "Close"]].rename(
-                columns={"Date": "date", "Close": "close"})
-            base_qqq       = float(qqq_df["close"].iloc[0])
-            qqq_df["rel_pct"] = (qqq_df["close"] / base_qqq - 1) * 100
-            # 批量缓存到 DB
-            conn = _db()
-            for _, row in qqq_df.iterrows():
-                conn.execute(
-                    "INSERT OR REPLACE INTO qqq_daily_price (date, close_price) VALUES (?,?)",
-                    (row["date"], row["close"]))
-            conn.commit(); conn.close()
-    except Exception as e:
-        _log.warning(f"QQQ history fetch failed: {e}")
-
-    return trades, qqq_df, base_capital
-
-
 def _compute_twr_series(acct_id: str, start_date: str) -> tuple:
     """
     TWR（时间加权收益率）序列，排除出入金影响。
@@ -316,8 +260,6 @@ from account.repository import compute_margin_usage_pct as _compute_margin_usage
 from account.repository import load_balance_history as _load_balance_history
 from account.repository import load_latest_balance as _load_latest_balance
 from account.repository import load_positions as _load_positions
-from account.repository import load_transactions as _load_transactions
-from account.repository import record_daily_nav as _record_daily_nav
 from account.repository import save_balance as _save_balance
 from account.repository import save_positions as _save_positions
 from account.repository import save_transactions as _save_transactions
@@ -335,7 +277,6 @@ from account.options_repository import replace_realized_trades_and_fifo_costs as
 from account.options_repository import save_portfolio_greeks_snapshot as _save_portfolio_greeks_snapshot
 from account.options_repository import save_options_positions as _save_options_positions
 from account.options_repository import update_option_market_snapshot as _update_option_market_snapshot
-from account.options_repository import update_option_unit_cost as _update_option_unit_cost
 from account.options import option_market_value as _option_market_value
 from account.options import OCC_RE as _OCC_RE
 from account.options import parse_occ as _parse_occ
@@ -365,10 +306,6 @@ from account.marketdata import fetch_underlying_prices as _fetch_underlying_pric
 from account.marketdata import get_atm_iv_batch as _get_atm_iv_batch_md
 from account.marketdata import get_spot_prices_batch as _get_spot_prices_batch_md
 from account.marketdata import get_vix_snapshot as _get_vix_snapshot_md
-from account.importers import detect_csv_type as _detect_csv_type
-from account.importers import import_positions_csv as _account_import_positions_csv
-from account.importers import import_transactions_csv as _account_import_transactions_csv
-from account.importers import parse_date as _parse_date
 from account.importers import parse_money as _parse_money
 from account.importers import process_csv_file as _account_process_csv_file
 
@@ -707,9 +644,14 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         "SELECT symbol, quantity, current_price, market_value, strike, expiry "
         "FROM options_positions WHERE account_id=? AND current_price IS NOT NULL",
         (acct_id,)).fetchall()
+    # positions 是逐次同步追加的快照表：必须每只股票只取最新一条，
+    # 否则每同步一次，股票敞口就被多算一遍（实测同步 4 次后 BD 被重复计入 4 倍
+    # 股票，224%→263%→320%→378%）。跟 account.repository.load_positions 同口径。
     stks = conn.execute(
-        "SELECT symbol, quantity, market_value "
-        "FROM positions WHERE account_id=? AND position_type='stock'",
+        "SELECT symbol, quantity, market_value FROM positions p1 "
+        "WHERE p1.account_id=? AND p1.position_type='stock' "
+        "AND p1.sync_time = (SELECT MAX(p2.sync_time) FROM positions p2 "
+        "WHERE p2.account_id=p1.account_id AND p2.symbol=p1.symbol)",
         (acct_id,)).fetchall()
     conn.close()
 
@@ -1007,7 +949,6 @@ def _get_event_calendar(acct_id: str, window_days: int = 30) -> list[dict]:
 # 逻辑一行没改，这里只是换成 import。
 # ─────────────────────────────────────────────────────────────────
 from account.performance import compute_performance_stats as _compute_performance_stats
-from account.performance import wilson_interval as _wilson_interval
 
 
 
@@ -1309,11 +1250,6 @@ def _fetch_ivrank_md(symbol: str) -> dict:
     return out
 
 
-def _fetch_pltr_iv_snapshot() -> dict:
-    """向后兼容的 PLTR 快照 — 直接转发到链式IV接口。"""
-    return _fetch_ivrank_md("PLTR")
-
-
 _IV_WATCH_SYMS = ("PLTR", "NOK", "NVDA", "FCX", "META", "PANW", "CRWV", "QQQ")
 
 
@@ -1553,7 +1489,6 @@ def _run_scenarios(snap: dict) -> dict:
     equity = snap.get("equity", 1) or 1
     theta  = snap.get("theta_per_day", 0)
     s10    = snap.get("stress_10", 0)
-    s20    = snap.get("stress_20", 0)
     vega   = snap.get("vega_per_pt", 0)
     bd     = snap.get("beta_delta", 0)
 
@@ -1782,7 +1717,6 @@ def _check_sell_call_triggers(acct_id: str) -> list[dict]:
         und    = mo.group(1)
         qty    = int(r["quantity"] or 0)
         cost   = float(r["unit_cost"]     or 0)
-        cprice = float(r["current_price"] or 0)
         pnl    = float(r["total_pnl"]     or 0)
         delta  = float(r["delta"]         or 0)
         iv_pct = float(r["iv"]            or 0)
@@ -2338,51 +2272,6 @@ def _compute_exit_analysis(acct_id: str) -> dict:
     )
 
 
-def _load_positions_xlsx(acct_id: str) -> pd.DataFrame:
-    """读取 data/firstrade/ 下最新的 xlsx 持仓文件，支持中英文列名。"""
-    xlsx_files = sorted(_FT_DIR.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not xlsx_files:
-        return pd.DataFrame()
-
-    latest = xlsx_files[0]
-    try:
-        df = pd.read_excel(latest, engine="openpyxl")
-    except Exception as e:
-        _log.warning(f"xlsx read error {latest}: {e}")
-        return pd.DataFrame()
-
-    df = df.dropna(how="all")
-    if df.empty:
-        return pd.DataFrame()
-
-    # 列名映射（中文 → 英文）
-    ZH_MAP = {
-        "代号": "symbol", "股票代号": "symbol", "ticker": "symbol",
-        "数量": "quantity", "股数": "quantity",
-        "市值": "market_value", "总市值": "market_value",
-        "益损$": "unrealized_pnl", "盈亏$": "unrealized_pnl", "盈亏": "unrealized_pnl",
-        "益损%": "unrealized_pnl_pct", "盈亏%": "unrealized_pnl_pct",
-        "成本": "cost_basis", "总成本": "cost_basis", "平均成本": "unit_cost",
-        "现价": "current_price", "股价": "current_price",
-        "描述": "description", "名称": "description",
-    }
-    df = df.rename(columns=lambda c: ZH_MAP.get(str(c).strip(), str(c).strip().lower()))
-
-    if "symbol" not in df.columns:
-        return pd.DataFrame()
-
-    df["symbol"] = df["symbol"].astype(str).str.strip().str.upper()
-    df = df[df["symbol"].notna() & (df["symbol"] != "") & (df["symbol"] != "NAN")]
-
-    # 标注持仓类型
-    df["position_type"] = df["symbol"].apply(
-        lambda s: "option" if _OCC_RE.match(s) else "stock"
-    )
-
-    _log.info(f"xlsx {latest.name}: {len(df)} rows from {latest}")
-    return df
-
-
 def _import_from_xlsx_file(path: pathlib.Path, acct_id: str) -> tuple[int, int]:
     """
     读取 Firstrade 持仓 xlsx，写入 positions 表。
@@ -2552,7 +2441,7 @@ def _expiry_badge(expiry_str: str) -> str:
     """返回带颜色 emoji 的到期天数标注。"""
     try:
         days = (datetime.date.fromisoformat(expiry_str) - datetime.date.today()).days
-        if days < 0:   return f"🔴 已到期"
+        if days < 0:   return "🔴 已到期"
         if days < 7:   return f"🔴 {days}天"
         if days < 30:  return f"🟠 {days}天"
         return f"🟢 {days}天"
@@ -2563,23 +2452,6 @@ def _expiry_badge(expiry_str: str) -> str:
 # ════════════════════════════════════════════════════════
 # 共享监控状态（跨 rerun 持久化）
 # ════════════════════════════════════════════════════════
-def _import_positions_csv(df: pd.DataFrame, acct_id: str) -> int:
-    return _account_import_positions_csv(
-        df,
-        acct_id,
-        save_positions=_save_positions,
-        save_balance=_save_balance,
-    )
-
-
-def _import_transactions_csv(df: pd.DataFrame, acct_id: str) -> int:
-    return _account_import_transactions_csv(
-        df,
-        acct_id,
-        save_transactions=_save_transactions,
-    )
-
-
 def _process_csv_file(src: pathlib.Path, acct_id: str = "account_1") -> dict:
     return _account_process_csv_file(
         src,
@@ -6089,7 +5961,6 @@ with _pos_tabs[3]:
             _base = _sim_res["base_snap"]
             _scb  = _sim_res["sc_before"]
             _sca  = _sim_res["sc_after"]
-            equity_now = _base.get("equity", 1) or 1
 
             st.markdown(
                 "<div style='border:2px dashed #4FC3F7;border-radius:10px;"
@@ -6104,18 +5975,6 @@ with _pos_tabs[3]:
 
             # Before / After 对比
             _ba1, _ba2 = st.columns(2)
-            def _cmp_row(label, bval, aval, fmt="{:.1f}%", better="lower"):
-                _bstr = fmt.format(bval) if bval is not None else "—"
-                _astr = fmt.format(aval) if aval is not None else "—"
-                try:
-                    _delta = float(aval) - float(bval)
-                    _good  = (_delta < 0) if better == "lower" else (_delta > 0)
-                    _col   = "#00D4AA" if _good else "#FF4B6E"
-                    _arrow = f"↓{abs(_delta):.1f}" if _delta < 0 else f"↑{abs(_delta):.1f}"
-                except Exception:
-                    _col = "#8B9BB4"; _arrow = "—"
-                return f"**{label}**", _bstr, _astr, f"<span style='color:{_col}'>{_arrow}</span>"
-
             with _ba1:
                 st.markdown("**执行前**")
                 st.metric("Beta-Delta",  f"{(_base.get('beta_delta_ratio') or 0)*100:.1f}%")

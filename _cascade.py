@@ -340,10 +340,20 @@ def run_sync_cascade(step=None) -> dict:
     _s("⚡ 同步 Firstrade 账户数据...")
     try:
         am["_auto_sync"]("account_1")
-        _s("✅ 账户余额同步完成")
+        ss = am["_sync_state"]()
+        # _auto_sync 不抛异常也可能没同步成功（余额解析失败 / 股票 xlsx 没更新）。
+        # 以前这里无条件打"✅"，余额没抓到时后面的 BD 仍拿上次的旧净值算，
+        # 结果 BD 偏低（实测 224% vs 真实 263%）却显示成功。
+        _sync_status = ss.get("last_status", "ok")
+        if _sync_status == "ok":
+            _s("✅ 账户余额同步完成")
+        else:
+            _err = ss.get("last_error") or _sync_status
+            _s(f"⚠️ 账户同步不完整（{_sync_status}）：{_err}")
+            summary["status"] = "partial"
+            summary["halt_reason"] = f"同步不完整，下方 BD/净值可能基于旧数据：{_err}"
 
         # 1.5 ── 展示持仓对比结果
-        ss   = am["_sync_state"]()
         diff = ss.get("positions_diff") or {}
         summ = diff.get("summary", "持仓对比未执行")
         _s(f"📋 持仓对比: {summ}")
