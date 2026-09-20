@@ -199,12 +199,106 @@ def import_accounts(source: sqlite3.Connection, dry_run: bool) -> int:
     return added
 
 
+# 历史表的搬运规则。前两张库里就有 UNIQUE 约束，INSERT OR IGNORE 天然幂等；
+# option_realized_trades 没有任何唯一约束，必须自己按业务键去重——搬重了就是
+# 凭空多出几笔已实现盈亏，直接把胜率和 Kelly 统计算歪。
+_HISTORY_TABLES: dict[str, tuple[str, ...] | None] = {
+    "daily_nav": None,                       # UNIQUE(account_id, date)
+    "transactions": None,                    # UNIQUE(account_id, trade_date, type, symbol, amount)
+    "option_realized_trades": (
+        "account_id", "symbol", "open_date", "close_date", "quantity", "realized_pnl",
+    ),
+}
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+
+
+def import_history(source: sqlite3.Connection, dry_run: bool) -> None:
+    """Move the three tables that carry real history, never overwriting.
+
+    Only rows whose account exists here are taken: the account tables have no
+    foreign key, so importing history for an unknown account_id would create
+    rows no account name maps to -- present in every statistic, visible in no
+    account selector.
+    """
+    from account.accounts import list_accounts as _accounts
+    from account.db import db, init_db
+
+    init_db()
+    known = {a["id"] for a in _accounts(include_archived=True)}
+
+    target = db()
+    try:
+        for table, natural_key in _HISTORY_TABLES.items():
+            if not _table_exists(source, table):
+                print(f"  {table:<24} 源库无此表，跳过")
+                continue
+            src_cols = _columns(source, table)
+            dst_cols = _columns(target, table)
+            shared = [c for c in src_cols if c in dst_cols and c != "id"]
+            if not shared:
+                print(f"  {table:<24} 两边字段对不上，跳过")
+                continue
+
+            rows = source.execute(
+                f"SELECT {','.join(shared)} FROM {table}").fetchall()
+            existing_keys: set[tuple] = set()
+            if natural_key:
+                key_cols = [c for c in natural_key if c in dst_cols]
+                existing_keys = {
+                    tuple(r) for r in target.execute(
+                        f"SELECT {','.join(key_cols)} FROM {table}")
+                }
+
+            inserted = skipped_dupe = skipped_orphan = 0
+            for row in rows:
+                record = dict(zip(shared, row))
+                if record.get("account_id") not in known:
+                    skipped_orphan += 1
+                    continue
+                if natural_key:
+                    key = tuple(record.get(c) for c in natural_key if c in dst_cols)
+                    if key in existing_keys:
+                        skipped_dupe += 1
+                        continue
+                    existing_keys.add(key)
+                if not dry_run:
+                    placeholders = ",".join("?" * len(shared))
+                    cursor = target.execute(
+                        f"INSERT OR IGNORE INTO {table} ({','.join(shared)}) "
+                        f"VALUES ({placeholders})",
+                        [record[c] for c in shared],
+                    )
+                    if cursor.rowcount:
+                        inserted += 1
+                    else:
+                        skipped_dupe += 1
+                else:
+                    inserted += 1
+
+            note = f"{'将导入' if dry_run else '已导入'} {inserted} 行"
+            if skipped_dupe:
+                note += f"，重复跳过 {skipped_dupe}"
+            if skipped_orphan:
+                note += f"，账户不存在跳过 {skipped_orphan}（先跑 --import-accounts）"
+            print(f"  {table:<24} {note}")
+        if not dry_run:
+            target.commit()
+    finally:
+        target.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("source", help="另一份克隆的目录，或直接给 .db 文件路径")
     parser.add_argument("--import-accounts", action="store_true",
                         help="把源库里本库没有的账户导进来（按 id 匹配，不覆盖同 id）")
+    parser.add_argument("--import-history", action="store_true",
+                        help="搬历史表：daily_nav / transactions / option_realized_trades"
+                             "（只增不覆盖，重复自动跳过）")
     args = parser.parse_args()
 
     source_path = _resolve_db(args.source)
@@ -233,12 +327,17 @@ def main() -> int:
         if not accounts:
             print("  （无）")
 
-        print("\n── 导入 ──")
+        print("\n── 账户导入 ──")
         added = import_accounts(source, dry_run=not args.import_accounts)
         if not args.import_accounts:
-            print(f"\n  以上为预演，未写入。确认无误后加 --import-accounts 执行。")
+            print("  以上为预演，未写入。确认无误后加 --import-accounts 执行。")
         else:
-            print(f"\n  完成：新增 {added} 个账户。重启 Streamlit 后出现在账户选择器里。")
+            print(f"  完成：新增 {added} 个账户。重启 Streamlit 后出现在账户选择器里。")
+
+        print("\n── 历史数据 ──")
+        import_history(source, dry_run=not args.import_history)
+        if not args.import_history:
+            print("  以上为预演，未写入。确认无误后加 --import-history 执行。")
     finally:
         source.close()
     return 0
