@@ -2635,10 +2635,37 @@ var margin_used = findFirst(
 var margin_available = findFirst(
   ['融资购买力','融資購買力','Cash Buying Power','Margin Buying Power',
    'Available Margin','Buying Power'], 1, false, 10);
+// 现金余额：裸的 'Cash' 兜底标签有个陷阱。findNth 用的是 indexOf 子串查找，
+// 而 Firstrade 界面上有 "Cash BP"（现金购买力）——"Cash BP" 里就含有 "Cash"，
+// 一旦页面上没有字面的 "Cash Balance"，兜底就会命中购买力那个数。
+// 2026-09-20 用户手机截图实测：Cash BP $22,160.55，而同一时点用
+// "净值 − 持仓市值" 算出的真实现金是 $10,034.48，差一倍多。更糟的是它错在
+// "看起来很安全"的方向：现金比例会被算成 41.6%，远超 20% 底线，于是这条
+// 本该拦人的约束反而显示一切正常。购买力是从净值和保证金规则推出来的
+// （截图里 Margin BP 恰好 = 2 × Cash BP），不是账上躺着的钱。
+function findCash() {
+  var strict = ['现金结余','現金結餘','Cash Balance','Cash & Cash Equivalents'];
+  for (var i = 0; i < strict.length; i++) {
+    var v = findNth(strict[i], 1);
+    if (v !== null) return v;
+  }
+  // 兜底的裸 'Cash'：跳过后面紧跟 BP / Buying Power / 购买力 的那些出现位置
+  var idx = -1;
+  while ((idx = t.indexOf('Cash', idx + 1)) >= 0) {
+    if (/^Cash\s*(BP\b|Buying\s*Power|购买力|購買力)/i.test(t.slice(idx, idx + 40))) continue;
+    var sub = t.slice(idx, idx + 500);
+    var re = /[+\-]?\$?\s*[\d,]+\.?\d{0,2}/g, m;
+    while ((m = re.exec(sub)) !== null) {
+      var v2 = parseFloat(m[0].replace(/[$,\s]/g, ''));
+      if (!isNaN(v2) && Math.abs(v2) > 0.001) return v2;
+    }
+  }
+  return null;
+}
 return {
   total_equity:     findFirst(['账户总值','帳戶總值','Total Account Value','Account Value','Net Account Value'], 1),
   day_pnl:          day_pnl,
-  cash_balance:     findFirst(['现金结余','現金結餘','Cash Balance','Cash & Cash Equivalents','Cash'], 1),
+  cash_balance:     findCash(),
   margin_used:      margin_used,
   margin_available: margin_available
 };
@@ -3147,6 +3174,17 @@ def _scrape_balance(driver, acct_id: str) -> bool:
 
         data["margin_usage_pct"] = _compute_margin_usage_pct(
             data.get("margin_used"), data.get("total_equity"))
+
+        # 现金字段抓错会静默地把风险显示成安全（详见
+        # account.repository.cash_reading_looks_like_buying_power 的说明），
+        # 所以写库前先看一眼这个最便宜的破绽。
+        from account.repository import cash_reading_looks_like_buying_power
+        if cash_reading_looks_like_buying_power(
+                data.get("cash_balance"), data.get("margin_available")):
+            _log.warning(
+                f"[bal] 现金余额与购买力读到了同一个数 "
+                f"({data.get('cash_balance')})，极可能抓的是 Cash BP 而不是现金余额；"
+                f"现金比例这条硬约束会因此失真")
 
         _save_balance(acct_id, data)
         _log.info(f"Balance saved for {acct_id}: {data}")

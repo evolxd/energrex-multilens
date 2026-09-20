@@ -36,6 +36,27 @@ def record_daily_nav(acct_id: str, nav: float, date: str | None = None) -> None:
     conn.close()
 
 
+def cash_reading_looks_like_buying_power(
+    cash_balance: float | None,
+    margin_available: float | None,
+) -> bool:
+    """True when the scraped "cash" is really a buying-power figure.
+
+    Firstrade shows Cash BP and Margin BP next to the cash balance, and the
+    page-text scraper matches labels by substring -- "Cash BP" contains "Cash".
+    When that mismatch happens the two fields come back holding the same
+    number, which is the cheapest possible tell.
+
+    Worth catching because the failure is silent and points the wrong way: on
+    2026-09-20 the account's Cash BP was $22,160.55 against $10,034.48 of
+    actual cash, which would have reported a 41.6% cash ratio against a 20%
+    floor -- the constraint that exists to stop you would have shown green.
+    """
+    if cash_balance is None or margin_available is None:
+        return False
+    return abs(float(cash_balance) - float(margin_available)) < 0.01
+
+
 def save_balance(acct_id: str, data: dict) -> None:
     """Persist an account balance snapshot and update daily NAV when present."""
     conn = db()

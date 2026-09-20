@@ -116,3 +116,24 @@ class AccountsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── cash vs buying power ─────────────────────────────────────────────────────
+
+def test_cash_matching_buying_power_is_flagged():
+    """Firstrade's "Cash BP" contains the substring "Cash", so the page-text
+    scraper can grab buying power as the cash balance. Real numbers from
+    2026-09-20: Cash BP $22,160.55 vs $10,034.48 of actual cash."""
+    from account.repository import cash_reading_looks_like_buying_power
+    assert cash_reading_looks_like_buying_power(22160.55, 22160.55)
+
+
+def test_a_genuine_cash_reading_is_not_flagged():
+    from account.repository import cash_reading_looks_like_buying_power
+    assert not cash_reading_looks_like_buying_power(10034.48, 22160.55)
+
+
+def test_missing_either_side_is_not_flagged():
+    from account.repository import cash_reading_looks_like_buying_power
+    assert not cash_reading_looks_like_buying_power(None, 22160.55)
+    assert not cash_reading_looks_like_buying_power(10034.48, None)
