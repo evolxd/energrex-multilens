@@ -180,6 +180,31 @@ def check_db() -> None:
     txn = one("SELECT COUNT(*) n, MAX(trade_date) t FROM transactions WHERE account_id=?", ACCOUNT)
     if txn:
         print(f"  成交记录: {txn['n']} 条   最新 {txn['t'] or '（无）'}")
+
+    # positions 是追加式快照表，风险快照靠"每只票取 MAX(sync_time) 那条"去重。
+    # 同一只票若有多行共享同一个 sync_time，这个写法会全部命中——敞口照样被
+    # 重复计算，BD 会随之虚高（2026-09-19 的修复处理的是不同 sync_time 那种，
+    # 这里查的是它管不到的那种）。
+    dupes = conn.execute(
+        """
+        SELECT symbol, sync_time, COUNT(*) n FROM positions
+        WHERE account_id=? AND position_type='stock' AND IFNULL(quantity,0)!=0
+        GROUP BY symbol, sync_time HAVING COUNT(*) > 1
+        ORDER BY n DESC LIMIT 10
+        """,
+        (ACCOUNT,),
+    ).fetchall()
+    if dupes:
+        print(f"  ⚠️ 同一 sync_time 下的重复股票行（会导致敞口/BD 重复计算）：")
+        for row in dupes:
+            print(f"      {row['symbol']:<6} {row['sync_time']}  ×{row['n']}")
+    else:
+        print("  ✓ 无同 sync_time 重复股票行")
+
+    snaps = one("SELECT COUNT(DISTINCT sync_time) n FROM positions "
+                "WHERE account_id=? AND position_type='stock'", ACCOUNT)
+    if snaps:
+        print(f"  股票快照批次: {snaps['n']} 批（每次同步追加一批，属正常累积）")
     conn.close()
 
 
