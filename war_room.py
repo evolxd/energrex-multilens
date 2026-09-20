@@ -331,6 +331,33 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ─── 运行来源标记 ───────────────────────────────────
+# 一台机器上可以有同一个仓库的多份克隆，每份都有自己的 data/energrex.db。
+# 2026-09-20 就同时存在三个目录：应用实际服务的是 VSCODE管理项目\...\
+# energrex-multilens，第二份克隆 ~/ai_valuation 停在旧提交，而 git pull 一直
+# 敲在 Documents\ENERGREX期权量化系统——那是另一个仓库。连续几天的修复看起来
+# 毫无效果，因为界面上没有任何东西能说明"你现在看的是哪一份"。
+#
+# 另外 Streamlit 只重跑页面脚本，import 进来的 account/*、scoring/* 缓存在
+# sys.modules 里，拉了新代码不重启同样不生效——所以这里一并检测模块漂移。
+try:
+    from account.build_info import stale_modules as _stale_modules
+    from account.build_info import summary as _build_summary
+
+    _stale_now = _stale_modules()
+    st.markdown(
+        f"<div style='font-size:10.5px;color:{_R if _stale_now else _MUT};"
+        f"text-align:right;margin:-8px 0 8px'>运行自 {_build_summary()}</div>",
+        unsafe_allow_html=True,
+    )
+    if _stale_now:
+        st.warning(
+            "⚠️ 以下模块的文件已更新，但当前进程仍在跑旧版本，**必须完全重启 "
+            f"Streamlit 才会生效**：{'、'.join(_stale_now)}"
+        )
+except Exception:
+    pass          # 版本标记不该拖垮作战室
+
 # ─── 强制去风险横幅 ─────────────────────────────────
 if _draw_st == "RED_MANDATORY_DE_RISK":
     st.markdown(

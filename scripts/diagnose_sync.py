@@ -74,6 +74,50 @@ def check_code_version() -> None:
         print(f"  {'✓' if marker in monitor else '✗'} account_monitor.{marker:<26} {desc}")
 
 
+def check_clones() -> None:
+    """Other checkouts of this repository on the same machine.
+
+    Each clone carries its own data/energrex.db, so editing one while the app
+    serves another produces fixes that appear to do nothing. On 2026-09-20
+    three directories were in play at once: the running app, a second clone on
+    an older commit, and an unrelated repository where `git pull` was being
+    typed. Nothing on screen distinguished them.
+    """
+    section("0. 本机的其他克隆（多份副本是最隐蔽的坑）")
+    print(f"  本次运行自: {ROOT}")
+    home = pathlib.Path.home()
+    found: list[pathlib.Path] = []
+    for marker in home.glob("**/war_room.py"):
+        try:
+            candidate = marker.parent.resolve()
+        except OSError:
+            continue
+        if candidate != ROOT.resolve() and (candidate / ".git").exists():
+            found.append(candidate)
+        if len(found) >= 8:
+            break
+
+    if not found:
+        print("  ✓ 未发现其他克隆")
+        return
+    print(f"  ⚠️ 发现 {len(found)} 个其他克隆——确认应用跑的是哪一个：")
+    for path in found:
+        head = branch = "?"
+        try:
+            head = subprocess.run(["git", "log", "-1", "--format=%h"], cwd=path,
+                                  capture_output=True, text=True, timeout=5).stdout.strip()
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path,
+                                    capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:
+            pass
+        db = path / "data" / "energrex.db"
+        when = (dt.datetime.fromtimestamp(db.stat().st_mtime).strftime("%m-%d %H:%M")
+                if db.exists() else "无 DB")
+        print(f"    {path}")
+        print(f"      分支 {branch}  HEAD {head}  DB最后写入 {when}")
+    print("  → DB 写入时间最新的那个，才是应用实际在用的副本；其余建议改名归档")
+
+
 def check_env() -> None:
     section("2. 凭据配置（决定掉线能否自愈；不会打印密码）")
     env_path = ROOT / ".env"
@@ -258,7 +302,7 @@ def check_logs() -> None:
 def main() -> int:
     print(f"ENERGREX 同步诊断  ·  {dt.datetime.now():%Y-%m-%d %H:%M:%S}")
     print(f"仓库: {ROOT}")
-    for step in (check_code_version, check_env, check_chrome,
+    for step in (check_clones, check_code_version, check_env, check_chrome,
                  check_db, check_downloads, check_logs):
         try:
             step()

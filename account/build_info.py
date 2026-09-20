@@ -74,10 +74,42 @@ def _import_baseline() -> dict[str, float]:
     return _BASELINE
 
 
+def repo_path() -> str:
+    """Absolute path of the checkout this process is running from."""
+    return str(_ROOT)
+
+
+def repo_label() -> str:
+    """Short, recognisable form of the checkout path.
+
+    Shown because a machine can hold more than one clone of this repository,
+    each with its own `data/energrex.db`. On 2026-09-20 there were three
+    directories in play: the app was serving from
+    `VSCODE管理项目\\ManageProjects\\energrex-multilens`, a second clone sat at
+    `~/ai_valuation` on an older commit, and `git pull` was being run in
+    `Documents\\ENERGREX期权量化系统` -- a different repository entirely. Days of
+    fixes appeared to do nothing because nothing on screen said which copy was
+    being looked at.
+    """
+    parts = _ROOT.parts
+    return "/".join(parts[-2:]) if len(parts) >= 2 else str(_ROOT)
+
+
+def branch_name() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=_ROOT, capture_output=True, text=True, timeout=5,
+        )
+        return out.stdout.strip() or "?"
+    except Exception:
+        return "?"
+
+
 def summary() -> str:
-    """One line for the dashboard header."""
-    revision = git_revision()
+    """One line for the dashboard header: where, which branch, which commit."""
+    line = f"{repo_label()} · {branch_name()} · {git_revision()}"
     stale = stale_modules()
     if stale:
-        return f"{revision} ⚠️ {len(stale)} 个模块已更新未重启"
-    return revision
+        return f"{line} ⚠️ {len(stale)} 个模块已更新未重启"
+    return line
