@@ -294,8 +294,10 @@ from account.risk import classify_drawdown_status as _classify_drawdown_status
 from account.risk import classify_stress_status as _classify_stress_status
 from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
 from account.risk import compute_portfolio_stress_test as _compute_portfolio_stress_test
-from account.risk import compute_qqq_hedge_plan as _compute_qqq_hedge_plan_impl
+from account.risk import compute_index_hedge_plan as _compute_index_hedge_plan_impl
 from account.risk import compute_twr_drawdown as _compute_twr_drawdown
+from account.hedge_split import split_hedge_need as _split_hedge_need
+from scoring.exposure_context import chain_of as _chain_of_symbol
 from account.risk import delta_drift_trigger as _delta_drift_trigger
 from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
 from account.risk import score_label as _score_label_impl
@@ -760,6 +762,10 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         "leverage_delta":   round(leverage_delta, 2) if leverage_delta is not None else None,
         "beta_delta":       round(beta_delta, 0),
         "beta_delta_ratio": round(beta_delta_ratio, 4) if beta_delta_ratio is not None else None,
+        # 逐标的拆分：合计回答"要不要对冲"，拆分回答"该用 QQQ 还是 SMH"。
+        "beta_delta_by_underlying": {
+            k: round(v, 0) for k, v in stress["beta_delta_by_underlying"].items()
+        },
         "theta_per_day":       round(theta_tot, 2),
         "vega_per_pt":         round(vega_tot, 2),
         "gamma_total":         round(gamma_tot, 4),
@@ -1307,12 +1313,29 @@ def _fetch_iv_monitor_batch(symbols: tuple) -> dict:
     return {s: _fetch_ivrank_md(s) for s in symbols}
 
 
-def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict:
+#: 各对冲标的的 spread 宽度 / 行权价网格。QQQ 沿用历史上写死的 $35/$60；
+#: 其余标的不填，由 compute_index_hedge_plan 按现价的 5.8%/10% 推算——同一个
+#: 美元宽度在 $600 的 QQQ 和 $300 的 SMH 上完全不是一回事。
+_HEDGE_WIDTHS: dict[str, tuple[float | None, float | None, float]] = {
+    "QQQ": (35.0, 60.0, 5.0),
+    "SMH": (None, None, 5.0),
+}
+
+
+def _compute_index_hedge_plan(
+    acct_id: str,
+    underlying: str = "QQQ",
+    target_bd_ratio: float = 1.50,
+    bd_to_hedge: float | None = None,
+) -> dict:
     """
-    计算 QQQ Put Debit Spread 对冲数量。
+    计算某个指数 ETF 的 Put Debit Spread 对冲数量。
     target_bd_ratio: 目标 Beta-Delta/净值 (小数，如 1.50 = 150%)。
-    返回三套方案 (A=标准$35宽, B=宽幅$60, C=保留现有+补充)。
+    bd_to_hedge: 只对冲其中一段（半导体那一段交给 SMH）时传入，不传就按
+                 "把整个组合降到目标"算。见 account.hedge_split。
+    返回三套方案 (A=标准宽度, B=宽幅, C=保留现有+补充)。
     """
+    root = (underlying or "QQQ").upper()
     snap = _compute_risk_snapshot(acct_id)
     if "error" in snap:
         return {"error": "no_data"}
@@ -1321,18 +1344,18 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     current_bd  = snap["beta_delta"]
     current_bdr = (snap["beta_delta_ratio"] or 0)
 
-    qqq_price = _fetch_underlying_prices(("QQQ",)).get("QQQ", 0.0)
-    if qqq_price <= 0:
-        return {"error": "no_qqq_price"}
+    spot = _fetch_underlying_prices((root,)).get(root, 0.0)
+    if spot <= 0:
+        return {"error": f"no_{root.lower()}_price"}
 
-    qqq_iv_pct = _fetch_ivrank_md("QQQ").get("iv") or 20.0
-    b_qqq      = _BETA_SPY.get("QQQ", 1.31)
+    iv_pct = _fetch_ivrank_md(root).get("iv") or 20.0
+    beta   = _BETA_SPY.get(root, 1.31 if root == "QQQ" else 1.0)
 
     conn = _db()
     _q_rows = conn.execute(
         "SELECT symbol, quantity, current_price, delta, market_value "
-        "FROM options_positions WHERE account_id=? AND symbol LIKE 'QQQ%'",
-        (acct_id,)).fetchall()
+        "FROM options_positions WHERE account_id=? AND symbol LIKE ?",
+        (acct_id, f"{root}%")).fetchall()
     conn.close()
 
     existing_legs = []
@@ -1340,7 +1363,7 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     for r in _q_rows:
         sym = (r["symbol"] or "").upper()
         mo  = _OCC_RE.match(sym)
-        if not mo:
+        if not mo or mo.group(1) != root:
             continue
         q      = float(r["quantity"]  or 0)
         d      = float(r["delta"]     or 0)
@@ -1354,7 +1377,7 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
             "delta": d, "price": price,
             "market_value": float(r["market_value"] or 0),
         })
-        existing_bd += q * 100 * d * qqq_price * b_qqq
+        existing_bd += q * 100 * d * spot * beta
 
     n_existing = sum(int(l["qty"]) for l in existing_legs
                      if l["type"] == "P" and l["qty"] > 0)
@@ -1367,16 +1390,77 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     _trend = _qqq_trend_break(_fetch_qqq_close_history())
     _event_risk = _fomc_event_risk(datetime.date.today())
 
-    return _compute_qqq_hedge_plan_impl(
+    _narrow, _wide, _step = _HEDGE_WIDTHS.get(root, (None, None, 5.0))
+    return _compute_index_hedge_plan_impl(
+        underlying=root,
         equity=equity, current_bd=current_bd, current_bdr=current_bdr,
         target_bd_ratio=target_bd_ratio,
-        qqq_price=qqq_price, qqq_iv_pct=qqq_iv_pct, beta_qqq=b_qqq,
+        spot=spot, iv_pct=iv_pct, beta=beta,
         existing_legs=existing_legs, existing_bd=existing_bd, n_existing=n_existing,
         current_option_cost=current_option_cost,
+        width_narrow=_narrow, width_wide=_wide, strike_step=_step,
+        bd_to_hedge=bd_to_hedge,
         vix_spike=_vix_trigger is not None,
         event_risk=_event_risk,
         trend_break=_trend["trend_break"],
     )
+
+
+def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict:
+    """QQQ 对冲方案。门⑥账户监控的对冲卡片和 _cascade 都按这个名字调用。"""
+    return _compute_index_hedge_plan(acct_id, "QQQ", target_bd_ratio)
+
+
+def _compute_hedge_split(acct_id: str, target_bd_ratio: float = 1.50) -> dict:
+    """把要对冲的 Beta-Delta 按产业链切成半导体/其余两段，各配一套方案。
+
+    这是门③仓位管理「怎么调」那一栏的数据源：QQQ 和 SMH 不是二选一，也不能
+    各按全额买一遍（那是把同一笔敞口对冲两次）——半导体那一段用 SMH 基差
+    小，其余那一段用 QQQ，两段加起来正好是要对冲的总量。
+    """
+    snap = _compute_risk_snapshot(acct_id)
+    if "error" in snap:
+        return {"error": "no_data"}
+
+    split = _split_hedge_need(
+        snap.get("beta_delta_by_underlying") or {},
+        equity=snap["equity"],
+        target_bd_ratio=target_bd_ratio,
+        chain_of=_chain_of_symbol,
+        total_bd=snap["beta_delta"],
+    )
+
+    plans: dict[str, dict] = {}
+    if split.broad_bd_to_hedge > 0:
+        plans["QQQ"] = _compute_index_hedge_plan(
+            acct_id, "QQQ", target_bd_ratio, bd_to_hedge=split.broad_bd_to_hedge)
+    if split.semi_bd_to_hedge > 0:
+        plans["SMH"] = _compute_index_hedge_plan(
+            acct_id, "SMH", target_bd_ratio, bd_to_hedge=split.semi_bd_to_hedge)
+
+    # 每套方案自己的 post_bd_ratio 只算了它这一段的贡献——两段都做了之后
+    # 真实的 Beta-Delta 是两段一起扣，比任何单张卡片上的数字都低。不单独
+    # 算一遍合计，页面上就会出现两个都写着"执行后 XX%"、加起来却不是 XX%
+    # 的数字，看着像算错了。
+    equity = snap["equity"]
+    combined: dict[str, dict] = {}
+    for variant in ("plan_a", "plan_b"):
+        legs = [p[variant] for p in plans.values()
+                if isinstance(p, dict) and not p.get("error")]
+        if not legs:
+            continue
+        bd_removed = sum(leg["n_total"] * leg["bd_per_spread"] for leg in legs)
+        combined[variant] = {
+            "total_cost": round(sum(leg["total_cost"] for leg in legs), 0),
+            "max_payoff": round(sum(leg["max_payoff"] for leg in legs), 0),
+            "theta_change": round(sum(leg["theta_change"] for leg in legs), 2),
+            "bd_removed": round(bd_removed, 0),
+            "post_bd_ratio": round((snap["beta_delta"] + bd_removed) / equity * 100, 1)
+            if equity else 0.0,
+            "contracts": {leg["underlying"]: leg["n_total"] for leg in legs},
+        }
+
+    return {"split": split, "plans": plans, "combined": combined, "snapshot": snap}
 
 
 def _pltr_ivr_signal(iv: float, ivr: float | None) -> tuple[str, str, str]:
@@ -5768,8 +5852,11 @@ with _pos_tabs[3]:
                 th_chg = plan["theta_change"]
                 new_ocr = plan["new_ocr"]
                 bd_ps  = plan["bd_per_spread"]
-                occ_buy  = f"QQQ{exp_str}{int(buy_k*1000):08d}P"
-                occ_sell = f"QQQ{exp_str}{int(sell_k*1000):08d}P"
+                # 符号由 account.risk 统一按 OCC 标准（根+YYMMDD+C/P+行权价）
+                # 生成。这里以前是自己拼的，P 放在了最后，拼出来的串连
+                # account.options.OCC_RE 都解析不了。
+                occ_buy  = plan.get("buy_occ") or f"QQQ{exp_str}P{int(buy_k*1000):08d}"
+                occ_sell = plan.get("sell_occ") or f"QQQ{exp_str}P{int(sell_k*1000):08d}"
                 _tgt_bd  = _hplan['target_bd_ratio']
                 _tgt_col = _GREEN if post <= _tgt_bd else _AMB
                 _tgt_lbl = "✓达标" if post <= _tgt_bd else "⚠未达标"
@@ -5818,8 +5905,8 @@ with _pos_tabs[3]:
                 _cps_c  = _pc["cost_per_spread"]
                 _acost  = _pc["additional_cost"]
                 _post_c = _pc["post_bd_ratio"]
-                _occ_b  = f"QQQ{_occ_exp}{int(_buy_c*1000):08d}P"
-                _occ_s  = f"QQQ{_occ_exp}{int(_sell_c*1000):08d}P"
+                _occ_b  = _pc.get("buy_occ") or f"QQQ{_occ_exp}P{int(_buy_c*1000):08d}"
+                _occ_s  = _pc.get("sell_occ") or f"QQQ{_occ_exp}P{int(_sell_c*1000):08d}"
                 _pc_tgt = _hplan['target_bd_ratio']
                 _pc_col = _GREEN if _post_c <= _pc_tgt else _AMB
                 _pc_lbl = "✓达标" if _post_c <= _pc_tgt else "⚠未达标"

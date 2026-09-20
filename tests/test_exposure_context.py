@@ -6,7 +6,11 @@
 """
 import unittest
 
-from scoring.exposure_context import exposures_after_trade, underlyings_in
+from scoring.exposure_context import (
+    exposures_after_trade,
+    stock_prices_and_values,
+    underlyings_in,
+)
 from scoring.position_exposure import compute_exposures
 
 
@@ -92,6 +96,40 @@ class UnderlyingsInTests(unittest.TestCase):
 
     def test_tolerates_empty_inputs(self):
         self.assertEqual(underlyings_in([], None), ())
+
+
+class StockPricesAndValuesTests(unittest.TestCase):
+    """把「减仓 $7,000」换成「卖 39 股」要的每股价格。"""
+
+    def test_price_comes_from_the_same_snapshot_row_as_the_exposure(self):
+        prices, values = stock_prices_and_values(
+            [{"symbol": "NVDA", "quantity": 150, "market_value": 28_500.0}]
+        )
+        self.assertAlmostEqual(prices["NVDA"], 190.0)
+        self.assertAlmostEqual(values["NVDA"], 28_500.0)
+
+    def test_a_closed_position_has_no_price_rather_than_a_price_of_zero(self):
+        # 股数 0 的行是已平仓的留痕；给它一个价格会让下游算出无穷多股。
+        prices, values = stock_prices_and_values(
+            [{"symbol": "GONE", "quantity": 0, "market_value": 0.0}]
+        )
+        self.assertNotIn("GONE", prices)
+        self.assertEqual(values["GONE"], 0.0)
+
+    def test_a_short_position_reports_a_positive_price(self):
+        prices, _ = stock_prices_and_values(
+            [{"symbol": "SHORT", "quantity": -100, "market_value": -5_000.0}]
+        )
+        self.assertAlmostEqual(prices["SHORT"], 50.0)
+
+    def test_unparseable_rows_are_skipped_not_fatal(self):
+        prices, values = stock_prices_and_values(
+            [{"symbol": "BAD", "quantity": "x", "market_value": "y"},
+             {"symbol": "", "quantity": 1, "market_value": 1.0},
+             {"symbol": "OK", "quantity": 10, "market_value": 1_000.0}]
+        )
+        self.assertEqual(set(prices), {"OK"})
+        self.assertEqual(set(values), {"OK"})
 
 
 if __name__ == "__main__":

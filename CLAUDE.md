@@ -60,6 +60,9 @@ ONTO（半导体设备）
 | 股票数据 | scoring/mock_data.py | AI暴露字段每季财报后手动更新 |
 | 新增股票 | mock_data.py + scoring_engine.py TICKER_CATEGORY | 两处都要加 |
 | Dashboard UI | app.py | 4个页面：排行榜/单股详情/对比/审计 |
+| 超限后的减仓指令 | account/rebalance.py | 顺序结算，别改成"每条限额各算各的"——同一笔仓位会被卖好几遍 |
+| QQQ/SMH 对冲分段 | account/hedge_split.py | SEMI_CHAINS 决定哪些标的算半导体；两段相加必须等于要对冲的总量 |
+| 对冲方案（张数/行权价） | account/risk.py compute_index_hedge_plan | QQQ 走 compute_qqq_hedge_plan 包装（宽度固定$35/$60）；新标的不填宽度，按现价比例推 |
 
 ## 重要说明
 - **AI暴露字段**：NVDA/MRVL/PLTR 由 edgar_fetcher.py 自动从SEC 10-Q/8-K提取（confidence H/M）；其余7只仍为手动mock（confidence L）

@@ -22,6 +22,10 @@ def load_portfolio(db_factory=None):
     期权必须算进来：这个账户绝大部分净值在价差里，只读股票表会报出
     "最大单票 5%，一切正常"，而实际上某一个标的占了半个账户。
 
+    股票行带 quantity：算敞口只要市值，但把"减仓 $7,000"变成"卖 39 股"
+    需要现价，而现价 = 市值 / 股数 —— 用的是同一行快照里的数，不会出现
+    敞口按同步时的价算、股数按现在的价算这种前后不一致。
+
     读不到数据返回空值而不是抛异常——限额设定那半个页面在首次同步之前
     也要能用。
     """
@@ -41,7 +45,7 @@ def load_portfolio(db_factory=None):
                 dict(r)
                 for r in conn.execute(
                     """
-                    SELECT symbol, market_value FROM positions p1
+                    SELECT symbol, quantity, market_value FROM positions p1
                     WHERE p1.sync_time = (
                         SELECT MAX(p2.sync_time) FROM positions p2
                         WHERE p2.symbol = p1.symbol
@@ -134,6 +138,30 @@ def load_avg_dollar_volume(tickers: tuple[str, ...]) -> dict[str, float]:
         except Exception:
             continue
     return result
+
+
+def stock_prices_and_values(positions: list[dict]) -> tuple[dict[str, float], dict[str, float]]:
+    """({标的: 每股价格}, {标的: 现货市值})——把减仓金额换成股数用的。
+
+    价格取自持仓行自己的 市值/股数，不另外拉行情：同一行里算出来的价格跟
+    这一页所有百分比用的是同一个快照，换算出的股数不会因为两个时点的价格
+    混用而多卖或少卖。股数为 0 的行（已平仓）没有价格，跳过而不是当成 0。
+    """
+    prices: dict[str, float] = {}
+    values: dict[str, float] = {}
+    for row in positions or []:
+        symbol = (row.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        try:
+            market_value = float(row.get("market_value") or 0.0)
+            quantity = float(row.get("quantity") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        values[symbol] = values.get(symbol, 0.0) + abs(market_value)
+        if quantity:
+            prices[symbol] = abs(market_value / quantity)
+    return prices, values
 
 
 def underlyings_in(positions: list[dict], option_positions: list[dict] | None) -> tuple[str, ...]:

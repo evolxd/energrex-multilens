@@ -398,6 +398,10 @@ def compute_portfolio_stress_test(
     stress_10 = stress_20 = 0.0
     nearest_expiry_date: datetime.date | None = None
     nearest_expiry_sym = ""
+    # 按标的拆开的 Beta-Delta。总数回答"整体要不要对冲"，拆开才回答"该用
+    # 哪个指数对冲"——半导体那一半用 SMH 比用 QQQ 基差小得多，而两者都按
+    # 全额做就是重复对冲。见 account.hedge_split。
+    bd_by_underlying: dict[str, float] = {}
 
     for s in stocks:
         sym = str(s["symbol"] or "").upper()
@@ -408,6 +412,7 @@ def compute_portfolio_stress_test(
         gross += abs(mv)
         delta_notional += abs(mv)
         beta_delta += q * s_price * 1.0 * b
+        bd_by_underlying[sym] = bd_by_underlying.get(sym, 0.0) + q * s_price * b
         # 股票的"完整重新定价"就是线性的（没有凸性可言），beta 放大后
         # 直接乘新的跌幅即可，不需要单独的 bs_price 路径。
         stress_10 += q * (b * -0.10 * s_price)
@@ -464,6 +469,7 @@ def compute_portfolio_stress_test(
 
         if S > 0:
             beta_delta += q * mult * d * S * b
+            bd_by_underlying[und] = bd_by_underlying.get(und, 0.0) + q * mult * d * S * b
             if dte > 0 and K > 0:
                 T = dte / 365.0
                 price_now = bs_price(S, K, T, iv, opt_type)
@@ -482,6 +488,7 @@ def compute_portfolio_stress_test(
         "gross_notional": gross,
         "delta_notional": delta_notional,
         "beta_delta": beta_delta,
+        "beta_delta_by_underlying": bd_by_underlying,
         "theta_per_day": theta_per_day,
         "vega_per_pt": vega_per_pt,
         "gamma_total": gamma_total,
@@ -943,15 +950,16 @@ def _bs_put_price(S: float, K: float, T: float, sigma: float,
         return max(K - S, 0.0)
 
 
-def compute_qqq_hedge_plan(
+def compute_index_hedge_plan(
     *,
+    underlying: str,
     equity: float,
     current_bd: float,
     current_bdr: float,
     target_bd_ratio: float,
-    qqq_price: float,
-    qqq_iv_pct: float,
-    beta_qqq: float,
+    spot: float,
+    iv_pct: float,
+    beta: float,
     existing_legs: list[dict],
     existing_bd: float,
     n_existing: int,
@@ -961,16 +969,34 @@ def compute_qqq_hedge_plan(
     vix_spike: bool = False,
     event_risk: bool = False,
     trend_break: bool = False,
+    width_narrow: float | None = None,
+    width_wide: float | None = None,
+    strike_step: float = 5.0,
+    bd_to_hedge: float | None = None,
 ) -> dict:
-    """Three QQQ put-debit-spread hedge plans (A=$35-wide, B=$60-wide,
-    C=keep existing + top up) that bring beta-weighted Delta down toward
-    `target_bd_ratio`.
+    """Three put-debit-spread hedge plans on one index ETF (A=narrow,
+    B=wide, C=keep existing + top up) that bring beta-weighted Delta down
+    toward `target_bd_ratio`.
 
-    Pure given account_monitor.py's already-fetched risk snapshot, QQQ spot
-    price + IV, existing QQQ option legs, and current options-cost-ratio
+    Pure given the caller's already-fetched risk snapshot, the ETF's spot
+    price + IV, its existing option legs, and the current options-cost-ratio
     dollar amount -- it does none of those fetches itself, and delegates the
     protective-put governance check to account.hedge_governance, which is
     already deterministic/pure.
+
+    `underlying` only labels the output and builds OCC symbols; every number
+    comes from `spot`/`iv_pct`/`beta`, so QQQ and SMH go through exactly the
+    same arithmetic rather than two drifting copies of it.
+
+    Spread widths default to a share of spot (5.8% / 10%) instead of fixed
+    dollars: $35 wide is a sensible QQQ structure at ~$600 and a nonsensical
+    one on a $60 ETF. `compute_qqq_hedge_plan` still passes QQQ's historical
+    literals so its output is unchanged.
+
+    `bd_to_hedge` overrides "reduce the whole portfolio to target". Hedging a
+    sleeve -- the semiconductor share of the excess with SMH, the rest with
+    QQQ -- needs each plan sized to its own slice; sizing both to the full
+    excess would hedge the book twice. See account.hedge_split.
 
     vix_spike / event_risk / trend_break: real-data trigger inputs (see
     account.systemic_risk_signal, added 2026-09-14) forwarded to
@@ -979,10 +1005,18 @@ def compute_qqq_hedge_plan(
     them keeps the only trigger active being BETA_DELTA_EXCESS, as before.
     """
     today = today or datetime.date.today()
-    qqq_iv = qqq_iv_pct / 100.0
+    iv = iv_pct / 100.0
+    root = (underlying or "").upper()
 
     target_bd = target_bd_ratio * equity
-    bd_to_hedge = current_bd - target_bd  # positive => need to reduce
+    if bd_to_hedge is None:
+        bd_to_hedge = current_bd - target_bd  # positive => need to reduce
+
+    if width_narrow is None:
+        width_narrow = max(strike_step, round(spot * 0.058 / strike_step) * strike_step)
+    if width_wide is None:
+        width_wide = max(width_narrow + strike_step,
+                         round(spot * 0.10 / strike_step) * strike_step)
 
     plan_exp = today + datetime.timedelta(days=plan_dte)
     plan_occ_exp = plan_exp.strftime("%y%m%d")
@@ -991,23 +1025,24 @@ def compute_qqq_hedge_plan(
         l["strike"] for l in existing_legs
         if l.get("type") == "P" and l.get("qty", 0) > 0
     ]
-    ref_buy_k = float(max(long_strikes)) if long_strikes else float(round(qqq_price * 0.97 / 5) * 5)
+    ref_buy_k = (float(max(long_strikes)) if long_strikes
+                 else float(round(spot * 0.97 / strike_step) * strike_step))
 
     def _plan(buy_k: float, sell_k: float) -> dict:
         T = plan_dte / 365.0
-        gb = bs_greeks(qqq_price, buy_k, T, qqq_iv, "put")
-        gs = bs_greeks(qqq_price, sell_k, T, qqq_iv, "put")
+        gb = bs_greeks(spot, buy_k, T, iv, "put")
+        gs = bs_greeks(spot, sell_k, T, iv, "put")
         d_buy, th_buy = gb["delta"], gb["theta"]
         d_sell, th_sell = gs["delta"], gs["theta"]
 
         # BD contribution per spread: long 1 put at buy_k, short 1 put at sell_k.
         # Net is negative (reduces beta-weighted Delta) since |d_buy| > |d_sell|.
-        bd_ps = 100 * (d_buy - d_sell) * qqq_price * beta_qqq
+        bd_ps = 100 * (d_buy - d_sell) * spot * beta
 
         n_total = math.ceil(bd_to_hedge / (-bd_ps)) if bd_to_hedge > 0 and bd_ps < 0 else 0
 
-        p_buy = _bs_put_price(qqq_price, buy_k, T, qqq_iv) * 100
-        p_sell = _bs_put_price(qqq_price, sell_k, T, qqq_iv) * 100
+        p_buy = _bs_put_price(spot, buy_k, T, iv) * 100
+        p_sell = _bs_put_price(spot, sell_k, T, iv) * 100
         cost_ps = p_buy - p_sell  # net debit per spread
 
         post_bdr = ((current_bd + n_total * bd_ps) / equity * 100) if equity else 0
@@ -1016,7 +1051,14 @@ def compute_qqq_hedge_plan(
         new_ocr = (new_cost_tot / equity * 100) if equity else 0
 
         return {
+            "underlying": root,
             "buy_strike": buy_k, "sell_strike": sell_k,
+            # OCC 标准顺序是 根 + YYMMDD + C/P + 8位行权价。门⑥账户监控的
+            # 对冲卡片一直把 P 拼在最后（QQQ260830004700000P），那个串连本
+            # 项目自己的 account.options.OCC_RE 都解析不了，照着下单会被券商
+            # 拒掉——所以符号在这里统一生成一次，页面直接用。
+            "buy_occ": f"{root}{plan_occ_exp}P{int(round(buy_k * 1000)):08d}",
+            "sell_occ": f"{root}{plan_occ_exp}P{int(round(sell_k * 1000)):08d}",
             "n_total": n_total,
             "bd_per_spread": round(bd_ps, 0),
             "d_long": round(d_buy, 3), "d_short": round(d_sell, 3),
@@ -1025,10 +1067,12 @@ def compute_qqq_hedge_plan(
             "post_bd_ratio": round(post_bdr, 1),
             "theta_change": round(theta_chg, 2),
             "new_ocr": round(new_ocr, 1),
+            "max_loss": round(n_total * cost_ps, 0),
+            "max_payoff": round(n_total * (buy_k - sell_k) * 100 - n_total * cost_ps, 0),
         }
 
-    plan_a = _plan(ref_buy_k, ref_buy_k - 35)
-    plan_b = _plan(ref_buy_k, ref_buy_k - 60)
+    plan_a = _plan(ref_buy_k, ref_buy_k - width_narrow)
+    plan_b = _plan(ref_buy_k, ref_buy_k - width_wide)
 
     # Plan C: keep existing legs, top up with plan A's spread structure.
     remaining_bd = bd_to_hedge + existing_bd
@@ -1040,10 +1084,15 @@ def compute_qqq_hedge_plan(
                 / equity * 100) if equity else 0
 
     plan_c = {
+        "underlying": root,
         "n_existing": n_existing,
         "n_additional": n_add,
         "buy_strike": ref_buy_k,
-        "sell_strike": ref_buy_k - 35,
+        # Plan A's structure, so the width follows plan A rather than a
+        # literal $35 that only ever matched QQQ.
+        "sell_strike": ref_buy_k - width_narrow,
+        "buy_occ": plan_a["buy_occ"],
+        "sell_occ": plan_a["sell_occ"],
         "cost_per_spread": plan_a["cost_per_spread"],
         "additional_cost": round(n_add * plan_a["cost_per_spread"], 0),
         "post_bd_ratio": round(post_bdc, 1),
@@ -1062,13 +1111,21 @@ def compute_qqq_hedge_plan(
     )
 
     return {
+        "underlying": root,
         "equity": equity,
         "current_bd_ratio": round(current_bdr * 100, 1),
         "target_bd_ratio": round(target_bd_ratio * 100, 1),
         "bd_to_hedge": round(bd_to_hedge, 0),
-        "qqq_price": round(qqq_price, 2),
-        "qqq_iv": round(qqq_iv_pct, 1),
-        "b_qqq": beta_qqq,
+        "spot": round(spot, 2),
+        "iv": round(iv_pct, 1),
+        "beta": beta,
+        "width_narrow": width_narrow,
+        "width_wide": width_wide,
+        # 老键名，门⑥账户监控的对冲卡片还在读——QQQ 之外的标的也一样填，
+        # 免得调用方要按 underlying 分两套读法。
+        "qqq_price": round(spot, 2),
+        "qqq_iv": round(iv_pct, 1),
+        "b_qqq": beta,
         "existing_legs": existing_legs,
         "existing_bd": round(existing_bd, 0),
         "n_existing": n_existing,
@@ -1080,6 +1137,31 @@ def compute_qqq_hedge_plan(
         "plan_c": plan_c,
         "hedge_governance": hedge_governance,
     }
+
+
+def compute_qqq_hedge_plan(
+    *,
+    qqq_price: float,
+    qqq_iv_pct: float,
+    beta_qqq: float,
+    **kwargs,
+) -> dict:
+    """QQQ 对冲方案——`compute_index_hedge_plan` 的固定参数包装。
+
+    宽度沿用历史上写死的 $35 / $60、行权价对齐 $5，所以输出跟 2026-09-20
+    拆出通用函数之前逐字一致；门⑥账户监控的对冲卡片和 tests/test_risk.py
+    都还按这个签名调用。
+    """
+    return compute_index_hedge_plan(
+        underlying="QQQ",
+        spot=qqq_price,
+        iv_pct=qqq_iv_pct,
+        beta=beta_qqq,
+        width_narrow=35.0,
+        width_wide=60.0,
+        strike_step=5.0,
+        **kwargs,
+    )
 
 
 def check_otm_spread_alerts(rows: list, *, today: datetime.date | None = None) -> list[dict]:
