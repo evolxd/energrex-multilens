@@ -8,6 +8,7 @@ import unittest
 
 from scoring.exposure_context import (
     exposures_after_trade,
+    non_scored_chain,
     stock_prices_and_values,
     underlyings_in,
 )
@@ -130,6 +131,25 @@ class StockPricesAndValuesTests(unittest.TestCase):
         )
         self.assertEqual(set(prices), {"OK"})
         self.assertEqual(set(values), {"OK"})
+
+
+class NonScoredChainTests(unittest.TestCase):
+    """门①结构分析靠它跳过 ETF——对 QQQ 问「管理层诚信」是没有意义的。"""
+
+    def test_hedge_and_leveraged_products_are_named(self):
+        self.assertEqual(non_scored_chain("QQQ"), "对冲(指数)")
+        self.assertEqual(non_scored_chain("SMH"), "对冲(半导体)")
+        self.assertEqual(non_scored_chain("ETHU"), "加密资产")
+
+    def test_an_ordinary_operating_company_is_not_one(self):
+        self.assertIsNone(non_scored_chain("NVDA"))
+
+    def test_case_and_whitespace_do_not_matter(self):
+        self.assertEqual(non_scored_chain(" qqq "), "对冲(指数)")
+
+    def test_empty_input_is_not_an_error(self):
+        self.assertIsNone(non_scored_chain(""))
+        self.assertIsNone(non_scored_chain(None))
 
 
 if __name__ == "__main__":

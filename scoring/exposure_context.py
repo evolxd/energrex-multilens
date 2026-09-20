@@ -98,6 +98,15 @@ _NON_SCORED_CHAINS: dict[str, str] = {
 }
 
 
+def non_scored_chain(symbol: str) -> str | None:
+    """标的若是 ETF/杠杆产品等不进基本面评分的东西，返回它的归类名，否则 None。
+
+    门①的结构分析用它来跳过这类标的：QQQ/SMH/ETHU 没有「管理层诚信」
+    「分部构成」这些维度，对它们跑公司分析算出来的东西没有意义。
+    """
+    return _NON_SCORED_CHAINS.get((symbol or "").strip().upper())
+
+
 def chain_of(symbol: str) -> str | None:
     """标的 → 产业链名。两张表都查不到才返回 None（调用方计入"未分类"）。
 
