@@ -293,7 +293,10 @@ from account.risk import check_otm_spread_alerts as _check_otm_spread_alerts_imp
 from account.risk import classify_drawdown_status as _classify_drawdown_status
 from account.risk import classify_stress_status as _classify_stress_status
 from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
+from account.risk import DEFAULT_RISK_LIMITS as _DEFAULT_RISK_LIMITS
 from account.risk import compute_portfolio_stress_test as _compute_portfolio_stress_test
+from account.risk import implied_bd_ceiling as _implied_bd_ceiling
+from account.risk import protection_gap as _protection_gap
 from account.risk import compute_index_hedge_plan as _compute_index_hedge_plan_impl
 from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.hedge_split import split_hedge_need as _split_hedge_need
@@ -773,6 +776,20 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         "stress_10_ratio":     round(stress_10_ratio, 4)  if stress_10_ratio  is not None else None,
         "stress_20":           round(stress_20, 0),
         "stress_20_ratio":     round(stress_20_ratio, 4)  if stress_20_ratio  is not None else None,
+        # 整条损失阶梯（-5/-10/-15/-20）。只有 -10/-20 两个点时看不出曲线
+        # 形状——保护腿挂得远的组合，头一段是敞着的、第二段反而更便宜。
+        "stress_ladder":       {k: round(v, 0) for k, v in stress["stress_ladder"].items()},
+        "protection_gap":      _protection_gap(stress["stress_ladder"]),
+        # 压力线反推的 BD 上限：按当前结构等比例减仓，BD 降到这个数压力才
+        # 回到线内。跟 max_beta_delta_ratio 那条线摆在一起看，就知道哪条线
+        # 在真正起约束作用——两者可以差很远。
+        "bd_ceiling_from_stress": _implied_bd_ceiling(
+            current_bd=beta_delta,
+            stress_loss=stress_10,
+            equity=equity,
+            stress_limit=_RISK_LIMITS.get("stress_hard_stop",
+                                          _DEFAULT_RISK_LIMITS["stress_hard_stop"]),
+        ),
         "nearest_expiry_date": nearest_expiry_date,
         "nearest_expiry_sym":  nearest_expiry_sym,
         "risk_status":         risk_status,

@@ -36,6 +36,14 @@ _log = logging.getLogger("energrex.account.risk")
 
 ZERO_GREEKS = {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
 
+#: 压力测试默认的大盘冲击阶梯。-10/-20 是两条限额盯的档位，-5/-15 是为了
+#: 看出损失曲线的形状——保护腿挂得远的组合在这两个点上会露出"前段有洞"。
+STRESS_SHOCKS: tuple[float, ...] = (-0.05, -0.10, -0.15, -0.20)
+
+#: 每 10% 大盘跌幅对应的隐含波动率上升（个 vol 点）。沿用此前写死的经验值
+#: （跌10%→+8、跌20%→+16），没有重新校准。
+VOL_SHOCK_PTS_PER_10PCT = 8.0
+
 
 def bs_greeks(
     spot: float,
@@ -362,8 +370,9 @@ def compute_portfolio_stress_test(
     iv_map: dict[str, dict],
     beta_map: dict[str, float],
     today: datetime.date | None = None,
+    shocks: tuple[float, ...] | None = None,
 ) -> dict:
-    """两档大盘（指数）冲击情景下的组合损益：大盘跌10%/跌20%。
+    """一组大盘（指数）冲击情景下的组合损益，默认 -5%/-10%/-15%/-20%。
 
     `stocks` 需要 symbol/quantity/market_value；`options` 需要
     symbol/quantity/current_price/market_value/strike/expiry（dict 或
@@ -390,12 +399,23 @@ def compute_portfolio_stress_test(
     大盘跌10%：vol_shock = +8 个vol点；跌20%：+16 个vol点（市场下跌时隐含
     波动率上升，这两个数字沿用了此前的经验设定，没有重新校准——校准
     这两个数字、以及 8%/12%/15% 三档预警阈值要不要跟着这次改动调整，
-    是需要你来定的事，不是这次改动的一部分）。
+    是需要你来定的事，不是这次改动的一部分）。中间档位的 vol_shock 按同一
+    条斜率插值（每 1% 跌幅 +0.8 个 vol 点），所以 -10/-20 两档的结果跟
+    2026-09-20 加入阶梯之前逐位一致。
+
+    2026-09-20：情景从写死的两档改成可配的阶梯。只有 -10/-20 两个点时，
+    看不出损失曲线的**形状**——一个把保护腿挂得很远的组合，头 10% 完全
+    敞着、第二个 10% 反而比第一个便宜（长 put 开始起作用）。这个"前段有
+    洞"的特征在两点之间是隐形的，而它恰恰决定了该补保护还是该减仓。
+    `stress_ladder` 键是整数百分点（-5/-10/-15/-20）。
     """
     today = today or datetime.date.today()
+    shocks = tuple(shocks if shocks is not None else STRESS_SHOCKS)
     gross = delta_notional = beta_delta = 0.0
     theta_per_day = vega_per_pt = gamma_total = 0.0
-    stress_10 = stress_20 = 0.0
+    # 按冲击档位累计的损益，键是整数百分点（-5/-10/-15/-20），不是浮点
+    # ——浮点做字典键在跨模块传递时会因为 -0.1 的表示误差取不到值。
+    ladder: dict[int, float] = {int(round(s * 100)): 0.0 for s in shocks}
     nearest_expiry_date: datetime.date | None = None
     nearest_expiry_sym = ""
     # 按标的拆开的 Beta-Delta。总数回答"整体要不要对冲"，拆开才回答"该用
@@ -415,8 +435,8 @@ def compute_portfolio_stress_test(
         bd_by_underlying[sym] = bd_by_underlying.get(sym, 0.0) + q * s_price * b
         # 股票的"完整重新定价"就是线性的（没有凸性可言），beta 放大后
         # 直接乘新的跌幅即可，不需要单独的 bs_price 路径。
-        stress_10 += q * (b * -0.10 * s_price)
-        stress_20 += q * (b * -0.20 * s_price)
+        for shock in shocks:
+            ladder[int(round(shock * 100))] += q * (b * shock * s_price)
 
     for o in options:
         sym = str(o["symbol"] or "").upper()
@@ -473,16 +493,13 @@ def compute_portfolio_stress_test(
             if dte > 0 and K > 0:
                 T = dte / 365.0
                 price_now = bs_price(S, K, T, iv, opt_type)
-                for shock, vol_shock_pts, acc in (
-                    (-0.10, 8, "stress_10"), (-0.20, 16, "stress_20"),
-                ):
+                for shock in shocks:
+                    # 波动率冲击按跌幅线性缩放：跌10%→+8个vol点、跌20%→+16，
+                    # 就是原来写死的那两个数，中间档位按同一条斜率插出来。
+                    vol_shock_pts = abs(shock) * 10.0 * VOL_SHOCK_PTS_PER_10PCT
                     s_new = S * (1 + b * shock)
                     price_new = bs_price(s_new, K, T, iv + vol_shock_pts / 100.0, opt_type)
-                    pnl = q * mult * (price_new - price_now)
-                    if acc == "stress_10":
-                        stress_10 += pnl
-                    else:
-                        stress_20 += pnl
+                    ladder[int(round(shock * 100))] += q * mult * (price_new - price_now)
 
     return {
         "gross_notional": gross,
@@ -492,11 +509,102 @@ def compute_portfolio_stress_test(
         "theta_per_day": theta_per_day,
         "vega_per_pt": vega_per_pt,
         "gamma_total": gamma_total,
-        "stress_10": stress_10,
-        "stress_20": stress_20,
+        "stress_10": ladder.get(-10, 0.0),
+        "stress_20": ladder.get(-20, 0.0),
+        # 整条阶梯。只看 -10/-20 两个点看不出损失曲线的形状：保护腿挂得远
+        # 的组合，头 10% 是敞着的、第二个 10% 反而更便宜，这件事只有中间
+        # 档位摆出来才看得见。
+        "stress_ladder": ladder,
         "nearest_expiry_date": nearest_expiry_date,
         "nearest_expiry_sym": nearest_expiry_sym,
     }
+
+
+def implied_bd_ceiling(
+    *,
+    current_bd: float,
+    stress_loss: float,
+    equity: float,
+    stress_limit: float,
+) -> float | None:
+    """压力线反推出来的 Beta-Delta 上限：BD 降到多少，压力测试才回到线内。
+
+    按**等比例减仓**算，这时它是精确的而不是近似：把所有持仓同时缩小到
+    k 倍，Beta-Delta 和压力损失都是持仓上的求和，两者同乘 k——非线性只
+    存在于"大盘跌多少"那个维度上，不在"仓位多大"这个维度上。
+
+    所以返回值的确切含义是：**如果按当前结构等比例减仓**，BD 降到这个数
+    时压力恰好压在限额上。
+
+    它对**选择性减仓不成立**，而且方向可能反过来——先把保护腿平掉，BD 确
+    实降了，压力损失反而会涨。用它来定"减多少"，不能用来定"减哪个"。
+
+    这个数存在的理由是两条限额会打架：账户可以在 BD 限额之内还剩很大余量
+    的同时，把压力线超掉好几个点（2026-09-20 实测 BD 273.5%／限额 350%，
+    压力 -10% 却是 17.5%／限额 15%）。两条线治理的是同一个风险，这个函数
+    把它们换算到同一把尺子上，好判断 BD 那条线是不是根本没在起作用。
+
+    equity 或 stress_loss 为 0 时返回 None——没有可换算的东西，返回 0 会
+    被读成"BD 上限是 0，全部清仓"。
+    """
+    loss = abs(stress_loss)
+    if equity <= 0 or loss <= 0 or current_bd == 0:
+        return None
+    return current_bd * (stress_limit * equity) / loss
+
+
+def stress_curve_shape(stress_ladder: dict[int, float]) -> list[dict]:
+    """把损失阶梯拆成每一段的**边际**损失，按跌幅从浅到深。
+
+    只看 -10/-20 两个总数，看不出损失曲线的形状。拆成分段之后才看得见一
+    件事：后一段比前一段**便宜**，说明长 put 在深水区才开始起作用，头一段
+    是敞着的——保护腿挂得太远。这种组合扛得住崩盘，却在温和回调里流血，
+    而温和回调发生的次数多得多。
+
+    每段返回 from_pct/to_pct（负的整数百分点）、marginal（这一段多亏多少，
+    负数）、cheaper_than_previous（这一段的边际损失是否小于上一段）。
+    """
+    if not stress_ladder:
+        return []
+    # 从浅到深：-5, -10, -15, -20
+    levels = sorted(stress_ladder, reverse=True)
+    bands: list[dict] = []
+    prev_level, prev_total = 0, 0.0
+    for level in levels:
+        total = stress_ladder[level]
+        marginal = total - prev_total
+        bands.append({
+            "from_pct": prev_level,
+            "to_pct": level,
+            "cumulative": total,
+            "marginal": marginal,
+            "cheaper_than_previous": (
+                bands and abs(marginal) < abs(bands[-1]["marginal"])
+            ) or False,
+        })
+        prev_level, prev_total = level, total
+    return bands
+
+
+def protection_gap(stress_ladder: dict[int, float]) -> str | None:
+    """如果损失曲线是"前段贵、后段便宜"，说出来；否则 None。
+
+    返回的是一句可以直接显示的话，不是布尔值——调用方不需要再把三个数字
+    重新拼成一句人话，也就不会两个页面拼出两种说法。
+    """
+    bands = stress_curve_shape(stress_ladder)
+    hits = [b for b in bands if b["cheaper_than_previous"]]
+    if not hits:
+        return None
+    first = hits[0]
+    prev = bands[bands.index(first) - 1]
+    return (
+        f"{prev['from_pct']}%→{prev['to_pct']}% 这一段亏 ${abs(prev['marginal']):,.0f}，"
+        f"而更深的 {first['from_pct']}%→{first['to_pct']}% 只多亏 "
+        f"${abs(first['marginal']):,.0f}——保护腿在深水区才起作用，"
+        f"头一段是敞着的。这种结构扛得住崩盘，却在温和回调里流血，"
+        f"而温和回调发生的次数多得多。"
+    )
 
 
 def classify_stress_status(

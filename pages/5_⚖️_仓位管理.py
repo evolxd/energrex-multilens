@@ -209,6 +209,71 @@ else:
                 _room = _limit_v - (_reading or 0.0)
                 st.caption(f"上限 {_limit_v:.1f}{_spec.unit} ｜ 余量 {_room:+.1f}{_spec.unit}")
 
+    # ── 两条限额是否在互相矛盾 ──────────────────────────────────────
+    # BD 限额和压力限额治理的是同一个风险，但它们是各自独立设的，可以打架：
+    # 2026-09-20 实测 BD 273.5%（限额 350%，还剩 76.5 个点余量，看着很安全）
+    # 的同时，压力 -10% 是 17.5%（限额 15%，超了）。这时 BD 那条线根本不会
+    # 先触发，等于没在起约束作用。把压力线换算成 BD 口径摆在一起，这件事
+    # 才看得见。
+    _bd_ceiling = _risk_snap.get("bd_ceiling_from_stress")
+    _bd_now = abs(_risk_snap.get("beta_delta_ratio") or 0.0)
+    _bd_limit = risk_snapshot_limits.get("max_beta_delta_ratio")
+    if _bd_ceiling and _risk_snap.get("equity"):
+        _ceiling_ratio = _bd_ceiling / _risk_snap["equity"]
+        _c1, _c2, _c3 = st.columns(3)
+        _c1.metric("当前 Beta-Delta", f"{_bd_now * 100:.0f}%")
+        _c2.metric("BD 限额（已设）",
+                   f"{_bd_limit * 100:.0f}%" if _bd_limit else "—")
+        _c3.metric("压力线反推的 BD 上限", f"{_ceiling_ratio * 100:.0f}%",
+                   delta=f"{(_ceiling_ratio - _bd_now) * 100:+.0f} 个点",
+                   delta_color="normal" if _ceiling_ratio >= _bd_now else "inverse",
+                   help="按当前结构**等比例**减仓时，BD 降到这个数压力恰好回到线内。"
+                        "等比例减仓下它是精确值不是近似——BD 和压力损失都是持仓上的"
+                        "求和，同乘一个系数。但它对选择性减仓不成立：先平掉保护腿，"
+                        "BD 降了压力反而会涨。用它定「减多少」，不能定「减哪个」。")
+
+        if _bd_limit and _ceiling_ratio < _bd_limit:
+            st.warning(
+                f"**两条限额在打架。** BD 限额 {_bd_limit * 100:.0f}% 比压力线"
+                f"要求的 {_ceiling_ratio * 100:.0f}% 松了 "
+                f"{(_bd_limit - _ceiling_ratio) * 100:.0f} 个点——在这个组合结构下，"
+                "BD 那条线永远不会先触发，真正约束你的只有压力线。"
+                f"要让两条线说同一件事，BD 限额得收到 {_ceiling_ratio * 100:.0f}% 附近。"
+                "（改限额要走下面的哈希链治理：书面理由 + 冷静期，这里只是把"
+                "换算摆出来，不自动改。）"
+            )
+
+    # ── 损失曲线的形状 ──────────────────────────────────────────────
+    _ladder = _risk_snap.get("stress_ladder") or {}
+    if _ladder:
+        with st.expander("损失曲线形状（-5% / -10% / -15% / -20%）"):
+            from account.risk import stress_curve_shape as _curve_shape
+            import pandas as _pd_sc
+            _eq_sc = _risk_snap.get("equity") or 0.0
+            _bands = _curve_shape({int(k): float(v) for k, v in _ladder.items()})
+            st.dataframe(
+                _pd_sc.DataFrame([
+                    {
+                        "区间": f"{_b['from_pct']}% → {_b['to_pct']}%",
+                        "这一段多亏": f"${abs(_b['marginal']):,.0f}",
+                        "累计亏损": f"${abs(_b['cumulative']):,.0f}",
+                        "累计占净值": (f"{abs(_b['cumulative']) / _eq_sc * 100:.1f}%"
+                                       if _eq_sc else "—"),
+                        "比上一段便宜": "是" if _b["cheaper_than_previous"] else "",
+                    }
+                    for _b in _bands
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(
+                "只看 -10/-20 两个总数，看不出曲线的形状。拆成分段之后才看得见"
+                "后一段是不是比前一段便宜——那说明长 put 在深水区才起作用。"
+            )
+
+    _gap = _risk_snap.get("protection_gap")
+    if _gap:
+        st.info(f"🛡️ {_gap}")
+
 
 # ── 预警 ────────────────────────────────────────────────────────────
 st.subheader("预警")
