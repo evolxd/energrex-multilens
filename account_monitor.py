@@ -524,10 +524,14 @@ def _load_beta_cache() -> dict:
     return {}
 
 
-def _save_beta_cache(betas: dict) -> None:
+def _save_beta_cache(betas: dict, fits: dict | None = None) -> None:
+    """fits 是回归兜底算出来的那些标的的拟合信息（R²/样本区间/剔除天数）。
+    单独存是因为看板要靠 R² 区分"拟合很好的 beta"和"勉强算出来的 beta"，
+    只存一个数字的话两者在界面上完全无从分辨。"""
     payload = {
         "updated_at": datetime.datetime.now().isoformat(),
         "betas":      {k: round(v, 4) for k, v in betas.items()},
+        "fits":       fits or {},
     }
     _BETA_CACHE_PATH.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -535,10 +539,20 @@ def _save_beta_cache(betas: dict) -> None:
 
 
 def _refresh_beta_spy() -> None:
-    """从 yfinance 拉取所有已知标的的 5年月度 beta，更新 _BETA_SPY 并写缓存。"""
+    """刷新所有已知标的的 beta：先用 yfinance 的现成值，拿不到的自己回归。
+
+    2026-09-20 加回归兜底。此前 .info["beta"] 取不到就直接放弃、退回
+    _BETA_BASE，而新上市股票和不少 ETF 在 Yahoo 那里这个字段本来就是空的
+    （SPCX 2026-06-12 才上市，ETHU 是 ETF），于是这些标的的 beta 永远停在
+    静态值上，没进表的更是静默按 1.0 处理——偏向"看起来更安全"的方向。
+    """
     import yfinance as yf
+    from account.beta_regression import estimate_beta, fetch_closes, plausible_beta
+
     tickers = list(_BETA_BASE.keys())
     new_betas: dict = {}
+    fits: dict      = {}
+    regressed: list = []
     failed: list    = []
 
     for sym in tickers:
@@ -546,20 +560,44 @@ def _refresh_beta_spy() -> None:
             b = yf.Ticker(sym).info.get("beta")
             if b is not None and 0.01 < float(b) < 15:
                 new_betas[sym] = round(float(b), 3)
-            else:
-                failed.append(sym)
+                continue
         except Exception:
-            failed.append(sym)
+            pass
+        failed.append(sym)
 
-    # 用 yfinance 结果覆盖 base，失败的保留 base 值
+    # 回归兜底：只对上面失败的标的做，避免为已有可靠值的标的多拉一遍历史
+    if failed:
+        market = fetch_closes("SPY", period="1y")
+        if market:
+            for sym in list(failed):
+                fit = estimate_beta(fetch_closes(sym, period="1y"), market)
+                # plausible_beta 会挡掉超过自身波动率比值上界的估计——正是
+                # Firstrade 那个 SPCX=25.14（上界 7.30）会被挡在外面的情形
+                if plausible_beta(fit):
+                    new_betas[sym] = round(fit.beta, 3)
+                    fits[sym] = {
+                        "beta": round(fit.beta, 4),
+                        "r_squared": fit.r_squared,
+                        "std_error": fit.std_error,
+                        "observations": fit.observations,
+                        "sample_start": fit.sample_start,
+                        "sample_end": fit.sample_end,
+                        "skipped_initial": fit.skipped_initial,
+                    }
+                    regressed.append(sym)
+                    failed.remove(sym)
+
+    # 用结果覆盖 base，失败的保留 base 值
     merged = {**_BETA_BASE, **new_betas}
     _BETA_SPY.update(merged)
-    _save_beta_cache(new_betas)
+    _save_beta_cache(new_betas, fits)
 
     changes = {k: (round(_BETA_BASE[k], 3), round(new_betas[k], 3))
-               for k in new_betas if abs(new_betas[k] - _BETA_BASE[k]) > 0.05}
+               for k in new_betas
+               if k in _BETA_BASE and abs(new_betas[k] - _BETA_BASE[k]) > 0.05}
     _log.info(
-        f"[beta_refresh] 成功={len(new_betas)} 失败={failed or '无'} "
+        f"[beta_refresh] yfinance={len(new_betas)-len(regressed)} "
+        f"回归={regressed or '无'} 仍失败={failed or '无'} "
         f"变化较大={changes or '无'}"
     )
 

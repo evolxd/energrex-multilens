@@ -67,8 +67,10 @@ def test_holdings_are_matched_case_insensitively_and_untrimmed():
 
 
 def test_worst_fit_is_reported_first():
-    reported = low_confidence_held(["SPCX", "ETHU"])
-    assert [e.symbol for e in reported] == ["ETHU", "SPCX"]   # R² 0.110 < 0.163
+    # Asserted as a property rather than a fixed symbol order: the betas are
+    # re-measured weekly, so which name has the poorest fit changes over time.
+    fits = [e.r_squared for e in low_confidence_held(["SPCX", "ETHU"])]
+    assert fits == sorted(fits)
 
 
 def test_describe_names_the_beta_and_its_fit():

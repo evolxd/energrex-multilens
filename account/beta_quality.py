@@ -8,7 +8,7 @@ measured looks exactly like one measured at 1.00.
 
 It bit two of the largest exposures at once. On 2026-09-19 SPCX and ETHU were
 both absent from the table and both running at beta 1.0, while their actual
-market sensitivity is roughly 2.6 and 2.9 -- Beta-Delta was understating the
+market sensitivity is roughly 2.6 and 3.4 -- Beta-Delta was understating the
 portfolio, in the direction that makes a leveraged book look calmer than it is.
 
 Vendor numbers were no help. Firstrade reported 25.14 for SPCX, which is not a
@@ -22,8 +22,10 @@ market explains under a fifth of their variance -- beta describes how they move
 *when the market moves*, and most of what they do is not that. A hedge sized off
 beta alone will under-perform on both of these.
 
-Method: ordinary least squares of daily simple returns against SPY over a
-common window, prices from Alpha Vantage TIME_SERIES_DAILY.
+Method: ordinary least squares of daily simple returns against SPY, implemented
+in account/beta_regression.py. The values below are seeds; `_refresh_beta_spy()`
+re-measures weekly and writes the fit into data/beta_cache.json, which
+`load_measured()` prefers. Seeds only apply until the first refresh completes.
 """
 
 from __future__ import annotations
@@ -74,16 +76,53 @@ DERIVED_BETAS: dict[str, DerivedBeta] = {
     # interval [0.88, 4.87]; a 2x ether ETF is violent (104.7% annualised) but
     # that violence is mostly crypto, not the S&P.
     "ETHU": DerivedBeta(
-        symbol="ETHU", beta=2.88, r_squared=0.110, std_error=1.02,
-        sample_start="2026-06-12", sample_end="2026-09-18", observations=67,
-        note="2倍做多以太币ETF；年化波动 104.7%，与大盘相关系数仅 0.33",
+        symbol="ETHU", beta=3.43, r_squared=0.163, std_error=0.79,
+        sample_start="2026-04-29", sample_end="2026-09-18", observations=99,
+        note="2倍做多以太币ETF；非新上市，用完整窗口不剔除起始日",
     ),
 }
 
 
+def _cache_path():
+    import pathlib
+    return pathlib.Path(__file__).resolve().parent.parent / "data" / "beta_cache.json"
+
+
+def load_measured() -> dict[str, DerivedBeta]:
+    """The committed seeds, overlaid with whatever the weekly refresh measured.
+
+    `_refresh_beta_spy()` re-runs the regression and writes its fits into
+    `data/beta_cache.json`, so these numbers track the market instead of
+    freezing at whatever they were the day they were written. The seeds below
+    stay as the offline fallback: a machine that has never completed a refresh
+    still gets a measured beta rather than the silent 1.0.
+    """
+    measured = dict(DERIVED_BETAS)
+    try:
+        import json
+
+        raw = json.loads(_cache_path().read_text(encoding="utf-8"))
+        for symbol, fit in (raw.get("fits") or {}).items():
+            skipped = fit.get("skipped_initial", 0)
+            measured[symbol] = DerivedBeta(
+                symbol=symbol,
+                beta=float(fit["beta"]),
+                r_squared=float(fit.get("r_squared", 0.0)),
+                std_error=float(fit.get("std_error", 0.0)),
+                sample_start=str(fit.get("sample_start", "")),
+                sample_end=str(fit.get("sample_end", "")),
+                observations=int(fit.get("observations", 0)),
+                note=(f"每周自动回归；剔除起始 {skipped} 个交易日"
+                      if skipped else "每周自动回归"),
+            )
+    except Exception:
+        pass            # 缓存缺失/损坏就用种子值，不该因此没有 beta
+    return measured
+
+
 def beta_overrides() -> dict[str, float]:
     """Symbol -> beta, for merging into the main table."""
-    return {symbol: entry.beta for symbol, entry in DERIVED_BETAS.items()}
+    return {symbol: entry.beta for symbol, entry in load_measured().items()}
 
 
 def low_confidence_held(symbols: Iterable[str]) -> list[DerivedBeta]:
@@ -93,6 +132,6 @@ def low_confidence_held(symbols: Iterable[str]) -> list[DerivedBeta]:
     do not have is noise, and noise is how the 1.0 default went unnoticed.
     """
     held = {str(s).strip().upper() for s in symbols if s}
-    found = [entry for symbol, entry in DERIVED_BETAS.items()
+    found = [entry for symbol, entry in load_measured().items()
              if symbol in held and entry.is_low_confidence]
     return sorted(found, key=lambda e: e.r_squared)
