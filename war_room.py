@@ -296,6 +296,22 @@ if _snap:
         f"<span style='color:{_MUT}'> &nbsp;|&nbsp; </span>"
         + _chrome_str
     )
+    # 这一整行数字来自存库的简报快照，不是实时计算。右上角那个时间戳是"现在
+    # 几点"，跟数据无关——两者并排显示，读的人自然会把 BD 当成当前值。用户连续
+    # 三轮看到 BD 378% 不动、以为修复失效，实际是 09-19 11:50 那次生成冻结下来
+    # 的数，中间所有计算侧的改动它根本不经过。所以把快照自己的年龄标出来。
+    _brief_age = ""
+    if _brief and _brief.get("gen_time"):
+        try:
+            _gt = datetime.datetime.fromisoformat(_brief["gen_time"].replace(" ", "T"))
+            _hrs = (datetime.datetime.now() - _gt).total_seconds() / 3600
+            _age_txt = (f"{_hrs/24:.1f}天前" if _hrs >= 24 else f"{_hrs:.1f}小时前")
+            _age_col = _R if _hrs >= 24 else (_A if _hrs >= 4 else _MUT)
+            _brief_age = (f"<span style='color:{_age_col}'>&nbsp;|&nbsp; "
+                          f"快照 {_age_txt}</span>")
+        except Exception:
+            _brief_age = ""
+    _snap_inline += _brief_age
 else:
     _snap_inline = (
         f"<span style='color:{_MUT}'>⚪ BD:-- &nbsp;|&nbsp; Θ:-- &nbsp;|&nbsp; </span>"
@@ -366,9 +382,17 @@ with _left:
                      help="用这个账户当前的实时持仓重新生成今日简报"):
             import _cascade
             with st.spinner("生成中…"):
-                _cascade._get_am()["_generate_and_save_daily_briefing"](_ACCT_ID)
-            _load_war_data.clear()
-            st.rerun()
+                _regen = _cascade._get_am()["_generate_and_save_daily_briefing"](_ACCT_ID)
+            # 失败必须说出来。顶部 BD/压力测试全部读自这份存库快照，生成失败
+            # 时页面会原样显示上一份旧数据，静默吞异常就等于谎报"已刷新"。
+            if isinstance(_regen, dict) and not _regen.get("ok"):
+                st.error(
+                    f"❌ 简报生成失败，顶部风险数字仍是上一份旧快照："
+                    f"{_regen.get('error') or '未知错误'}"
+                )
+            else:
+                _load_war_data.clear()
+                st.rerun()
 
     if _brief and _brief["recs"]:
         _recs = _brief["recs"]

@@ -1678,10 +1678,24 @@ def _load_today_briefing(acct_id: str) -> dict | None:
         return None
 
 
-def _generate_and_save_daily_briefing(acct_id: str) -> None:
-    """09:35 ET 自动执行：生成简报并存库。"""
+def _generate_and_save_daily_briefing(acct_id: str) -> dict:
+    """09:35 ET 自动执行：生成简报并存库。返回 {"ok", "error"} 供调用方显示。
+
+    2026-09-20 改为返回结果。此前失败只写进日志（而那个 logger 当时连 handler
+    都没有），作战室点"重新生成"时异常被吞掉、转个圈、rerun，然后显示同一份
+    旧简报——看起来像按钮没反应。而作战室顶部的 BD/压力测试全部读自这份存库
+    快照，于是无论底层计算怎么改，界面上那几个数字纹丝不动：用户连续几轮看到
+    的 BD 378% 就是 2026-09-19 11:50 那次生成时冻结下来的值。
+    """
     try:
-        snap    = _compute_risk_snapshot(acct_id)
+        snap = _compute_risk_snapshot(acct_id)
+        if snap.get("error"):
+            # 快照本身失败（比如读不到净值）时不要覆盖上一份可用简报，
+            # 否则界面会从"旧但完整"退化成"空白"。
+            msg = f"风险快照不可用: {snap['error']}"
+            _log.error(f"Daily briefing generation failed ({acct_id}): {msg}")
+            return {"ok": False, "error": msg}
+
         recs    = _generate_recommendations(acct_id)
         alerts  = _check_sell_call_triggers(acct_id)
         # snap 含 datetime.date 对象，需转为 str
@@ -1690,8 +1704,10 @@ def _generate_and_save_daily_briefing(acct_id: str) -> None:
         _save_daily_briefing(acct_id, snap_s, recs, alerts)
         _log.info(f"Daily briefing saved for {acct_id}: "
                   f"{len(recs)} recs, {len(alerts)} call alerts")
+        return {"ok": True, "error": "", "recs": len(recs), "alerts": len(alerts)}
     except Exception as e:
-        _log.error(f"Daily briefing generation failed ({acct_id}): {e}")
+        _log.exception(f"Daily briefing generation failed ({acct_id}): {e}")
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
 # ─────────────────────────────────────────────────────────────────

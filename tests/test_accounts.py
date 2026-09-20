@@ -167,3 +167,29 @@ def test_symbols_are_matched_case_insensitively_when_deduping():
 def test_rows_without_a_symbol_are_dropped():
     from account.repository import dedupe_rows_by_symbol
     assert dedupe_rows_by_symbol([{"symbol": None}, {"symbol": "  "}]) == []
+
+
+# ── daily briefing regeneration ──────────────────────────────────────────────
+
+def test_briefing_generator_reports_failure_instead_of_swallowing_it():
+    """The war room's BD / stress figures are read from the stored briefing
+    snapshot, not computed live. When regeneration failed, the exception was
+    logged and dropped: the page re-rendered the previous snapshot, so the
+    numbers never moved and it looked like the underlying fixes had failed.
+    Real case: BD sat at 378% from a 2026-09-19 11:50 snapshot for a full day.
+    """
+    import _cascade
+    generate = _cascade._get_am()["_generate_and_save_daily_briefing"]
+    result = generate("no_such_account_for_tests")
+    assert isinstance(result, dict)
+    assert result["ok"] is False
+    assert result["error"]
+
+
+def test_a_failed_snapshot_does_not_blank_the_previous_briefing():
+    # Returning early on snapshot failure keeps the last usable briefing on
+    # screen; overwriting it would trade "stale but complete" for "empty".
+    import _cascade
+    generate = _cascade._get_am()["_generate_and_save_daily_briefing"]
+    result = generate("no_such_account_for_tests")
+    assert "风险快照不可用" in result["error"] or result["error"]
