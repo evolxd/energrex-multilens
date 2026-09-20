@@ -63,8 +63,14 @@ scoring/macro_snapshot.json
 # Temporary debug / screenshot scripts
 scroll_screenshot.py
 
-# Claude Code project directory
-.claude/
+# Claude Code project directory（本地设置/状态不进库）
+#
+# 这里写 `.claude/*` 而不是 `.claude/`：git 不允许在一个被排除的「目录」
+# 里面重新包含文件，必须排除目录的「内容」才能再用 ! 把 skills 捞回来。
+.claude/*
+# 项目 skill 要进库——它跟 scoring/ 里的代码一样是这个系统的一部分，
+# 不提交的话只存在于某一台机器上，换台电脑或换个会话就没了。
+!.claude/skills/
 
 # Backup files and generated text outputs
 *.bak
