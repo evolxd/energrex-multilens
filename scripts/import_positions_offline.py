@@ -105,7 +105,18 @@ def main() -> int:
     parser.add_argument("--cash", type=float, help="现金余额（同上）")
     parser.add_argument("--date", help="净值记到这一天（YYYY-MM-DD），用于补历史")
     parser.add_argument("--dry-run", action="store_true", help="只解析不写库")
+    parser.add_argument("--dedupe", action="store_true",
+                        help="清理库里同 (symbol, sync_time) 的重复行（会让敞口/BD 重复计算）")
     args = parser.parse_args()
+
+    if args.dedupe:
+        from account.db import init_db as _init
+        from account.repository import remove_duplicate_positions
+        _init()
+        removed = remove_duplicate_positions(args.account)
+        print(f"清理重复持仓行：删除 {removed} 行")
+        if not args.xlsx:
+            return 0
 
     path = pathlib.Path(args.xlsx).expanduser() if args.xlsx else newest_export()
     if path is None:

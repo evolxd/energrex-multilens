@@ -70,21 +70,48 @@ def load_portfolio(db_factory=None):
         return [], [], None, None, f"读取失败：{exc}"
 
 
+# 不进基本面评分、但必须有产业链归属的标的。
+#
+# TICKER_CATEGORY 身兼两职：既是产业链分类表，又是评分 universe 的来源
+# （refresh_scores.refresh_targets 直接从它取目标）。把 ETF 加进去会连带把它们
+# 拖进基本面评分流程，而 ETF 算不出 PEG/ROIC/NRR——所以分类走这张独立的表。
+#
+# 2026-09-20：此前这四个标的合计占净值 17.9% 全部落进"未分类"，产业链集中度
+# 少算了近 18 个百分点。
+_NON_SCORED_CHAINS: dict[str, str] = {
+    # 指数/行业对冲。account.hedge_governance.HEDGE_UNDERLYINGS 里早就认定它们
+    # 是对冲工具，只是敞口这一侧没用上。单独标出来而不是混进某条产业链：买
+    # QQQ put 是在降风险，把它算成"某产业链的集中度"方向就反了。
+    "QQQ": "对冲(指数)",
+    "SMH": "对冲(半导体)",
+    # 2倍做多以太币 ETF。跟 AI 产业链无关，自成一类，免得污染任何现有分组。
+    "ETHU": "加密资产",
+    # 独立发电商，收入跟 AI 数据中心用电需求直接相关。归在这里而不是加进
+    # TICKER_CATEGORY，是因为后者会把它拉进评分流程，而电力行业的估值锚点
+    # （容量电价、PPA 期限结构、机组结构）这套系统还没有，硬套现有类目的
+    # 阈值只会算出一个看着正常、实则无意义的分。要真正评分需要先做锚点调研。
+    "VST": "电力/能源",
+}
+
+
 def chain_of(symbol: str) -> str | None:
-    """标的 → 产业链名。不在 TICKER_CATEGORY 里返回 None（调用方会计入"未分类"）。
+    """标的 → 产业链名。两张表都查不到才返回 None（调用方计入"未分类"）。
 
     2026-08-27 修过一个静默 bug：这里曾经 `from scoring_engine import ...`
     （扁平写法），而文件实际在 scoring/scoring_engine.py，异常被裸 except
     吞掉，导致每一只标的——包括 NVDA 这种分类明确的——永远落进"未分类"，
     产业链集中度限额从写下那天起量的就不是产业链。
     """
+    key = (symbol or "").strip().upper()
     try:
         from scoring.scoring_engine import TICKER_CATEGORY
 
-        cat = TICKER_CATEGORY.get(symbol)
-        return cat.value if cat else None
+        cat = TICKER_CATEGORY.get(key)
+        if cat:
+            return cat.value
     except Exception:
-        return None
+        pass
+    return _NON_SCORED_CHAINS.get(key)
 
 
 def load_avg_dollar_volume(tickers: tuple[str, ...]) -> dict[str, float]:

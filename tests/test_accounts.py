@@ -137,3 +137,33 @@ def test_missing_either_side_is_not_flagged():
     from account.repository import cash_reading_looks_like_buying_power
     assert not cash_reading_looks_like_buying_power(None, 22160.55)
     assert not cash_reading_looks_like_buying_power(10034.48, None)
+
+
+# ── duplicate position rows ──────────────────────────────────────────────────
+
+def test_a_batch_with_a_repeated_symbol_writes_it_once():
+    """Readers pick the row(s) with MAX(sync_time) per symbol. Two rows written
+    in one batch share that timestamp, so both match and the holding counts
+    twice in every exposure and Beta-Delta figure."""
+    from account.repository import dedupe_rows_by_symbol
+    rows = [
+        {"symbol": "AMD", "market_value": 1000.0},
+        {"symbol": "NVDA", "market_value": 2000.0},
+        {"symbol": "AMD", "market_value": 1100.0},
+    ]
+    deduped = dedupe_rows_by_symbol(rows)
+    assert len(deduped) == 2
+    amd = next(r for r in deduped if r["symbol"] == "AMD")
+    assert amd["market_value"] == 1100.0          # last write wins
+
+
+def test_symbols_are_matched_case_insensitively_when_deduping():
+    from account.repository import dedupe_rows_by_symbol
+    rows = [{"symbol": "amd", "market_value": 1.0},
+            {"symbol": "AMD", "market_value": 2.0}]
+    assert len(dedupe_rows_by_symbol(rows)) == 1
+
+
+def test_rows_without_a_symbol_are_dropped():
+    from account.repository import dedupe_rows_by_symbol
+    assert dedupe_rows_by_symbol([{"symbol": None}, {"symbol": "  "}]) == []

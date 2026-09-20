@@ -144,13 +144,11 @@ def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
         from scoring.position_exposure import compute_exposures
         from scoring.position_limits import LIMIT_SPECS, effective_limit
         from scoring.mispricing_store import read_chain
-        def _chain_of(sym):
-            try:
-                from scoring.scoring_engine import TICKER_CATEGORY
-                c = TICKER_CATEGORY.get(sym)
-                return c.value if c else None
-            except Exception:
-                return None
+        # 2026-09-20：这里原本内嵌了一份只查 TICKER_CATEGORY 的 _chain_of，
+        # 跟门③/门④用的 exposure_context.chain_of 是两份实现。后者补上了
+        # ETF/对冲工具的归类之后，这条路仍然会把 QQQ/SMH/ETHU/VST 算成
+        # "未分类"——同一个组合在硬约束信号和仓位页上得出不同的集中度。
+        from scoring.exposure_context import chain_of as _chain_of
         exposures = compute_exposures(pos, equity, cash, _chain_of, opts)
         if exposures is not None:
             recs = read_chain(_ROOT / "data" / "position_limits.jsonl")

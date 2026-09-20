@@ -84,9 +84,53 @@ def save_balance(acct_id: str, data: dict) -> None:
         record_daily_nav(acct_id, data["total_equity"])
 
 
+def dedupe_rows_by_symbol(rows: list[dict]) -> list[dict]:
+    """One row per symbol, last write wins.
+
+    Every reader of `positions` picks "the row with MAX(sync_time) for this
+    symbol". That subquery matches *all* rows tied at the maximum, so two rows
+    for one symbol written in the same batch are both counted -- the holding is
+    doubled in every exposure and Beta-Delta figure downstream.
+
+    The 2026-09-19 fix addressed duplicates spread across different sync_times
+    (BD climbed 224% -> 263% -> 320% -> 378% as snapshots accumulated). It
+    cannot help with duplicates *inside* one batch, because they share a
+    timestamp. Writing them is what has to stop.
+    """
+    unique: dict[str, dict] = {}
+    for row in rows:
+        symbol = str(row.get("symbol") or "").strip().upper()
+        if symbol:
+            unique[symbol] = row
+    return list(unique.values())
+
+
+def remove_duplicate_positions(acct_id: str) -> int:
+    """Delete rows that share (symbol, sync_time), keeping the first. Returns count.
+
+    For databases that already accumulated duplicates before the write path
+    started deduping.
+    """
+    conn = db()
+    cursor = conn.execute(
+        """
+        DELETE FROM positions WHERE rowid NOT IN (
+            SELECT MIN(rowid) FROM positions WHERE account_id = ?
+            GROUP BY symbol, sync_time, position_type
+        ) AND account_id = ?
+        """,
+        (acct_id, acct_id),
+    )
+    removed = cursor.rowcount or 0
+    conn.commit()
+    conn.close()
+    return removed
+
+
 def save_positions(acct_id: str, rows: list[dict]) -> None:
     if not rows:
         return
+    rows = dedupe_rows_by_symbol(rows)
     conn = db()
     sync_time = _dt.datetime.now(ET).isoformat()
     conn.executemany(
