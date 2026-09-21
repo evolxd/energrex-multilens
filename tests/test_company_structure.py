@@ -265,6 +265,7 @@ def test_etfs_are_not_given_a_cik():
 
 
 def test_the_held_names_that_were_missing_are_now_covered():
-    # 2026-09-21 补的那一批。SPCX 不在内：Alpha Vantage 返回 CIK=None，不猜。
+    # 2026-09-21 补的那一批，账户实际持有的非 ETF 标的现在应当全部有 CIK。
     from scoring.edgar_fetcher import TICKER_CIK
-    assert {"AMD", "ARM", "DDOG", "FCX", "KLAC", "META", "PATH", "VST"} <= set(TICKER_CIK)
+    assert {"AMD", "ARM", "DDOG", "FCX", "KLAC",
+            "META", "PATH", "VST", "SPCX"} <= set(TICKER_CIK)
