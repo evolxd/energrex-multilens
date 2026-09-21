@@ -233,3 +233,38 @@ def test_a_stable_two_leg_business_produces_no_flags():
     result = assess("XYZ", revs)
     assert result.is_analyzable
     assert result.flags == []
+
+
+# ── SEC 覆盖 ────────────────────────────────────────────────────────────
+
+def test_every_cik_is_ten_digits():
+    """CIK 错一位不会报错，只会安静地拉来另一家公司的财报。
+
+    SEC 的 companyfacts 接口要求零填充到 10 位；长度不对会 404，而调用方
+    只会看到"取不到数据"，查不到是编号写错了。
+    """
+    from scoring.edgar_fetcher import TICKER_CIK
+    for ticker, cik in TICKER_CIK.items():
+        assert cik.isdigit(), f"{ticker}: {cik!r} 不是纯数字"
+        assert len(cik) == 10, f"{ticker}: {cik!r} 不是 10 位"
+
+
+def test_no_two_tickers_share_a_cik():
+    from scoring.edgar_fetcher import TICKER_CIK
+    seen = {}
+    for ticker, cik in TICKER_CIK.items():
+        assert cik not in seen, f"{ticker} 跟 {seen.get(cik)} 撞了同一个 CIK {cik}"
+        seen[cik] = ticker
+
+
+def test_etfs_are_not_given_a_cik():
+    """ETF 背后没有公司，配 CIK 只会让人以为拉得到分部收入。"""
+    from scoring.edgar_fetcher import TICKER_CIK
+    from scoring.exposure_context import is_fund_like
+    assert not [t for t in TICKER_CIK if is_fund_like(t)]
+
+
+def test_the_held_names_that_were_missing_are_now_covered():
+    # 2026-09-21 补的那一批。SPCX 不在内：Alpha Vantage 返回 CIK=None，不猜。
+    from scoring.edgar_fetcher import TICKER_CIK
+    assert {"AMD", "ARM", "DDOG", "FCX", "KLAC", "META", "PATH", "VST"} <= set(TICKER_CIK)

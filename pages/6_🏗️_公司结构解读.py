@@ -29,21 +29,25 @@ sys.path.insert(0, str(ROOT))
 from _sidebar import render  # noqa: E402
 from scoring.company_structure import assess as _assess_structure  # noqa: E402
 from scoring.edgar_fetcher import TICKER_CIK  # noqa: E402
+from scoring.exposure_context import is_fund_like as _is_fund_like  # noqa: E402
+from scoring.exposure_context import non_scored_companies as _non_scored_companies  # noqa: E402
 from scoring.exposure_context import non_scored_chain as _non_scored_chain  # noqa: E402
 from scoring.scoring_engine import TICKER_CATEGORY  # noqa: E402
 
 st.set_page_config(page_title="ENERGREX 公司结构解读", page_icon="🏗️", layout="wide")
 render()
 
-# 标的全集取自 TICKER_CATEGORY——它是这个系统的 universe 正源（CLAUDE.md
-# 的修改指南里，"新增股票"要改的就是它）。不从评分 CSV 取，是因为结构分析
-# 不需要分数，没必要为了一个下拉框把整张评分表读进来。
-_UNIVERSE = sorted(TICKER_CATEGORY)
+# 标的全集 = 评分 universe（TICKER_CATEGORY，CLAUDE.md 修改指南里"新增股票"
+# 要改的那张表）+ 刻意没进评分但确实是公司的那些（目前只有 VST）。
+# 不从评分 CSV 取，是因为结构分析不需要分数，没必要为一个下拉框读整张表。
+# 少了后半段的话 VST 连出现的机会都没有——它被挡在评分流程外是因为电力行业
+# 的估值锚点还没做，不是因为它不是一家公司。
+_UNIVERSE = sorted(set(TICKER_CATEGORY) | set(_non_scored_companies()))
 
 # 但 448 只里只有这些配了 CIK，其余的点进去只会看到"拉不到 SEC 数据"。
 # 默认只列这些，免得在 437 个必然空白的选项里翻——想看没覆盖的也能切过去，
 # 那时给出的仍然是"覆盖缺口"而不是"这家公司没有分部披露"。
-_COVERED = sorted(set(TICKER_CIK) & set(TICKER_CATEGORY))
+_COVERED = sorted(set(TICKER_CIK) & set(_UNIVERSE))
 
 
 def _sync_selected_ticker(widget_key: str) -> None:
@@ -85,11 +89,14 @@ struct_ticker = st.selectbox(
     on_change=_sync_selected_ticker, args=("struct_sel",),
 )
 
-_non_scored = _non_scored_chain(struct_ticker)
-if _non_scored:
+# 判据是"背后有没有一家公司"，不是"进不进评分流程"。这两件事之前被混成
+# 一个 non_scored_chain() 调用，结果 VST（Vistra，一家真实的发电公司，只是
+# 刻意没进评分 universe）被当成 ETF 跳过并显示成"ETF/杠杆产品"。
+if _is_fund_like(struct_ticker):
     st.info(
-        f"{struct_ticker} 是 {_non_scored} 类标的（ETF/杠杆产品），"
-        "没有「管理层诚信」「分部构成」这些维度，结构分析不适用。"
+        f"{struct_ticker} 是 {_non_scored_chain(struct_ticker) or 'ETF'} 类标的"
+        "（ETF/杠杆产品），买的是一篮子，背后没有一家公司——没有分部收入、"
+        "没有管理层，结构分析不适用。"
     )
 else:
     @st.cache_data(ttl=86400, show_spinner="从 SEC XBRL 拉分部收入…")

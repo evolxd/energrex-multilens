@@ -8,7 +8,9 @@ import unittest
 
 from scoring.exposure_context import (
     exposures_after_trade,
+    is_fund_like,
     non_scored_chain,
+    non_scored_companies,
     stock_prices_and_values,
     underlyings_in,
 )
@@ -150,6 +152,52 @@ class NonScoredChainTests(unittest.TestCase):
     def test_empty_input_is_not_an_error(self):
         self.assertIsNone(non_scored_chain(""))
         self.assertIsNone(non_scored_chain(None))
+
+
+
+
+class IsFundLikeTests(unittest.TestCase):
+    """「背后有没有一家公司」跟「进不进评分流程」是两件事。
+
+    2026-09-21 之前门①的结构解读页拿 non_scored_chain() 当"是不是 ETF"用，
+    于是 VST 被当成 ETF 跳过并显示成「ETF/杠杆产品」——而 Vistra 是一家真实
+    的发电公司，有 10-K、有分部披露，结构分析对它完全适用。
+    """
+
+    def test_etfs_and_leveraged_products_have_no_company_behind_them(self):
+        for symbol in ("QQQ", "SMH", "ETHU"):
+            self.assertTrue(is_fund_like(symbol), symbol)
+
+    def test_vst_is_a_real_company_even_though_it_is_not_scored(self):
+        # 这一条就是那个 bug。两个函数必须给出相反的答案。
+        self.assertIsNotNone(non_scored_chain("VST"))   # 确实不进评分
+        self.assertFalse(is_fund_like("VST"))           # 但它是家公司
+
+    def test_an_ordinary_scored_holding_is_neither(self):
+        self.assertIsNone(non_scored_chain("NVDA"))
+        self.assertFalse(is_fund_like("NVDA"))
+
+    def test_case_and_whitespace_do_not_matter(self):
+        self.assertTrue(is_fund_like(" qqq "))
+
+    def test_empty_input_is_not_an_error(self):
+        self.assertFalse(is_fund_like(""))
+        self.assertFalse(is_fund_like(None))
+
+
+
+
+class NonScoredCompaniesTests(unittest.TestCase):
+    """门①结构解读页的标的全集要把它们并进来，否则 VST 连出现的机会都没有。"""
+
+    def test_vst_is_listed_as_a_company(self):
+        self.assertIn("VST", non_scored_companies())
+
+    def test_etfs_are_not(self):
+        self.assertFalse(set(non_scored_companies()) & {"QQQ", "SMH", "ETHU"})
+
+    def test_every_entry_is_a_real_company_not_a_fund(self):
+        self.assertFalse([s for s in non_scored_companies() if is_fund_like(s)])
 
 
 if __name__ == "__main__":

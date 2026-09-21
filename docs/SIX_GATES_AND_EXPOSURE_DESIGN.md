@@ -52,7 +52,7 @@
 | 全局分 / 行业分双轨 | `app.py` §"全局得分/行业得分双轨视图切换" | `global_score` vs 行业内 `final_score` |
 | 误价研究 | `pages/4_🔎_误价研究.py` | `mispricing_engine.py`，五门判定 |
 | 论点持续监控 | `home.py` "持仓论点监控" | `mispricing_monitor.thesis_state_for_ticker` |
-| **公司结构解读** | **已建**（2026-09-21）——`pages/6_🏗️_公司结构解读.py` | `scoring/company_structure.py` 读 SEC XBRL 分部收入：收入结构 / 增量归因 / 结构漂移，外加 Fisher 十五要点入口。排在「误价与特殊机会」之后，因为它读的是前面算出来的结论。11/448 只有 CIK 覆盖，默认只列这些 |
+| **公司结构解读** | **已建**（2026-09-21）——`pages/6_🏗️_公司结构解读.py` | `scoring/company_structure.py` 读 SEC XBRL 分部收入：收入结构 / 增量归因 / 结构漂移，外加 Fisher 十五要点入口。排在「误价与特殊机会」之后，因为它读的是前面算出来的结论。19/449 只有 CIK 覆盖，默认只列这些 |
 
 #### ② 工具选择
 | 分支 | 入口 | 现有实现 | 状态 |
@@ -288,6 +288,14 @@ Kelly 只是在这层封顶之下决定"往哪个方向多分配一点"，不能
 
 ## 4. 变更记录
 
+- **2026-09-21（三）**：补 8 个 CIK（AMD/ARM/DDOG/FCX/KLAC/META/PATH/VST），
+  覆盖从 11 只升到 19 只。CIK 取自 Alpha Vantage COMPANY_OVERVIEW 返回的 SEC
+  编号并用公司名逐条核对（sec.gov 在取数环境被挡）；SPCX 返回 CIK=None，没补，
+  不猜。同时修了两个把「标的性质」和「是否进评分流程」混为一谈的地方：
+  `is_fund_like()` 跟 `non_scored_chain()` 分开——前者问"背后有没有一家公司"，
+  后者问"进不进基本面评分"，VST 两者答案相反；结构解读页的标的全集也从
+  `TICKER_CATEGORY` 改成并上 `non_scored_companies()`，否则 VST 连出现在下拉
+  框里的机会都没有。
 - **2026-09-21（二）**：「结构分析」从 app.py 的页内页提为侧边栏独立页
   `pages/6_🏗️_公司结构解读.py`，挂在门①「误价与特殊机会」之后。
   **app.py 里那一份同时删掉，不是复制**——这个项目已经因为作战室存在两份

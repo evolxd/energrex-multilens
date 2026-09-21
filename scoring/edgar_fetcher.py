@@ -38,6 +38,25 @@ TICKER_CIK: dict[str, str] = {
     "DVA":  "0000927066",
     "ADBE": "0000796343",
     "FUTU": "0001754581",
+    # 2026-09-21 补：账户实际持有、但此前没配 CIK 的标的。448 只 universe 里
+    # 原本只有 11 只有覆盖，公司结构解读页对其余的一律只能报"覆盖缺口"。
+    #
+    # CIK 取自 Alpha Vantage COMPANY_OVERVIEW 返回的 SEC 编号（sec.gov 在
+    # 取数环境里被挡，拿不到官方 company_tickers.json）。每条都用返回的公司
+    # 名核过——CIK 错一位不会报错，只会安静地拉来另一家公司的财报。
+    "AMD":  "0000002488",   # Advanced Micro Devices, Inc.
+    "ARM":  "0001973239",   # Arm Holdings plc（英国，ADS）
+    "DDOG": "0001561550",   # Datadog, Inc.
+    "FCX":  "0000831259",   # Freeport-McMoRan Inc.
+    "KLAC": "0000319201",   # KLA Corporation
+    "META": "0001326801",   # Meta Platforms, Inc.
+    "PATH": "0001734722",   # UiPath, Inc.
+    "VST":  "0001692819",   # Vistra Corp.
+    #
+    # 没能补上的：
+    # SPCX —— Alpha Vantage 返回 CIK: None（2026-06-12 才上市）。不猜。
+    # ETHU/QQQ/SMH —— 是 ETF，背后没有公司，没有分部收入可拉，见
+    #                 scoring.exposure_context.is_fund_like。
 }
 
 

@@ -98,6 +98,38 @@ _NON_SCORED_CHAINS: dict[str, str] = {
 }
 
 
+#: 这几个是基金/ETF：买的是一篮子，背后没有一家公司——没有分部收入、没有
+#: 管理层、没有 10-K。问它们"收入结构""管理层诚信"是没有意义的。
+#:
+#: **VST 刻意不在这里。** 它出现在 _NON_SCORED_CHAINS 里只是因为刻意没进
+#: TICKER_CATEGORY（理由见那张表的注释：电力行业的估值锚点这套系统还没有），
+#: 但 Vistra 是一家真实的发电公司，有 10-K、有分部披露，公司结构分析对它
+#: 完全适用。2026-09-21 之前门①的结构解读页直接拿 non_scored_chain() 当
+#: "是不是 ETF"用，于是把 VST 当成 ETF 跳过并显示"（ETF/杠杆产品）"——
+#: 标的性质和是否进评分流程是两件事，混在一起就会这样。
+_FUND_LIKE: frozenset[str] = frozenset({"QQQ", "SMH", "ETHU"})
+
+
+def is_fund_like(symbol: str) -> bool:
+    """是不是 ETF / 杠杆产品——即"背后没有一家公司可供分析"。
+
+    跟 non_scored_chain() 分开：后者回答"进不进基本面评分"，这个回答"有没有
+    公司实体"。VST 两者的答案相反。
+    """
+    return (symbol or "").strip().upper() in _FUND_LIKE
+
+
+def non_scored_companies() -> tuple[str, ...]:
+    """不进基本面评分、但确实是公司的标的（目前只有 VST）。
+
+    门①结构解读页的标的全集不能只取 TICKER_CATEGORY：VST 被刻意挡在评分
+    universe 之外（电力行业的估值锚点这套系统还没有），但它是 Vistra，有
+    10-K、有分部披露，结构分析完全适用——只用 TICKER_CATEGORY 的话它连出现
+    在下拉框里的机会都没有。ETF 不在此列，它们背后没有公司。
+    """
+    return tuple(sorted(s for s in _NON_SCORED_CHAINS if not is_fund_like(s)))
+
+
 def non_scored_chain(symbol: str) -> str | None:
     """标的若是 ETF/杠杆产品等不进基本面评分的东西，返回它的归类名，否则 None。
 
