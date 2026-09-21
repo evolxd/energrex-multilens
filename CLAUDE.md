@@ -18,12 +18,16 @@ ai_valuation/
 ```
 
 ## 启动方式
+```powershell
+# 推荐：先查后起（杀掉残留实例 + 确认端口空 + 报告分支/其它克隆）
+powershell -ExecutionPolicy Bypass -File scripts\restart_app.ps1
+```
 ```bash
 # 安装依赖（第一次）
 pip install -r requirements.txt
 
-# 启动 Dashboard
-streamlit run app.py
+# 手动启动（注意：入口是 home.py，不是 app.py——app.py 只是门①那一页）
+streamlit run home.py
 
 # 命令行审计某只股票
 cd scoring && python3 score_audit.py NVDA
