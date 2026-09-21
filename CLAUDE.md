@@ -64,6 +64,7 @@ ONTO（半导体设备）
 | QQQ/SMH 对冲分段 | account/hedge_split.py | SEMI_CHAINS 决定哪些标的算半导体；两段相加必须等于要对冲的总量 |
 | 对冲方案（张数/行权价） | account/risk.py compute_index_hedge_plan | QQQ 走 compute_qqq_hedge_plan 包装（宽度固定$35/$60）；新标的不填宽度，按现价比例推 |
 | 对冲宽度检查 | account/hedge_width.py | 情景参数要跟 risk.py STRESS_SHOCKS 对齐，两处问的必须是同一个跌幅 |
+| 新增 SEC 覆盖（CIK） | scoring/edgar_fetcher.py TICKER_CIK | 加完必须跑 `python scripts/verify_cik.py`（要设 SEC_USER_AGENT）——CIK 错一位不报错，只会安静地画出另一家公司的财报 |
 | beta 口径 | account/beta_regression.py | 压力测试用下跌日 beta，测不够精确（t<2）才退回全样本；**别把 _refresh_beta_spy 改回读 yf.info["beta"]**，那是厂商全样本值，会把下跌日口径在 8 天内全部覆盖掉 |
 
 ## 重要说明
