@@ -18,14 +18,28 @@ from account.beta_quality import (
 )
 
 
-def test_both_previously_missing_symbols_now_have_a_measured_beta():
-    assert set(beta_overrides()) == {"SPCX", "ETHU"}
+def test_every_symbol_that_was_silently_defaulting_now_has_a_measured_beta():
+    # 2026-09-21：KLAC/ONTO/PATH 也曾整段落在 1.0 的静默缺省上（$7,324 现货）。
+    assert {"SPCX", "ETHU", "KLAC", "ONTO", "PATH"} <= set(beta_overrides())
 
 
-def test_measured_betas_are_far_from_the_1_0_default_they_replaced():
-    # The point of the exercise: the default was not a harmless approximation.
-    for beta in beta_overrides().values():
-        assert beta > 2.0
+def test_the_leveraged_names_are_far_from_the_1_0_default_they_replaced():
+    # 这几个标的是当初做这件事的理由：缺省值不是无害的近似。
+    for symbol in ("SPCX", "ETHU", "KLAC", "ONTO"):
+        assert beta_overrides()[symbol] > 1.4
+
+
+def test_a_measured_one_point_zero_is_allowed_and_is_not_the_same_as_defaulting():
+    """PATH 测出来就是 0.99，这不是失败——是结论。
+
+    它跟"没人测过所以取 1.0"必须能分开：后者在 DERIVED_BETAS 里查不到，
+    前者查得到，而且带着 R²=0.08 这个"别太当真"的证据。把 beta≈1.0 当成
+    测量失败排除掉，就等于规定只有刺激的结果才允许被记录。
+    """
+    entry = DERIVED_BETAS["PATH"]
+    assert entry.beta == pytest.approx(1.0, abs=0.15)
+    assert entry.is_low_confidence                      # R² 0.08，标着弱拟合
+    assert "PATH" in beta_overrides()                   # 但确实进了表
 
 
 @pytest.mark.parametrize("symbol", sorted(DERIVED_BETAS))

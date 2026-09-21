@@ -4493,11 +4493,31 @@ _brief_hdr_col, _brief_btn_col = st.columns([4, 1])
 with _brief_hdr_col:
     if _briefing:
         _gen_time_disp = (_briefing["gen_time"] or "")[:16].replace("T", " ")
+        # 这一整块的数字来自存库快照，而页面顶部那条横幅是打开页面时实时算
+        # 的——两者上下相邻，中间没有任何标记说它们不是同一时刻的数。
+        # 2026-09-20 实测：顶部 BD 271.3%、这里 187.5%，差 83.8 个点，差的
+        # 正是 SPCX/ETHU 两个 beta 修好之前生成的快照（独立复算 83.6 个点）。
+        # war_room.py 早就为同一个坑加了快照年龄，这份拷贝一直没有。
+        _b_age_txt = ""
+        try:
+            _b_gt = datetime.datetime.fromisoformat(
+                str(_briefing["gen_time"]).replace(" ", "T"))
+            _b_hrs = (datetime.datetime.now() - _b_gt).total_seconds() / 3600
+            _b_age = (f"{_b_hrs / 24:.1f}天前" if _b_hrs >= 24 else f"{_b_hrs:.1f}小时前")
+            _b_col = _RED if _b_hrs >= 24 else (_AMB if _b_hrs >= 4 else _MUTED)
+            _b_age_txt = (
+                f"<span style='color:{_b_col}'> · 快照 {_b_age}</span>"
+                + (f"<br><span style='color:{_b_col}'>⚠ 这一块是冻结的旧数，"
+                   f"顶部横幅才是实时值；两者不一致时以顶部为准，"
+                   f"或点右侧「重新生成」。</span>" if _b_hrs >= 4 else "")
+            )
+        except Exception:
+            pass
         st.markdown(
             f"<div style='font-size:13px;font-weight:700;color:{_TEXT};"
             f"margin:8px 0 4px'>⚡ 今日操作简报</div>"
             f"<div style='font-size:11px;color:{_MUTED}'>"
-            f"生成时间：{_gen_time_disp} ET</div>",
+            f"生成时间：{_gen_time_disp} ET{_b_age_txt}</div>",
             unsafe_allow_html=True,
         )
     else:
