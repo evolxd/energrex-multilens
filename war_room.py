@@ -11,6 +11,7 @@ import streamlit as st
 import pytz
 
 from account.accounts import list_accounts as _list_accounts
+from account.snapshot_age import describe as _snapshot_age
 from scoring.mispricing_monitor import SEVERE_STATES, WATCH_STATES, thesis_state_for_ticker
 from scoring.position_exposure import compute_exposures
 
@@ -300,17 +301,17 @@ if _snap:
     # 几点"，跟数据无关——两者并排显示，读的人自然会把 BD 当成当前值。用户连续
     # 三轮看到 BD 378% 不动、以为修复失效，实际是 09-19 11:50 那次生成冻结下来
     # 的数，中间所有计算侧的改动它根本不经过。所以把快照自己的年龄标出来。
+    # gen_time 存的是不带时区的纽约墙上钟点，拿 datetime.now()（运行机器的本地
+    # 时间）去减会差出一个固定偏移——机器在太平洋时区时正好 3 小时，于是刚生成
+    # 的快照显示成「-3.0小时前」，这个警告本身就失效了。换算在
+    # account/snapshot_age.py，account_monitor.py 门⑥那份拷贝用的是同一个。
     _brief_age = ""
     if _brief and _brief.get("gen_time"):
-        try:
-            _gt = datetime.datetime.fromisoformat(_brief["gen_time"].replace(" ", "T"))
-            _hrs = (datetime.datetime.now() - _gt).total_seconds() / 3600
-            _age_txt = (f"{_hrs/24:.1f}天前" if _hrs >= 24 else f"{_hrs:.1f}小时前")
-            _age_col = _R if _hrs >= 24 else (_A if _hrs >= 4 else _MUT)
+        _hrs, _sev, _age_txt = _snapshot_age(_brief["gen_time"])
+        if _sev is not None:
+            _age_col = {"stale": _R, "future": _R, "warn": _A}.get(_sev, _MUT)
             _brief_age = (f"<span style='color:{_age_col}'>&nbsp;|&nbsp; "
                           f"快照 {_age_txt}</span>")
-        except Exception:
-            _brief_age = ""
     _snap_inline += _brief_age
 else:
     _snap_inline = (

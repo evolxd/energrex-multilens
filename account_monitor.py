@@ -302,6 +302,7 @@ from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.hedge_split import split_hedge_need as _split_hedge_need
 from account.hedge_governance import HEDGE_UNDERLYINGS as _HEDGE_UNDERLYINGS
 from account.hedge_width import assess_width as _assess_width
+from account.snapshot_age import describe as _snapshot_age
 from account.risk import STRESS_SHOCKS as _STRESS_SHOCKS
 from scoring.exposure_context import chain_of as _chain_of_symbol
 from account.risk import delta_drift_trigger as _delta_drift_trigger
@@ -4522,21 +4523,19 @@ with _brief_hdr_col:
         # 2026-09-20 实测：顶部 BD 271.3%、这里 187.5%，差 83.8 个点，差的
         # 正是 SPCX/ETHU 两个 beta 修好之前生成的快照（独立复算 83.6 个点）。
         # war_room.py 早就为同一个坑加了快照年龄，这份拷贝一直没有。
-        _b_age_txt = ""
-        try:
-            _b_gt = datetime.datetime.fromisoformat(
-                str(_briefing["gen_time"]).replace(" ", "T"))
-            _b_hrs = (datetime.datetime.now() - _b_gt).total_seconds() / 3600
-            _b_age = (f"{_b_hrs / 24:.1f}天前" if _b_hrs >= 24 else f"{_b_hrs:.1f}小时前")
-            _b_col = _RED if _b_hrs >= 24 else (_AMB if _b_hrs >= 4 else _MUTED)
-            _b_age_txt = (
-                f"<span style='color:{_b_col}'> · 快照 {_b_age}</span>"
-                + (f"<br><span style='color:{_b_col}'>⚠ 这一块是冻结的旧数，"
-                   f"顶部横幅才是实时值；两者不一致时以顶部为准，"
-                   f"或点右侧「重新生成」。</span>" if _b_hrs >= 4 else "")
-            )
-        except Exception:
-            pass
+        # gen_time 是不带时区的纽约墙上钟点（见 _save_daily_briefing），拿本地
+        # 时间去减会差出一个固定偏移——在太平洋时区的机器上正好 -3 小时，于是
+        # 3 分钟前的快照显示成「-3.0小时前」。换算收在 account/snapshot_age.py。
+        _b_hrs, _b_sev, _b_age = _snapshot_age(_briefing["gen_time"])
+        _b_col = {"stale": _RED, "future": _RED,
+                  "warn": _AMB}.get(_b_sev or "", _MUTED)
+        _b_age_txt = (
+            f"<span style='color:{_b_col}'> · 快照 {_b_age}</span>"
+            + (f"<br><span style='color:{_b_col}'>⚠ 这一块是冻结的旧数，"
+               f"顶部横幅才是实时值；两者不一致时以顶部为准，"
+               f"或点右侧「重新生成」。</span>"
+               if _b_sev in ("warn", "stale") else "")
+        )
         st.markdown(
             f"<div style='font-size:13px;font-weight:700;color:{_TEXT};"
             f"margin:8px 0 4px'>⚡ 今日操作简报</div>"
