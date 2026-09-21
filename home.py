@@ -47,6 +47,9 @@ pg = st.navigation({
     "① 估值发现": [
         st.Page("app.py", title="AI 估值评分", icon="📊"),
         st.Page("pages/4_🔎_误价研究.py", title="误价与特殊机会", icon="🔎"),
+        # 估值出分之后的一步：这个分数是靠几条腿撑起来的。排在误价之后，
+        # 因为它读的是前面算出来的结论，不是另起一套数据。
+        st.Page("pages/6_🏗️_公司结构解读.py", title="公司结构解读", icon="🏗️"),
     ],
     "② 工具选择": [
         st.Page("options_module.py", title="期权分析", icon="📈"),
