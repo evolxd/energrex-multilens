@@ -13,6 +13,8 @@ import datetime as dt
 import pytest
 
 from account.beta_regression import (
+    estimate_downside_beta,
+    precise_enough,
     IPO_SKIP_SESSIONS,
     MIN_OBSERVATIONS,
     estimate_beta,
@@ -125,3 +127,102 @@ def test_only_dates_present_in_both_series_are_used():
     fit = estimate_beta(asset, market, skip_initial=0)
     assert fit.observations == len(set(asset) & set(market)) - 1
     assert fit.beta == pytest.approx(2.0, abs=0.35)
+
+
+# ── 下跌日 beta ─────────────────────────────────────────────────────────
+# 压力测试算的是 beta × 负的冲击，要的是下跌日的斜率。它跟全样本 beta 是
+# 两个不同的参数，不是同一个数的两种精度。
+
+def _series(returns, start=100.0):
+    """把收益率序列变成收盘价字典，日期从 2026-01-01 起顺排。"""
+    import datetime as _dt
+    out, px, d = {}, start, _dt.date(2026, 1, 1)
+    out[d.isoformat()] = px
+    for r in returns:
+        d += _dt.timedelta(days=1)
+        px *= (1.0 + r)
+        out[d.isoformat()] = px
+    return out
+
+
+def test_downside_beta_only_uses_days_the_market_fell():
+    # 上涨日给一个夸张的斜率，下跌日给 2.0。全样本会被上涨日拉高，
+    # 下跌日口径必须只看到 2.0。
+    #
+    # 下跌日的幅度必须有变化：如果每个下跌日大盘都正好跌 1%，那个子样本里
+    # 自变量方差为 0，回归无解——这是构造测试数据时很容易踩的坑，真实行情
+    # 里不会发生，但它会让这条测试量到的是浮点噪声而不是斜率。
+    mkt, ast = [], []
+    for i in range(60):
+        m = (0.008 + 0.004 * (i % 3)) if i % 2 == 0 else -(0.006 + 0.005 * (i % 4))
+        mkt.append(m)
+        ast.append(m * (8.0 if m > 0 else 2.0))
+    full = estimate_beta(_series(ast), _series(mkt), skip_initial=0)
+    down = estimate_downside_beta(_series(ast), _series(mkt), skip_initial=0)
+    assert down.beta == pytest.approx(2.0, abs=0.01)
+    assert full.beta > down.beta + 1.0
+    assert down.observations == 30
+
+
+def test_the_two_kinds_are_labelled_so_they_cannot_be_confused():
+    mkt = [0.01 if i % 2 == 0 else -0.01 for i in range(80)]
+    ast = [m * 1.5 for m in mkt]
+    assert estimate_beta(_series(ast), _series(mkt), skip_initial=0).kind == "full"
+    assert estimate_downside_beta(_series(ast), _series(mkt), skip_initial=0).kind == "downside"
+
+
+def test_too_few_down_days_is_none_rather_than_a_number():
+    # 全样本够 30 个，但下跌日只有 5 个——后者必须拒绝出数。
+    mkt = [-0.01] * 5 + [0.01] * 55
+    ast = [m * 2.0 for m in mkt]
+    assert estimate_beta(_series(ast), _series(mkt), skip_initial=0) is not None
+    assert estimate_downside_beta(_series(ast), _series(mkt), skip_initial=0) is None
+
+
+def test_a_market_that_never_fell_has_no_downside_beta():
+    mkt = [0.01] * 60
+    ast = [0.02] * 60
+    assert estimate_downside_beta(_series(ast), _series(mkt), skip_initial=0) is None
+
+
+def test_refactor_did_not_change_the_full_sample_arithmetic():
+    """全样本和下跌日共用 _fit_returns。共用之后全样本的结果必须逐位不变,
+    否则两个 beta 的差就分不清是真实差异还是实现差异。"""
+    import random
+    random.seed(7)
+    mkt = [random.gauss(0, 0.01) for _ in range(120)]
+    ast = [1.8 * m + random.gauss(0, 0.005) for m in mkt]
+    fit = estimate_beta(_series(ast), _series(mkt), skip_initial=0)
+    assert fit.beta == pytest.approx(1.8, abs=0.1)
+    assert fit.observations == 120
+    assert 0.0 <= fit.r_squared <= 1.0
+
+
+# ── 精度门槛 ────────────────────────────────────────────────────────────
+
+def test_a_noisy_estimate_is_rejected_even_when_it_is_physically_possible():
+    """ONTO 的真实情形：β=2.08 但 95% 区间 [-0.65, 4.80] 跨过 0。
+
+    plausible_beta 只管"物理上可不可能"（波动率比值上界），跨过 0 的区间
+    它一样放行——所以需要第二关。
+    """
+    import random
+    random.seed(11)
+    mkt = [random.gauss(0, 0.01) for _ in range(120)]
+    ast = [2.0 * m + random.gauss(0, 0.08) for m in mkt]     # 残差远大于信号
+    fit = estimate_beta(_series(ast), _series(mkt), skip_initial=0)
+    assert plausible_beta(fit)          # 物理上可能
+    assert not precise_enough(fit)      # 但跟噪声区分不开
+
+
+def test_a_clean_estimate_passes_both_gates():
+    import random
+    random.seed(3)
+    mkt = [random.gauss(0, 0.01) for _ in range(120)]
+    ast = [2.0 * m + random.gauss(0, 0.003) for m in mkt]
+    fit = estimate_beta(_series(ast), _series(mkt), skip_initial=0)
+    assert plausible_beta(fit) and precise_enough(fit)
+
+
+def test_nothing_measured_is_not_precise_enough():
+    assert not precise_enough(None)

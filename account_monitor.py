@@ -554,46 +554,70 @@ def _refresh_beta_spy() -> None:
     （SPCX 2026-06-12 才上市，ETHU 是 ETF），于是这些标的的 beta 永远停在
     静态值上，没进表的更是静默按 1.0 处理——偏向"看起来更安全"的方向。
     """
-    import yfinance as yf
-    from account.beta_regression import estimate_beta, fetch_closes, plausible_beta
+    from account.beta_regression import (
+        estimate_beta, estimate_downside_beta, fetch_closes,
+        plausible_beta, precise_enough,
+    )
 
     tickers = list(_BETA_BASE.keys())
     new_betas: dict = {}
     fits: dict      = {}
+    downside: list  = []
     regressed: list = []
     failed: list    = []
 
-    for sym in tickers:
-        try:
-            b = yf.Ticker(sym).info.get("beta")
-            if b is not None and 0.01 < float(b) < 15:
-                new_betas[sym] = round(float(b), 3)
-                continue
-        except Exception:
-            pass
-        failed.append(sym)
+    # 2026-09-21：这里原来**优先读 yf.Ticker(sym).info["beta"]**，只在取不到
+    # 时才回归。那个字段是厂商的全样本 beta，而压力测试算的是 beta × 负的
+    # 冲击，要的是下跌日系数。只改 _BETA_BASE 里的数字没有用——每周刷新一
+    # 次就会把它们全部换回厂商的全样本值，改动在 8 天内自己消失。所以改成
+    # 一律自己回归，厂商那个字段不再作为取值来源。
+    market = fetch_closes("SPY", period="2y")
+    if not market:
+        _log.warning("[beta_refresh] 取不到 SPY 历史，本次不刷新，沿用现有值")
+        return
 
-    # 回归兜底：只对上面失败的标的做，避免为已有可靠值的标的多拉一遍历史
-    if failed:
-        market = fetch_closes("SPY", period="1y")
-        if market:
-            for sym in list(failed):
-                fit = estimate_beta(fetch_closes(sym, period="1y"), market)
-                # plausible_beta 会挡掉超过自身波动率比值上界的估计——正是
-                # Firstrade 那个 SPCX=25.14（上界 7.30）会被挡在外面的情形
-                if plausible_beta(fit):
-                    new_betas[sym] = round(fit.beta, 3)
-                    fits[sym] = {
-                        "beta": round(fit.beta, 4),
-                        "r_squared": fit.r_squared,
-                        "std_error": fit.std_error,
-                        "observations": fit.observations,
-                        "sample_start": fit.sample_start,
-                        "sample_end": fit.sample_end,
-                        "skipped_initial": fit.skipped_initial,
-                    }
-                    regressed.append(sym)
-                    failed.remove(sym)
+    for sym in tickers:
+        closes = fetch_closes(sym, period="2y")
+        if not closes:
+            failed.append(sym)
+            continue
+
+        full = estimate_beta(closes, market)
+        down = estimate_downside_beta(closes, market)
+
+        # 下跌日优先，但必须同时过"物理上可能"（波动率比值上界，正是
+        # Firstrade SPCX=25.14 被挡掉的那一关）和"跟噪声区分得开"（t≥2）。
+        # 过不了就退回全样本，并如实标成 full——宁可口径不齐但看得见。
+        chosen, kind = None, None
+        if plausible_beta(down) and precise_enough(down):
+            chosen, kind = down, "downside"
+        elif plausible_beta(full):
+            chosen, kind = full, "full"
+
+        if chosen is None:
+            failed.append(sym)
+            continue
+
+        new_betas[sym] = round(chosen.beta, 3)
+        fits[sym] = {
+            "beta": round(chosen.beta, 4),
+            "kind": kind,
+            "r_squared": chosen.r_squared,
+            "std_error": chosen.std_error,
+            "t_stat": round(abs(chosen.beta) / chosen.std_error, 2)
+                      if chosen.std_error else None,
+            "observations": chosen.observations,
+            "sample_start": chosen.sample_start,
+            "sample_end": chosen.sample_end,
+            "skipped_initial": chosen.skipped_initial,
+            # 另一个口径一并存下来，好在看板上并排比较，也好看出某个标的是
+            # 因为不精确才退回全样本的。
+            "full_beta": round(full.beta, 4) if full else None,
+            "downside_beta": round(down.beta, 4) if down else None,
+            "downside_t": round(abs(down.beta) / down.std_error, 2)
+                          if down and down.std_error else None,
+        }
+        (downside if kind == "downside" else regressed).append(sym)
 
     # 用结果覆盖 base，失败的保留 base 值
     merged = {**_BETA_BASE, **new_betas}
@@ -604,8 +628,8 @@ def _refresh_beta_spy() -> None:
                for k in new_betas
                if k in _BETA_BASE and abs(new_betas[k] - _BETA_BASE[k]) > 0.05}
     _log.info(
-        f"[beta_refresh] yfinance={len(new_betas)-len(regressed)} "
-        f"回归={regressed or '无'} 仍失败={failed or '无'} "
+        f"[beta_refresh] 下跌日口径={downside or '无'} "
+        f"（不够精确，退回全样本）={regressed or '无'} 失败={failed or '无'} "
         f"变化较大={changes or '无'}"
     )
 

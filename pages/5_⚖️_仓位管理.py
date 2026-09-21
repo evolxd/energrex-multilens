@@ -274,6 +274,19 @@ else:
     if _gap:
         st.info(f"🛡️ {_gap}")
 
+    # ── beta 用的是哪一种口径 ───────────────────────────────────────
+    # 压力测试算的是 beta × 负的冲击，要的是下跌日回归出来的系数；但下跌日
+    # 只用得上一半样本、标准误约 √2 倍，不是每个标的都测得出够精确的值。
+    # 测不出的保留全样本口径——这是刻意取舍。危险的不是口径不齐，是看不出
+    # 某个标的现在用的是哪一种，所以这里把它显示出来。
+    try:
+        from account.beta_quality import mixed_kind_note as _mixed_kind_note
+        _kind_note = _mixed_kind_note(_underlyings)
+    except Exception:
+        _kind_note = None
+    if _kind_note:
+        st.caption(f"📐 {_kind_note}")
+
 
 # ── 预警 ────────────────────────────────────────────────────────────
 st.subheader("预警")

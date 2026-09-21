@@ -48,14 +48,25 @@ class DerivedBeta:
     sample_end: str
     observations: int
     note: str
+    #: "downside" = 只用大盘下跌日回归（压力测试真正需要的系数）；
+    #: "full" = 全样本。两者是不同的参数，混在一张表里而不标出来是最难查的
+    #: 那类错，所以这个字段没有"未知"这个取值——默认 full，要改必须显式改。
+    kind: str = "full"
 
     @property
     def is_low_confidence(self) -> bool:
         return self.r_squared < LOW_CONFIDENCE_R2
 
+    @property
+    def t_stat(self) -> float | None:
+        if not self.std_error:
+            return None
+        return abs(self.beta) / self.std_error
+
     def describe(self) -> str:
-        return (f"{self.symbol} β={self.beta:.2f} (R²={self.r_squared:.2f}, "
-                f"{self.observations}日 {self.sample_start}~{self.sample_end})")
+        _kind = "下跌日" if self.kind == "downside" else "全样本"
+        return (f"{self.symbol} β={self.beta:.2f}（{_kind}, R²={self.r_squared:.2f}, "
+                f"{self.observations}个观测 {self.sample_start}~{self.sample_end}）")
 
 
 DERIVED_BETAS: dict[str, DerivedBeta] = {
@@ -69,7 +80,7 @@ DERIVED_BETAS: dict[str, DerivedBeta] = {
     "SPCX": DerivedBeta(
         symbol="SPCX", beta=2.57, r_squared=0.163, std_error=0.75,
         sample_start="2026-06-22", sample_end="2026-09-18", observations=62,
-        note="剔除上市后前5个交易日（定价发现期）；年化波动 73.6%",
+        note="剔除上市后前5个交易日（定价发现期）；年化波动 73.6%", kind="full",
     ),
     # No IPO effect -- ETHU has a long history -- but the window is matched to
     # SPCX so the two are comparable. Firstrade's 5.44 sits outside the 95%
@@ -78,7 +89,7 @@ DERIVED_BETAS: dict[str, DerivedBeta] = {
     "ETHU": DerivedBeta(
         symbol="ETHU", beta=3.43, r_squared=0.163, std_error=0.79,
         sample_start="2026-04-29", sample_end="2026-09-18", observations=99,
-        note="2倍做多以太币ETF；非新上市，用完整窗口不剔除起始日",
+        note="2倍做多以太币ETF；非新上市，用完整窗口不剔除起始日", kind="full",
     ),
     # 2026-09-21：KLAC/ONTO/PATH 此前同样不在 _BETA_BASE 里，$7,324 的现货一
     # 直按 1.0 处理。这三个用的窗口跟上面两个**不一样**，原因值得写下来：
@@ -104,12 +115,14 @@ DERIVED_BETAS: dict[str, DerivedBeta] = {
         symbol="KLAC", beta=1.43, r_squared=0.248, std_error=0.326,
         sample_start="2021-10-29", sample_end="2026-09-18", observations=60,
         note="5年月度口径（与_BETA_BASE其余条目一致）；已按2026-06-12的10:1拆股复权。"
-             "同期下跌日β=2.27，近5个月日频全样本β=3.37（上涨日撑起来的，未采用）",
+             "同期下跌日β=2.27（t仅2.0，样本49天不够，等每周刷新用2年日线重测）",
+        kind="full",
     ),
     "ONTO": DerivedBeta(
         symbol="ONTO", beta=1.57, r_squared=0.203, std_error=0.410,
         sample_start="2021-10-29", sample_end="2026-09-18", observations=60,
-        note="5年月度口径；同期下跌日β=2.72，近5个月日频全样本β=3.80（未采用）",
+        note="5年月度口径；下跌日β=2.08 但 t=1.5、95%区间跨过0，不够精确",
+        kind="full",
     ),
     # PATH 是三个里唯一一个"测了也还是 1.0"的：R²=0.079，标准误 0.444，
     # 95% 区间 [0.12, 1.86] 把 1.0 稳稳包在里面。写进来的价值不在于数字变了，
@@ -119,7 +132,8 @@ DERIVED_BETAS: dict[str, DerivedBeta] = {
         symbol="PATH", beta=0.99, r_squared=0.079, std_error=0.444,
         sample_start="2021-10-29", sample_end="2026-09-18", observations=60,
         note="5年月度口径；R²=0.08，与大盘基本无关，95%区间[0.12,1.86]涵盖1.0——"
-             "这是测出来的1.0，不是缺省的1.0",
+             "这是测出来的1.0，不是缺省的1.0；下跌日β=-0.06 t=0.1 是纯噪声",
+        kind="full",
     ),
 }
 
@@ -145,6 +159,17 @@ def load_measured() -> dict[str, DerivedBeta]:
         raw = json.loads(_cache_path().read_text(encoding="utf-8"))
         for symbol, fit in (raw.get("fits") or {}).items():
             skipped = fit.get("skipped_initial", 0)
+            kind = str(fit.get("kind", "full"))
+            _bits = ["每周自动回归", "下跌日口径" if kind == "downside" else "全样本口径"]
+            if skipped:
+                _bits.append(f"剔除起始 {skipped} 个交易日")
+            # 退回全样本的那些，把下跌日为什么没被采用也带上——否则看板上
+            # 只看到一个 full，不知道是"没算"还是"算了但不够精确"。
+            if kind == "full" and fit.get("downside_beta") is not None:
+                _bits.append(
+                    f"下跌日 β={float(fit['downside_beta']):.2f} "
+                    f"t={fit.get('downside_t')}，未达 t≥2，故用全样本"
+                )
             measured[symbol] = DerivedBeta(
                 symbol=symbol,
                 beta=float(fit["beta"]),
@@ -153,8 +178,8 @@ def load_measured() -> dict[str, DerivedBeta]:
                 sample_start=str(fit.get("sample_start", "")),
                 sample_end=str(fit.get("sample_end", "")),
                 observations=int(fit.get("observations", 0)),
-                note=(f"每周自动回归；剔除起始 {skipped} 个交易日"
-                      if skipped else "每周自动回归"),
+                note="；".join(_bits),
+                kind=kind,
             )
     except Exception:
         pass            # 缓存缺失/损坏就用种子值，不该因此没有 beta
@@ -176,3 +201,36 @@ def low_confidence_held(symbols: Iterable[str]) -> list[DerivedBeta]:
     found = [entry for symbol, entry in load_measured().items()
              if symbol in held and entry.is_low_confidence]
     return sorted(found, key=lambda e: e.r_squared)
+
+
+def beta_kinds(symbols: Iterable[str] | None = None) -> dict[str, str]:
+    """标的 → "downside" / "full"。用来把表里混着两种口径这件事显示出来。
+
+    压力测试算的是 beta × 负的冲击，要的是下跌日系数；但下跌日只用得上一半
+    样本，标准误约 √2 倍，不是每个标的都测得出够精确的值。测不出来的就留在
+    全样本口径上——这是刻意的，不是遗漏。真正要避免的是**看不出**某个标的
+    现在用的是哪一种。
+    """
+    entries = load_measured()
+    if symbols is not None:
+        held = {str(s).strip().upper() for s in symbols if s}
+        entries = {k: v for k, v in entries.items() if k in held}
+    return {k: v.kind for k, v in entries.items()}
+
+
+def mixed_kind_note(symbols: Iterable[str] | None = None) -> str | None:
+    """一张表里同时存在两种口径时的说明；口径统一则返回 None。"""
+    kinds = beta_kinds(symbols)
+    if not kinds:
+        return None
+    down = sorted(k for k, v in kinds.items() if v == "downside")
+    full = sorted(k for k, v in kinds.items() if v != "downside")
+    if not down or not full:
+        return None
+    return (
+        f"beta 口径不统一：{len(down)} 个用下跌日回归"
+        f"（{'、'.join(down[:6])}{'…' if len(down) > 6 else ''}），"
+        f"{len(full)} 个仍是全样本（{'、'.join(full[:6])}{'…' if len(full) > 6 else ''}）。"
+        "下跌日口径是压力测试真正需要的，但它只用一半样本、标准误约 √2 倍，"
+        "测不出够精确的值时会保留全样本——这是刻意的取舍，不是漏刷新。"
+    )
