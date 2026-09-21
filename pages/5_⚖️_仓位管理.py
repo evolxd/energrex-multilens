@@ -423,6 +423,64 @@ with _hedge_tab:
                     delta=f"占超出量 {_split.semi_share * 100:.0f}%")
         _hc4.metric("需对冲", f"${_split.bd_to_hedge:+,.0f}")
 
+        # ── 已有保护的宽度检查 ──────────────────────────────────
+        # 放在"需不需要加对冲"之前，因为这两件事互相独立：BD 已经达标的
+        # 账户，保护照样可能在 -10% 上拿不出内在价值。hedge_governance 查
+        # 的是成本率和 DTE，两项全合格也查不出价差太窄——2026-09-20 实测
+        # SMH 525/500 只有 4.4% 宽，大盘跌 7.1% 就打满。
+        _w = _hedge.get("width")
+        if _w and _w.get("windows"):
+            st.markdown("#### 已有保护的有效区间")
+            import pandas as _pd_w
+            st.dataframe(
+                _pd_w.DataFrame([
+                    {
+                        "结构": (f"{_x['underlying']} {_x['long_strike']:.0f}/"
+                                 f"{_x['short_strike']:.0f}"
+                                 if _x["short_strike"] is not None
+                                 else f"{_x['underlying']} {_x['long_strike']:.0f} 裸多头"),
+                        "张数": _x["contracts"],
+                        # None 有两种来由，必须分开显示：真的没有空头腿
+                        # （不封顶，是好事），还是缺现价/beta 算不出来（未知，
+                        # 不是好事）。混成一个"不封顶"会把取数失败读成保护充足。
+                        "起效（大盘跌）": (f"{abs(_x['activation_pct']) * 100:.1f}%"
+                                            if _x["activation_pct"] is not None else "算不出"),
+                        "打满（大盘跌）": (
+                            "不封顶" if _x["short_strike"] is None
+                            else (f"{abs(_x['cap_pct']) * 100:.1f}%"
+                                  if _x["cap_pct"] is not None else "算不出")),
+                        "有效窗口": (
+                            "无限" if _x["short_strike"] is None
+                            else (f"{_x['useful_window_pct'] * 100:.1f} 个点"
+                                  if _x["useful_window_pct"] is not None else "算不出")),
+                        "最大赔付": (f"${_x['max_payoff']:,.0f}"
+                                     if _x["max_payoff"] is not None else "无上限"),
+                    }
+                    for _x in _w["windows"]
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(
+                "一个 put 价差只在「长腿行权价 → 短腿行权价」这个窗口里起作用："
+                "上面还没有内在价值，下面赔付已经打满。两个行权价除以标的 beta，"
+                "就换算成了「大盘要跌多少」，可以直接跟压力测试的情景比。"
+                "「起效」是就内在价值而言——在那之前价差还有 delta 和 vega，"
+                "但它的价值全是会流失的时间价值。"
+            )
+            for _f in _w["findings"]:
+                (st.warning if _f["severity"] == "WARN" else st.info)(_f["message"])
+            # notes 说的是"这次没算出来"，跟 findings 的"查出了问题"不是一回事，
+            # 两者都要显示——只显示 findings 的话，一个全是「算不出」的表格会
+            # 看起来像通过了检查。
+            if _w.get("notes"):
+                for _n in _w["notes"]:
+                    st.info(f"⚠ {_n}")
+            elif not _w["findings"]:
+                st.success("已有保护的有效区间覆盖了压力测试盯的两个跌幅，宽度没有问题。")
+        elif _w is not None:
+            for _n in _w.get("notes") or []:
+                st.caption(f"· {_n}")
+
         if not _split.needs_hedge:
             st.success(
                 f"Beta-Delta 已在目标之内（{_split.total_bd / _split.equity * 100:.1f}% "

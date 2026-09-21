@@ -63,6 +63,7 @@ ONTO（半导体设备）
 | 超限后的减仓指令 | account/rebalance.py | 顺序结算，别改成"每条限额各算各的"——同一笔仓位会被卖好几遍 |
 | QQQ/SMH 对冲分段 | account/hedge_split.py | SEMI_CHAINS 决定哪些标的算半导体；两段相加必须等于要对冲的总量 |
 | 对冲方案（张数/行权价） | account/risk.py compute_index_hedge_plan | QQQ 走 compute_qqq_hedge_plan 包装（宽度固定$35/$60）；新标的不填宽度，按现价比例推 |
+| 对冲宽度检查 | account/hedge_width.py | 情景参数要跟 risk.py STRESS_SHOCKS 对齐，两处问的必须是同一个跌幅 |
 
 ## 重要说明
 - **AI暴露字段**：NVDA/MRVL/PLTR 由 edgar_fetcher.py 自动从SEC 10-Q/8-K提取（confidence H/M）；其余7只仍为手动mock（confidence L）

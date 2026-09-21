@@ -300,6 +300,9 @@ from account.risk import protection_gap as _protection_gap
 from account.risk import compute_index_hedge_plan as _compute_index_hedge_plan_impl
 from account.risk import compute_twr_drawdown as _compute_twr_drawdown
 from account.hedge_split import split_hedge_need as _split_hedge_need
+from account.hedge_governance import HEDGE_UNDERLYINGS as _HEDGE_UNDERLYINGS
+from account.hedge_width import assess_width as _assess_width
+from account.risk import STRESS_SHOCKS as _STRESS_SHOCKS
 from scoring.exposure_context import chain_of as _chain_of_symbol
 from account.risk import delta_drift_trigger as _delta_drift_trigger
 from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
@@ -1428,6 +1431,71 @@ def _compute_qqq_hedge_plan(acct_id: str, target_bd_ratio: float = 1.50) -> dict
     return _compute_index_hedge_plan(acct_id, "QQQ", target_bd_ratio)
 
 
+def _assess_hedge_width(acct_id: str, equity: float) -> dict | None:
+    """已有的 QQQ/SMH 保护，在压力测试盯的那两个跌幅上还起不起作用。
+
+    跟对冲方案分开算：方案回答"还缺多少保护"，宽度检查回答"已经买的这份
+    在需要时赔不赔钱"。后者在 BD 已经达标时同样要跑——成本率和 DTE 全合
+    格的保护，可能因为价差太窄而在 -10% 上拿不出内在价值。
+    """
+    conn = _db()
+    rows = conn.execute(
+        "SELECT symbol, quantity FROM options_positions WHERE account_id=?",
+        (acct_id,)).fetchall()
+    conn.close()
+
+    legs = []
+    for r in rows:
+        sym = (r["symbol"] or "").upper()
+        mo = _OCC_RE.match(sym)
+        if not mo or mo.group(1) not in _HEDGE_UNDERLYINGS:
+            continue
+        legs.append({
+            "sym": sym, "root": mo.group(1), "type": mo.group(5),
+            "strike": float(mo.group(6)) / 1000,
+            "qty": float(r["quantity"] or 0),
+            "expiry": f"20{mo.group(2)}-{mo.group(3)}-{mo.group(4)}",
+        })
+    if not legs:
+        return None
+
+    roots = tuple(sorted({l["root"] for l in legs}))
+    spot_map = _fetch_underlying_prices(roots)
+    beta_map = {r: _BETA_SPY.get(r) for r in roots}
+
+    report = _assess_width(
+        legs, spot_map=spot_map, beta_map=beta_map, equity=equity,
+        # 情景取自压力测试自己的冲击档位，不另设一套阈值——两处必须问的是
+        # 同一个跌幅，否则"宽度够"和"压力达标"会各说各话。
+        primary_scenario=-0.10,
+        deep_scenario=min(_STRESS_SHOCKS),
+    )
+    return {
+        "windows": [
+            {
+                "underlying": w.underlying,
+                "long_strike": w.long_strike,
+                "short_strike": w.short_strike,
+                "contracts": w.contracts,
+                "spot": w.spot,
+                "beta": w.beta,
+                "activation_pct": w.activation_pct,
+                "cap_pct": w.cap_pct,
+                "useful_window_pct": w.useful_window_pct,
+                "max_payoff": w.max_payoff,
+                "width": w.width,
+            }
+            for w in report.windows
+        ],
+        "findings": [
+            {"code": f.code, "severity": f.severity,
+             "underlying": f.underlying, "message": f.message}
+            for f in report.findings
+        ],
+        "notes": report.notes,
+    }
+
+
 def _compute_hedge_split(acct_id: str, target_bd_ratio: float = 1.50) -> dict:
     """把要对冲的 Beta-Delta 按产业链切成半导体/其余两段，各配一套方案。
 
@@ -1477,7 +1545,8 @@ def _compute_hedge_split(acct_id: str, target_bd_ratio: float = 1.50) -> dict:
             "contracts": {leg["underlying"]: leg["n_total"] for leg in legs},
         }
 
-    return {"split": split, "plans": plans, "combined": combined, "snapshot": snap}
+    return {"split": split, "plans": plans, "combined": combined,
+            "width": _assess_hedge_width(acct_id, snap["equity"]), "snapshot": snap}
 
 
 def _pltr_ivr_signal(iv: float, ivr: float | None) -> tuple[str, str, str]:
