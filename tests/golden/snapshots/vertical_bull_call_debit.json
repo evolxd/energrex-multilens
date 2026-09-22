@@ -1,0 +1,56 @@
+[
+ {
+  "id": "NVDA_Bull Call Spread_2027-06-18",
+  "type": "Bull Call Spread",
+  "underlying": "NVDA",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "NVDA270618C00100000",
+    "underlying": "NVDA",
+    "direction": "call",
+    "strike": 100.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 12.5,
+    "cur_price": 14.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 1,
+    "symbol": "NVDA270618C00120000",
+    "underlying": "NVDA",
+    "direction": "call",
+    "strike": 120.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 5.25,
+    "cur_price": 6.1,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 100.0,
+  "high_strike": 120.0,
+  "strike_width": 20.0,
+  "is_debit": true,
+  "net_per_share": 7.25,
+  "net_total": 725.0,
+  "max_profit": 1275.0,
+  "max_loss": 725.0,
+  "breakeven": 107.25,
+  "current_pnl": 65.0,
+  "pnl_pct": 9.0,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $725（付），当前盈亏 $+65（+9% on cost），最大盈利 $1,275，盈亏平衡点 $107.25"
+ }
+]

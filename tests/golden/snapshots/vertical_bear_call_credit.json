@@ -1,0 +1,56 @@
+[
+ {
+  "id": "AMD_Bear Call Spread_2027-06-18",
+  "type": "Bear Call Spread",
+  "underlying": "AMD",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "AMD270618C00160000",
+    "underlying": "AMD",
+    "direction": "call",
+    "strike": 160.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 3.2,
+    "cur_price": 2.1,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 0,
+    "symbol": "AMD270618C00150000",
+    "underlying": "AMD",
+    "direction": "call",
+    "strike": 150.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 7.9,
+    "cur_price": 5.5,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 150.0,
+  "high_strike": 160.0,
+  "strike_width": 10.0,
+  "is_debit": false,
+  "net_per_share": -4.7,
+  "net_total": -470.0,
+  "max_profit": 470.0,
+  "max_loss": 530.0,
+  "breakeven": 154.7,
+  "current_pnl": 130.0,
+  "pnl_pct": 24.5,
+  "risk_level": "LOW",
+  "recommendation": "收权利金 $470，当前盈亏 $+130（+24% on risk），最大亏损 $530，盈亏平衡点 $154.70"
+ }
+]

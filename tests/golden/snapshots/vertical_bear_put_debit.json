@@ -1,0 +1,56 @@
+[
+ {
+  "id": "ARM_Bear Put Spread_2027-06-18",
+  "type": "Bear Put Spread",
+  "underlying": "ARM",
+  "direction": "put",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "ARM270618P00400000",
+    "underlying": "ARM",
+    "direction": "put",
+    "strike": 400.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 8.0,
+    "cur_price": 6.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 0,
+    "symbol": "ARM270618P00350000",
+    "underlying": "ARM",
+    "direction": "put",
+    "strike": 350.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 4.0,
+    "cur_price": 1.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 350.0,
+  "high_strike": 400.0,
+  "strike_width": 50.0,
+  "is_debit": true,
+  "net_per_share": 4.0,
+  "net_total": 400.0,
+  "max_profit": 4600.0,
+  "max_loss": 400.0,
+  "breakeven": 396.0,
+  "current_pnl": 100.0,
+  "pnl_pct": 25.0,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $400（付），当前盈亏 $+100（+25% on cost），最大盈利 $4,600，盈亏平衡点 $396.00"
+ }
+]

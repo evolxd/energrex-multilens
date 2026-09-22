@@ -1,0 +1,91 @@
+[
+ {
+  "id": "FTNT_Naked Short Put_2027-06-18",
+  "type": "Naked Short Put",
+  "underlying": "FTNT",
+  "direction": "put",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "FTNT270618P00090000",
+    "underlying": "FTNT",
+    "direction": "put",
+    "strike": 90.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 3.0,
+    "cur_price": null,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "net_per_share": 3.0,
+  "net_total": 300.0,
+  "max_profit": null,
+  "max_loss": 9000.0,
+  "breakeven": null,
+  "current_pnl": 0.0,
+  "pnl_pct": null,
+  "risk_level": "HIGH",
+  "recommendation": "⚠️ 裸卖 Put，最大亏损 $9,000（标的归零），当前盈亏 $+0"
+ },
+ {
+  "id": "ONTO_Bull Call Spread_2027-06-18",
+  "type": "Bull Call Spread",
+  "underlying": "ONTO",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "ONTO270618C00150000",
+    "underlying": "ONTO",
+    "direction": "call",
+    "strike": 150.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 20.0,
+    "cur_price": null,
+    "total_pnl": 125.0,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 2,
+    "symbol": "ONTO270618C00170000",
+    "underlying": "ONTO",
+    "direction": "call",
+    "strike": 170.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 9.0,
+    "cur_price": null,
+    "total_pnl": -40.0,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 150.0,
+  "high_strike": 170.0,
+  "strike_width": 20.0,
+  "is_debit": true,
+  "net_per_share": 11.0,
+  "net_total": 1100.0,
+  "max_profit": 900.0,
+  "max_loss": 1100.0,
+  "breakeven": 161.0,
+  "current_pnl": 85.0,
+  "pnl_pct": 7.7,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $1,100（付），当前盈亏 $+85（+8% on cost），最大盈利 $900，盈亏平衡点 $161.00"
+ }
+]

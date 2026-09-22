@@ -1,0 +1,91 @@
+[
+ {
+  "id": "TSM_Naked Short Put_2027-06-18",
+  "type": "Naked Short Put",
+  "underlying": "TSM",
+  "direction": "put",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "TSM270618P00180000",
+    "underlying": "TSM",
+    "direction": "put",
+    "strike": 180.0,
+    "expiry": "2027-06-18",
+    "qty": -2,
+    "unit_cost": 5.0,
+    "cur_price": 4.4,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 2,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "net_per_share": 5.0,
+  "net_total": 1000.0,
+  "max_profit": null,
+  "max_loss": 36000.0,
+  "breakeven": null,
+  "current_pnl": 120.0,
+  "pnl_pct": null,
+  "risk_level": "HIGH",
+  "recommendation": "⚠️ 裸卖 Put，最大亏损 $36,000（标的归零），当前盈亏 $+120"
+ },
+ {
+  "id": "TSM_Bear Put Spread_2027-06-18",
+  "type": "Bear Put Spread",
+  "underlying": "TSM",
+  "direction": "put",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "TSM270618P00200000",
+    "underlying": "TSM",
+    "direction": "put",
+    "strike": 200.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 9.0,
+    "cur_price": 8.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 0,
+    "symbol": "TSM270618P00180000",
+    "underlying": "TSM",
+    "direction": "put",
+    "strike": 180.0,
+    "expiry": "2027-06-18",
+    "qty": -3,
+    "unit_cost": 5.0,
+    "cur_price": 4.4,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 180.0,
+  "high_strike": 200.0,
+  "strike_width": 20.0,
+  "is_debit": true,
+  "net_per_share": 4.0,
+  "net_total": 400.0,
+  "max_profit": 1600.0,
+  "max_loss": 400.0,
+  "breakeven": 196.0,
+  "current_pnl": -40.0,
+  "pnl_pct": -10.0,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $400（付），当前盈亏 $-40（-10% on cost），最大盈利 $1,600，盈亏平衡点 $196.00"
+ }
+]

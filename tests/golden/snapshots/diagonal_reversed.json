@@ -1,0 +1,57 @@
+[
+ {
+  "id": "SNOW_Reversed Diagonal (⚠️ 买腿先到期)_2026-12-18_vs_2027-06-18",
+  "type": "Reversed Diagonal (⚠️ 买腿先到期)",
+  "underlying": "SNOW",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "SNOW261218C00200000",
+    "underlying": "SNOW",
+    "direction": "call",
+    "strike": 200.0,
+    "expiry": "2026-12-18",
+    "qty": 1,
+    "unit_cost": 12.0,
+    "cur_price": 9.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 88
+   },
+   {
+    "li": 1,
+    "symbol": "SNOW270618C00230000",
+    "underlying": "SNOW",
+    "direction": "call",
+    "strike": 230.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 15.0,
+    "cur_price": 16.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2026-12-18",
+  "dte": 88,
+  "near_expiry": "2026-12-18",
+  "far_expiry": "2027-06-18",
+  "near_strike": 200.0,
+  "far_strike": 230.0,
+  "is_proper": false,
+  "net_per_share": -3.0,
+  "net_total": -300.0,
+  "max_profit": null,
+  "max_loss": null,
+  "breakeven": null,
+  "current_pnl": -400.0,
+  "pnl_pct": null,
+  "risk_level": "HIGH",
+  "recommendation": "⚠️ 买腿（2026-12-18）早于卖腿（2027-06-18）到期，买腿失效后卖腿变裸空仓！当前盈亏 $-400"
+ }
+]
