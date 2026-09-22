@@ -281,6 +281,7 @@ from account.options import option_market_value as _option_market_value
 from account.options import OCC_RE as _OCC_RE
 from account.options import parse_occ as _parse_occ
 from account.options import parse_occ_sym as _parse_occ_sym
+from account.options import signed_quantity as _signed_qty
 from account.beta_quality import beta_overrides as _derived_beta_overrides
 from account.beta_quality import low_confidence_held as _low_confidence_betas
 from account.positions_xlsx import parse_stocks_xlsx as _parse_stocks_xlsx
@@ -721,10 +722,20 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     _cf_map_dd = {r[0]: float(r[1]) for r in _cf_rows_dd}
     drawdown = _compute_twr_drawdown(_nav_by_d, _cf_map_dd)
 
-    opts = conn.execute(
-        "SELECT symbol, quantity, current_price, market_value, strike, expiry "
-        "FROM options_positions WHERE account_id=? AND current_price IS NOT NULL",
-        (acct_id,)).fetchall()
+    # quantity 必须过 _signed_qty：这张表里 xlsx 导入存带符号的张数，而
+    # Chrome 抓取存 abs(张数) + direction='short'。直接用 raw quantity 的话，
+    # 卖出的腿被当成买入的——Beta-Delta 符号反掉，压力测试里崩盘变成赚钱。
+    # 见 account/options.py signed_quantity。
+    opts = [
+        {"symbol": r["symbol"],
+         "quantity": _signed_qty(r["quantity"], r["direction"]),
+         "current_price": r["current_price"], "market_value": r["market_value"],
+         "strike": r["strike"], "expiry": r["expiry"]}
+        for r in conn.execute(
+            "SELECT symbol, quantity, direction, current_price, market_value, "
+            "strike, expiry FROM options_positions "
+            "WHERE account_id=? AND current_price IS NOT NULL", (acct_id,))
+    ]
     # positions 是逐次同步追加的快照表：必须每只股票只取最新一条，
     # 否则每同步一次，股票敞口就被多算一遍（实测同步 4 次后 BD 被重复计入 4 倍
     # 股票，224%→263%→320%→378%）。跟 account.repository.load_positions 同口径。
@@ -1133,7 +1144,11 @@ def _compute_portfolio_greeks(acct_id: str) -> dict:
 
     for r, und in parsed:
         sym      = str(r[0]).strip().upper()
-        qty      = int(r[1])
+        # r[7] 是 direction 列：Chrome 抓取存 abs(张数) 把方向放这儿，xlsx
+        # 导入存带符号的张数，手动录入往这儿写的却是 Call/Put。归一见
+        # account/options.py signed_quantity——在此之前这一列查出来没人用，
+        # 卖出的腿一路被当成买入的。
+        qty      = int(_signed_qty(r[1], r[7]))
         db_iv    = float(r[4]) if r[4] is not None else None
         # Option type from OCC symbol (C/P), not direction column (which stores long/short)
         _occ_m   = _OCC_RE.match(sym)
@@ -1465,7 +1480,7 @@ def _assess_hedge_width(acct_id: str, equity: float) -> dict | None:
     """
     conn = _db()
     rows = conn.execute(
-        "SELECT symbol, quantity FROM options_positions WHERE account_id=?",
+        "SELECT symbol, quantity, direction FROM options_positions WHERE account_id=?",
         (acct_id,)).fetchall()
     conn.close()
 
@@ -1478,7 +1493,9 @@ def _assess_hedge_width(acct_id: str, equity: float) -> dict | None:
         legs.append({
             "sym": sym, "root": mo.group(1), "type": mo.group(5),
             "strike": float(mo.group(6)) / 1000,
-            "qty": float(r["quantity"] or 0),
+            # 保护腿的买卖方向就是这个检查的全部意义所在：卖出的那条腿被
+            # 读成买入，宽度检查会把一个 525/500 的价差当成两份多头 put。
+            "qty": _signed_qty(r["quantity"], r["direction"]),
             "expiry": f"20{mo.group(2)}-{mo.group(3)}-{mo.group(4)}",
         })
     if not legs:
@@ -2196,13 +2213,11 @@ def _build_spread_portfolios(acct_id: str) -> list[dict]:
         p   = _parse_occ(sym)
         if not p:
             continue
-        qty = int(row.get("quantity") or 0)
+        # abs(张数)+direction='short'（Chrome 抓取）和带符号张数（xlsx 导入）
+        # 两种写法归一，规则收在 account/options.py signed_quantity。
+        qty = int(_signed_qty(row.get("quantity"), row.get("direction")))
         if qty == 0:
             continue
-        # Backward compat: old DB rows stored abs(qty) with direction="short"/"long"
-        _db_dir = str(row.get("direction") or "").lower()
-        if qty > 0 and _db_dir == "short":
-            qty = -qty
         legs.append({
             "symbol":     sym,
             "underlying": p["root"],
@@ -3105,7 +3120,14 @@ def _parse_scraped_rows(raw: dict, acct_id: str) -> list[dict]:
             "strike":        occ["strike"],
             "expiry":        occ["expiry"],
             "underlying":    occ["underlying"],
-            "quantity":      abs(qty) if qty is not None else None,
+            # 带符号存（卖出为负），跟 account/positions_xlsx.py 一个口径。
+            # 这里原来存 abs(qty)、把方向单独塞进 direction 列，而下游三条读
+            # 取路径（风险快照/组合 Greeks/对冲宽度）都直接用 quantity，于是
+            # 卖出的腿一路被当成买入的。读的一端已经用 signed_quantity 兜住了
+            # 历史行，写的一端不该继续生产需要兜的数据。
+            # 改这个之后第一次同步会把所有空头行报成 "qty 2→-2"，那是这次口径
+            # 统一，不是持仓变动。
+            "quantity":      qty,
             "unit_cost":     unit_cost,
             "current_price": current_price,
             "total_pnl":     total_pnl,

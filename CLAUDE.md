@@ -70,6 +70,9 @@ ONTO（半导体设备）
 | 对冲宽度检查 | account/hedge_width.py | 情景参数要跟 risk.py STRESS_SHOCKS 对齐，两处问的必须是同一个跌幅 |
 | 新增 SEC 覆盖（CIK） | scoring/edgar_fetcher.py TICKER_CIK | 加完必须跑 `python scripts/verify_cik.py`（要设 SEC_USER_AGENT）——CIK 错一位不报错，只会安静地画出另一家公司的财报 |
 | beta 口径 | account/beta_regression.py | 压力测试用下跌日 beta，测不够精确（t<2）才退回全样本；**别把 _refresh_beta_spy 改回读 yf.info["beta"]**，那是厂商全样本值，会把下跌日口径在 8 天内全部覆盖掉 |
+| 期权张数的符号 | account/options.py signed_quantity | 读 options_positions 的 quantity **一律过它**：xlsx 导入存带符号张数，Chrome 抓取存 abs+direction，手动录入的 direction 列写的却是 Call/Put。直接用 raw quantity 会把卖出读成买入——BD 符号反掉、压力测试里崩盘变赚钱 |
+| 快照/简报的"多久以前" | account/snapshot_age.py | gen_time 是不带时区的**纽约**墙上钟点，别拿 datetime.now() 去减 |
+| 持仓数看着不对劲 | scripts/diagnose_positions.py | 只读、不联网，逐行摊开查符号/数量级/重复；判定在 account/position_audit.py。股票表的重复行用 check_dupes.py（那是追加表，判定方式不同） |
 
 ## 重要说明
 - **AI暴露字段**：NVDA/MRVL/PLTR 由 edgar_fetcher.py 自动从SEC 10-Q/8-K提取（confidence H/M）；其余7只仍为手动mock（confidence L）
