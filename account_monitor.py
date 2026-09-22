@@ -1999,6 +1999,8 @@ def _parse_spread_legs(df, today) -> list[dict]:
         _db_dir = str(row.get("direction") or "").lower()
         if qty > 0 and _db_dir == "short":
             qty = -qty
+        # read_sql_query yields NaN (not None) for NULLs in partially-filled REAL
+        # columns, so check with pd.notna to treat both as missing.
         legs.append({
             "symbol":     sym,
             "underlying": p["root"],
@@ -2006,11 +2008,11 @@ def _parse_spread_legs(df, today) -> list[dict]:
             "strike":     p["strike"],
             "expiry":     p["expiry"],
             "qty":        qty,
-            "unit_cost":  float(row["unit_cost"])     if row.get("unit_cost")     is not None else 0.0,
-            "cur_price":  float(row["current_price"]) if row.get("current_price") is not None else None,
-            "total_pnl":  float(row["total_pnl"])     if row.get("total_pnl")     is not None else None,
-            "delta":      float(row["delta"])          if row.get("delta")         is not None else None,
-            "iv":         float(row["iv"])             if row.get("iv")            is not None else None,
+            "unit_cost":  float(row["unit_cost"])     if pd.notna(row.get("unit_cost"))     else 0.0,
+            "cur_price":  float(row["current_price"]) if pd.notna(row.get("current_price")) else None,
+            "total_pnl":  float(row["total_pnl"])     if pd.notna(row.get("total_pnl"))     else None,
+            "delta":      float(row["delta"])          if pd.notna(row.get("delta"))         else None,
+            "iv":         float(row["iv"])             if pd.notna(row.get("iv"))            else None,
             "dte":        _spread_days_to_expiry(p["expiry"], today),
         })
     return legs

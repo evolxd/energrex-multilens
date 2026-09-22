@@ -15,7 +15,7 @@
     "qty": -1,
     "unit_cost": 3.0,
     "cur_price": null,
-    "total_pnl": NaN,
+    "total_pnl": null,
     "delta": null,
     "iv": null,
     "dte": 270
@@ -29,10 +29,10 @@
   "max_profit": null,
   "max_loss": 9000.0,
   "breakeven": null,
-  "current_pnl": NaN,
+  "current_pnl": 0.0,
   "pnl_pct": null,
   "risk_level": "HIGH",
-  "recommendation": "⚠️ 裸卖 Put，最大亏损 $9,000（标的归零），当前盈亏 $+nan"
+  "recommendation": "⚠️ 裸卖 Put，最大亏损 $9,000（标的归零），当前盈亏 $+0"
  },
  {
   "id": "ONTO_Bull Call Spread_2027-06-18",

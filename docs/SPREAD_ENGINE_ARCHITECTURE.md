@@ -128,17 +128,28 @@ flowchart LR
   这说明只靠原有测试，文案或风险等级的回归是发现不了的。
 - 开发依赖：`requirements-dev.txt`（pytest / freezegun / pytest-cov）
 
-## 6. 已知问题（本次按原样保留，未修复）
+## 6. 已知问题
 
-- **价格字段部分缺失时盈亏算成 NaN**（快照已核实）：同一账户里某列有的行有值、有的是 NULL 时，
-  pandas 会把 NULL 读成 `NaN` 而不是 `None`，`is not None` 判断因此失效。有两种表现：
-  - `current_price` 缺失的腿不会退回 `total_pnl`，组合的 `current_pnl` / `pnl_pct` 变成 NaN
-    （快照 `mixed_missing_current_price`）
-  - `total_pnl` 也缺失时，NaN 是真值，`(total_pnl or 0)` 不会退回 0，`current_pnl` 同样是 NaN
-    （快照 `no_current_price_falls_back_to_total_pnl` 里的 FTNT 裸卖 Put）
+**已修复：**
 
-  修复会改变输出，应作为独立任务处理，并同步更新这两个快照。
-- **`tests/test_spread_pairing.py` 的到期日写死了**：`260919` 在 2026-09-19 已经过期，DTE
-  变成负数。测试仍然通过，是因为它不断言风险等级。已登记为待办。
+- ✅ **价格字段部分缺失时盈亏算成 NaN**（提交 `d2b90c0`）：`_parse_spread_legs` 里
+  `unit_cost` / `current_price` / `total_pnl` / `delta` / `iv` 的判断从 `is not None`
+  改为 `pd.notna(...)`。原因：`pd.read_sql_query` 对同一列里部分 NULL、部分有值的情况，
+  返回的是浮点 `NaN` 而不是 `None`，`is not None` 判断因此失效。有两种表现，均已用快照验证：
+  - `current_price` 缺失的腿不再算出 NaN，正确退回 `total_pnl`
+    （快照 `mixed_missing_current_price`：`current_pnl` NaN → 155.0）
+  - `total_pnl` 也缺失时，不再因为"NaN 是真值"而跳过 `or 0` 的兜底
+    （快照 `no_current_price_falls_back_to_total_pnl` 里的 FTNT 裸卖 Put：`current_pnl` NaN → 0.0）
+
+  **同一模式在 `_refresh_options_prices` 和数据质量审计页里依然存在，本次未修改**，
+  因为修复它们不在这次任务范围内，需要单独立项确认影响面。
+- ✅ **`tests/test_spread_pairing.py` / `test_spread_calculations.py` 的到期日写死**
+  （提交 `76b6c4a`）：原来的 `260919`/`270618` 会随日历过期。改为在每次调用
+  `_build_spread_portfolios` 时用 `freeze_time("2026-06-18")` 冻结日期，DTE 稳定为
+  365/93，和 class docstring 里的说法一致。新增 `test_frozen_clock_reaches_build`
+  作为守护测试。
+
+**尚未处理：**
+
 - **后续拆分候选**（GLOBAL_AUDIT §5.1）：`_compute_risk_snapshot`、`_compute_iv_regime`、
   `_compute_sim_impact`，最终目标是删掉 `_get_am()`。
