@@ -1,0 +1,57 @@
+[
+ {
+  "id": "CRWD_Diagonal Spread (LEAPS)_2026-12-18_vs_2027-06-18",
+  "type": "Diagonal Spread (LEAPS)",
+  "underlying": "CRWD",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "CRWD270618C00400000",
+    "underlying": "CRWD",
+    "direction": "call",
+    "strike": 400.0,
+    "expiry": "2027-06-18",
+    "qty": 2,
+    "unit_cost": 70.0,
+    "cur_price": 76.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 0,
+    "symbol": "CRWD261218C00480000",
+    "underlying": "CRWD",
+    "direction": "call",
+    "strike": 480.0,
+    "expiry": "2026-12-18",
+    "qty": -2,
+    "unit_cost": 9.5,
+    "cur_price": 7.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 88
+   }
+  ],
+  "spread_qty": 2,
+  "expiry": "2026-12-18",
+  "dte": 88,
+  "near_expiry": "2026-12-18",
+  "far_expiry": "2027-06-18",
+  "near_strike": 480.0,
+  "far_strike": 400.0,
+  "is_proper": true,
+  "net_per_share": 60.5,
+  "net_total": 12100.0,
+  "max_profit": null,
+  "max_loss": 12100.0,
+  "breakeven": null,
+  "current_pnl": 1700.0,
+  "pnl_pct": 14.0,
+  "risk_level": "MEDIUM",
+  "recommendation": "对角价差持有中，Theta 时间优势在近月卖腿；当前盈亏 $+1,700，净成本 $12,100"
+ }
+]

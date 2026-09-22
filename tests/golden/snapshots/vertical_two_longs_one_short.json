@@ -1,0 +1,91 @@
+[
+ {
+  "id": "INTC_Naked Long Call_2027-06-18",
+  "type": "Naked Long Call",
+  "underlying": "INTC",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "INTC270618C00032000",
+    "underlying": "INTC",
+    "direction": "call",
+    "strike": 32.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 3.0,
+    "cur_price": 3.1,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "net_per_share": 3.0,
+  "net_total": 300.0,
+  "max_profit": null,
+  "max_loss": 300.0,
+  "breakeven": null,
+  "current_pnl": 10.0,
+  "pnl_pct": null,
+  "risk_level": "MEDIUM",
+  "recommendation": "买权持有，最大亏损权利金 $300，当前盈亏 $+10"
+ },
+ {
+  "id": "INTC_Bull Call Spread_2027-06-18",
+  "type": "Bull Call Spread",
+  "underlying": "INTC",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "INTC270618C00030000",
+    "underlying": "INTC",
+    "direction": "call",
+    "strike": 30.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 4.0,
+    "cur_price": 4.4,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 2,
+    "symbol": "INTC270618C00040000",
+    "underlying": "INTC",
+    "direction": "call",
+    "strike": 40.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 1.0,
+    "cur_price": 0.7,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 30.0,
+  "high_strike": 40.0,
+  "strike_width": 10.0,
+  "is_debit": true,
+  "net_per_share": 3.0,
+  "net_total": 300.0,
+  "max_profit": 700.0,
+  "max_loss": 300.0,
+  "breakeven": 33.0,
+  "current_pnl": 70.0,
+  "pnl_pct": 23.3,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $300（付），当前盈亏 $+70（+23% on cost），最大盈利 $700，盈亏平衡点 $33.00"
+ }
+]

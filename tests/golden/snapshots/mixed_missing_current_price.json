@@ -1,0 +1,56 @@
+[
+ {
+  "id": "MRVL_Bull Call Spread_2027-06-18",
+  "type": "Bull Call Spread",
+  "underlying": "MRVL",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "MRVL270618C00080000",
+    "underlying": "MRVL",
+    "direction": "call",
+    "strike": 80.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 9.0,
+    "cur_price": 10.0,
+    "total_pnl": NaN,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 1,
+    "symbol": "MRVL270618C00095000",
+    "underlying": "MRVL",
+    "direction": "call",
+    "strike": 95.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 4.0,
+    "cur_price": NaN,
+    "total_pnl": 55.0,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 80.0,
+  "high_strike": 95.0,
+  "strike_width": 15.0,
+  "is_debit": true,
+  "net_per_share": 5.0,
+  "net_total": 500.0,
+  "max_profit": 1000.0,
+  "max_loss": 500.0,
+  "breakeven": 85.0,
+  "current_pnl": NaN,
+  "pnl_pct": NaN,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $500（付），当前盈亏 $+nan（+nan% on cost），最大盈利 $1,000，盈亏平衡点 $85.00"
+ }
+]

@@ -1,0 +1,56 @@
+[
+ {
+  "id": "AVGO_Bull Put Spread_2027-06-18",
+  "type": "Bull Put Spread",
+  "underlying": "AVGO",
+  "direction": "put",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "AVGO270618P00280000",
+    "underlying": "AVGO",
+    "direction": "put",
+    "strike": 280.0,
+    "expiry": "2027-06-18",
+    "qty": 3,
+    "unit_cost": 6.4,
+    "cur_price": 4.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 1,
+    "symbol": "AVGO270618P00300000",
+    "underlying": "AVGO",
+    "direction": "put",
+    "strike": 300.0,
+    "expiry": "2027-06-18",
+    "qty": -3,
+    "unit_cost": 11.3,
+    "cur_price": 8.2,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 3,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 280.0,
+  "high_strike": 300.0,
+  "strike_width": 20.0,
+  "is_debit": false,
+  "net_per_share": -4.9,
+  "net_total": -1470.0,
+  "max_profit": 1470.0,
+  "max_loss": 4530.0,
+  "breakeven": 295.1,
+  "current_pnl": 210.0,
+  "pnl_pct": 4.6,
+  "risk_level": "LOW",
+  "recommendation": "收权利金 $1,470，当前盈亏 $+210（+5% on risk），最大亏损 $4,530，盈亏平衡点 $295.10"
+ }
+]
