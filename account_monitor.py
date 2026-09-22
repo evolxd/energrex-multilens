@@ -1966,35 +1966,26 @@ _DTE_CRITICAL = 14
 _DTE_REVIEW   = 21
 
 
-def _build_spread_portfolios(acct_id: str) -> list[dict]:
-    """
-    读取 options_positions，自动识别期权组合关系。
-    优先级：同标的+同到期日+同方向 → 垂直价差；
-            同标的+不同到期日+同方向 → 日历/对角价差；
-            其余 → 裸仓。
-    返回 list[dict]，按风险等级从高到低排序。
-    """
-    df = _load_options_positions(acct_id)
-    if df.empty:
-        return []
+def _spread_days_to_expiry(exp_str, today) -> int:
+    """到期剩余天数；日期无法解析时返回 9999。"""
+    try:
+        return (datetime.date.fromisoformat(str(exp_str or "")) - today).days
+    except Exception:
+        return 9999
 
-    today = datetime.date.today()
 
-    def _days(exp_str):
-        try:
-            return (datetime.date.fromisoformat(str(exp_str or "")) - today).days
-        except Exception:
-            return 9999
+def _spread_leg_pnl(leg: dict, qty_frac: float = 1.0) -> float:
+    """单腿盈亏（按 qty_frac 折算）；无现价时退回 total_pnl。"""
+    cp = leg.get("cur_price")
+    uc = leg.get("unit_cost") or 0
+    q  = leg.get("qty", 0)
+    if cp is None:
+        return (leg.get("total_pnl") or 0) * qty_frac
+    return (float(cp) - float(uc)) * q * 100 * qty_frac
 
-    def _leg_pnl(leg, qty_frac=1.0):
-        cp = leg.get("cur_price")
-        uc = leg.get("unit_cost") or 0
-        q  = leg.get("qty", 0)
-        if cp is None:
-            return (leg.get("total_pnl") or 0) * qty_frac
-        return (float(cp) - float(uc)) * q * 100 * qty_frac
 
-    # Parse all legs into uniform dicts
+def _parse_spread_legs(df, today) -> list[dict]:
+    """把 options_positions 行解析成统一的腿 dict；跳过无法解析或数量为 0 的行。"""
     legs = []
     for _, row in df.iterrows():
         sym = str(row.get("symbol", "")).strip().upper()
@@ -2020,293 +2011,337 @@ def _build_spread_portfolios(acct_id: str) -> list[dict]:
             "total_pnl":  float(row["total_pnl"])     if row.get("total_pnl")     is not None else None,
             "delta":      float(row["delta"])          if row.get("delta")         is not None else None,
             "iv":         float(row["iv"])             if row.get("iv")            is not None else None,
-            "dte":        _days(p["expiry"]),
+            "dte":        _spread_days_to_expiry(p["expiry"], today),
         })
+    return legs
 
-    n       = len(legs)
-    matched = [False] * n
+
+def _vertical_economics(ll: dict, sl: dict, qty) -> dict:
+    """垂直价差的类型、价宽、借/贷方向、最大盈亏与盈亏平衡点（ll=买腿，sl=卖腿）。"""
+    direction = ll["direction"]
+    if direction == "call":
+        stype = "Bull Call Spread" if ll["strike"] < sl["strike"] else "Bear Call Spread"
+    else:
+        stype = "Bear Put Spread"  if ll["strike"] > sl["strike"] else "Bull Put Spread"
+
+    low_s  = min(ll["strike"], sl["strike"])
+    high_s = max(ll["strike"], sl["strike"])
+    width  = round(high_s - low_s, 4)
+
+    # positive net = debit paid; negative = credit received
+    net_ps   = ll["unit_cost"] - sl["unit_cost"]
+    net_tot  = round(net_ps * qty * 100, 2)
+    is_debit = net_ps > 0
+
+    if is_debit:
+        max_profit = round((width - abs(net_ps)) * qty * 100, 2)
+        max_loss   = round(abs(net_tot), 2)
+        if direction == "call":
+            breakeven = round(ll["strike"] + abs(net_ps), 4)
+        else:
+            breakeven = round(ll["strike"] - abs(net_ps), 4)
+    else:
+        max_profit = round(abs(net_tot), 2)
+        max_loss   = round((width - abs(net_ps)) * qty * 100, 2)
+        if direction == "call":
+            breakeven = round(sl["strike"] + abs(net_ps), 4)
+        else:
+            breakeven = round(sl["strike"] - abs(net_ps), 4)
+
+    return {"stype": stype, "low_s": low_s, "high_s": high_s, "width": width,
+            "net_ps": net_ps, "net_tot": net_tot, "is_debit": is_debit,
+            "max_profit": max_profit, "max_loss": max_loss, "breakeven": breakeven}
+
+
+def _vertical_recommendation(econ: dict, pnl: float, dte_v: int) -> tuple:
+    """垂直价差的 (pnl_pct, 建议文案)：借方按成本、贷方按风险资本计。"""
+    net_tot, max_profit = econ["net_tot"], econ["max_profit"]
+    max_loss, breakeven = econ["max_loss"], econ["breakeven"]
+    if econ["is_debit"]:
+        basis   = abs(max_loss)
+        pnl_pct = round(pnl / basis * 100, 1) if basis else 0
+        rec = (f"净权利金 ${abs(net_tot):,.0f}（付），"
+               f"当前盈亏 ${pnl:+,.0f}（{pnl_pct:+.0f}% on cost），"
+               f"最大盈利 ${max_profit:,.0f}，盈亏平衡点 ${breakeven:,.2f}")
+    else:
+        # 收权价差：pnl_pct = 盈亏 / 最大亏损（风险资本），而非 / 权利金收入
+        basis   = abs(max_loss)
+        pnl_pct = round(pnl / basis * 100, 1) if basis else 0
+        rec = (f"收权利金 ${abs(net_tot):,.0f}，"
+               f"当前盈亏 ${pnl:+,.0f}（{pnl_pct:+.0f}% on risk），"
+               f"最大亏损 ${max_loss:,.0f}，盈亏平衡点 ${breakeven:,.2f}")
+
+    if dte_v <= _DTE_CRITICAL:
+        rec = f"🚨 DTE={dte_v}天，立即决策展期或平仓！" + rec
+    elif dte_v <= _DTE_REVIEW:
+        rec = f"⚠️ DTE={dte_v}天，" + rec
+    return pnl_pct, rec
+
+
+def _make_vertical_portfolio(legs: list[dict], li: int, si: int) -> dict:
+    """组装一组垂直价差（li=买腿，si=卖腿）；腿按调用时刻的剩余数量拷贝。"""
+    ll = legs[li]   # long leg
+    sl = legs[si]   # short leg
+    qty = min(abs(ll["qty"]), abs(sl["qty"]))
+    direction = ll["direction"]
+    und  = ll["underlying"]
+    econ = _vertical_economics(ll, sl, qty)
+
+    long_frac  = qty / abs(ll["qty"])
+    short_frac = qty / abs(sl["qty"])
+    pnl = _spread_leg_pnl(ll, long_frac) + _spread_leg_pnl(sl, short_frac)
+
+    dte_v = min(ll["dte"], sl["dte"])
+    if dte_v <= _DTE_CRITICAL:
+        risk_level = "CRITICAL"
+    elif dte_v <= _DTE_REVIEW:
+        risk_level = "HIGH"
+    else:
+        risk_level = "LOW"
+
+    pnl_pct, rec = _vertical_recommendation(econ, pnl, dte_v)
+    stype = econ["stype"]
+    return {
+        "id": f"{und}_{stype}_{ll['expiry']}",
+        "type": stype, "underlying": und, "direction": direction,
+        "legs": [dict(li=li, **ll), dict(li=si, **sl)],
+        "spread_qty": qty,
+        "expiry": ll["expiry"], "dte": dte_v,
+        "low_strike": econ["low_s"], "high_strike": econ["high_s"], "strike_width": econ["width"],
+        "is_debit": econ["is_debit"],
+        "net_per_share": round(econ["net_ps"], 4), "net_total": econ["net_tot"],
+        "max_profit": econ["max_profit"], "max_loss": econ["max_loss"],
+        "breakeven": econ["breakeven"],
+        "current_pnl": round(pnl, 2),
+        "pnl_pct": pnl_pct,
+        "risk_level": risk_level,
+        "recommendation": rec,
+    }
+
+
+def _diagonal_risk_and_rec(near_leg: dict, far_leg: dict, is_proper: bool,
+                           pnl: float, net_tot: float) -> tuple:
+    """日历/对角价差的 (风险等级, 建议文案)；判断顺序：近月临期 → 反向 → 近月待复核 → 正常。"""
+    near_dte = near_leg["dte"]
+    if near_dte <= _DTE_CRITICAL:
+        risk_level = "CRITICAL"
+        rec = (f"🚨 近月腿 DTE={near_dte}天 — 立即决策展期或平仓！"
+               f"当前盈亏 ${pnl:+,.0f}")
+    elif not is_proper:
+        risk_level = "HIGH"
+        rec = (f"⚠️ 买腿（{near_leg['expiry']}）早于卖腿（{far_leg['expiry']}）到期，"
+               f"买腿失效后卖腿变裸空仓！当前盈亏 ${pnl:+,.0f}")
+    elif near_dte <= _DTE_REVIEW:
+        risk_level = "HIGH"
+        rec = (f"⚠️ 近月腿 DTE={near_dte}天，制定展期计划；"
+               f"当前盈亏 ${pnl:+,.0f}")
+    else:
+        risk_level = "MEDIUM"
+        rec = (f"对角价差持有中，Theta 时间优势在近月卖腿；"
+               f"当前盈亏 ${pnl:+,.0f}，净成本 ${abs(net_tot):,.0f}")
+    return risk_level, rec
+
+
+def _make_diagonal_portfolio(legs: list[dict], li: int, si: int) -> dict:
+    """组装一组日历/对角价差（跨到期日）；正向 = 卖近月 + 买远月。"""
+    ll = legs[li]
+    sl = legs[si]
+    qty = min(abs(ll["qty"]), abs(sl["qty"]))
+    direction = ll["direction"]
+    und = ll["underlying"]
+
+    # Identify near/far by expiry
+    near_leg, far_leg = (ll, sl) if ll["expiry"] < sl["expiry"] else (sl, ll)
+    is_proper = near_leg["qty"] < 0 and far_leg["qty"] > 0
+
+    same_strike = abs(near_leg["strike"] - far_leg["strike"]) < 0.001
+    stype = (("Calendar Spread" if same_strike else "Diagonal Spread (LEAPS)")
+             if is_proper else "Reversed Diagonal (⚠️ 买腿先到期)")
+
+    # net cost: positive = debit
+    net_ps = (far_leg["unit_cost"] - near_leg["unit_cost"] if is_proper
+              else near_leg["unit_cost"] - far_leg["unit_cost"])
+    net_tot = round(net_ps * qty * 100, 2)
+
+    long_frac  = qty / abs(ll["qty"])
+    short_frac = qty / abs(sl["qty"])
+    pnl = _spread_leg_pnl(ll, long_frac) + _spread_leg_pnl(sl, short_frac)
+    risk_level, rec = _diagonal_risk_and_rec(near_leg, far_leg, is_proper, pnl, net_tot)
+
+    # 正向对角价差（买远月+卖近月）= 净权利金支出封顶最大亏损
+    diag_max_loss   = round(abs(net_tot), 2) if (is_proper and net_ps > 0) else None
+    diag_pnl_pct    = round(pnl / diag_max_loss * 100, 1) if diag_max_loss else None
+
+    return {
+        "id": f"{und}_{stype}_{near_leg['expiry']}_vs_{far_leg['expiry']}",
+        "type": stype, "underlying": und, "direction": direction,
+        "legs": [dict(li=li, **ll), dict(li=si, **sl)],
+        "spread_qty": qty,
+        "expiry": near_leg["expiry"], "dte": near_leg["dte"],
+        "near_expiry": near_leg["expiry"], "far_expiry": far_leg["expiry"],
+        "near_strike": near_leg["strike"], "far_strike": far_leg["strike"],
+        "is_proper": is_proper,
+        "net_per_share": round(net_ps, 4), "net_total": net_tot,
+        "max_profit": None, "max_loss": diag_max_loss, "breakeven": None,
+        "current_pnl": round(pnl, 2), "pnl_pct": diag_pnl_pct,
+        "risk_level": risk_level,
+        "recommendation": rec,
+    }
+
+
+def _naked_risk_and_rec(leg: dict, max_loss_naked, pnl: float) -> tuple:
+    """裸仓的 (风险等级, 建议文案)：买权 / 裸卖 Put / 裸卖 Call 三类，临期再加前缀。"""
+    is_long   = leg["qty"] > 0
+    direction = leg["direction"]
+    dte_v     = leg["dte"]
+    if is_long:
+        risk_level = "MEDIUM" if dte_v > _DTE_REVIEW else ("CRITICAL" if dte_v <= _DTE_CRITICAL else "HIGH")
+        rec = f"买权持有，最大亏损权利金 ${max_loss_naked:,.0f}，当前盈亏 ${pnl:+,.0f}"
+    elif direction == "put":
+        risk_level = "CRITICAL" if dte_v <= _DTE_CRITICAL else "HIGH"
+        rec = f"⚠️ 裸卖 Put，最大亏损 ${max_loss_naked:,.0f}（标的归零），当前盈亏 ${pnl:+,.0f}"
+    else:
+        risk_level = "CRITICAL" if dte_v <= _DTE_CRITICAL else "HIGH"
+        rec = f"⚠️ 裸卖 Call，风险无限，当前盈亏 ${pnl:+,.0f}"
+
+    if dte_v <= _DTE_CRITICAL:
+        rec = f"🚨 DTE={dte_v}天 — 立即处理！" + rec
+    elif dte_v <= _DTE_REVIEW:
+        rec = f"⚠️ DTE={dte_v}天 — " + rec
+    return risk_level, rec
+
+
+def _make_naked_portfolio(legs: list[dict], idx: int) -> dict:
+    """把一条未配对的腿组装成裸仓条目。"""
+    leg = legs[idx]
+    qty = leg["qty"]
+    is_long  = qty > 0
+    direction = leg["direction"]
+    und = leg["underlying"]
+    dte_v = leg["dte"]
+
+    stype = f"Naked {'Long' if is_long else 'Short'} {direction.capitalize()}"
+    pnl   = _spread_leg_pnl(leg)
+    if is_long:
+        max_loss_naked = round(leg["unit_cost"] * abs(qty) * 100, 2)
+    elif direction == "put":
+        # 裸卖 Put：最大亏损 = 行权价×100×手数（标的跌至 0）
+        max_loss_naked = round(leg["strike"] * abs(qty) * 100, 2)
+    else:
+        max_loss_naked = None  # 裸卖 Call：理论无限亏损
+
+    risk_level, rec = _naked_risk_and_rec(leg, max_loss_naked, pnl)
+
+    return {
+        "id": f"{und}_{stype}_{leg['expiry']}",
+        "type": stype, "underlying": und, "direction": direction,
+        "legs": [dict(li=idx, **leg)],
+        "spread_qty": abs(qty),
+        "expiry": leg["expiry"], "dte": dte_v,
+        "net_per_share": leg["unit_cost"], "net_total": leg["unit_cost"] * abs(qty) * 100,
+        "max_profit": None, "max_loss": max_loss_naked, "breakeven": None,
+        "current_pnl": round(pnl, 2), "pnl_pct": None,
+        "risk_level": risk_level,
+        "recommendation": rec,
+    }
+
+
+def _consume_spread_pair(legs: list[dict], matched: list[bool],
+                         li: int, si: int, sq) -> None:
+    """配对 sq 手后扣减两条腿的剩余数量（原地修改）；用尽的腿标记为已匹配。"""
+    rem_l = abs(legs[li]["qty"]) - sq
+    rem_s = abs(legs[si]["qty"]) - sq
+    if rem_l <= 0:
+        matched[li] = True
+    else:
+        legs[li]["qty"] = rem_l
+    if rem_s <= 0:
+        matched[si] = True
+    else:
+        legs[si]["qty"] = -rem_s
+
+
+def _match_vertical_spreads(legs: list[dict], matched: list[bool],
+                            und_indices: list[int], portfolios: list[dict]) -> None:
+    """Round 1：同标的 + 同到期日 + 同类型 → 垂直价差，结果按配对顺序追加到 portfolios。"""
+    exp_dir: dict[tuple, list[int]] = {}
+    for i in und_indices:
+        if matched[i]:
+            continue
+        exp_dir.setdefault((legs[i]["expiry"], legs[i]["direction"]), []).append(i)
+
+    for (_exp, _dir), group in sorted(exp_dir.items()):
+        longs  = [i for i in group if legs[i]["qty"] > 0]
+        shorts = [i for i in group if legs[i]["qty"] < 0]
+        for li in longs:
+            if matched[li]:
+                continue
+            for si in shorts:
+                if matched[si]:
+                    continue
+                port = _make_vertical_portfolio(legs, li, si)
+                portfolios.append(port)
+                _consume_spread_pair(legs, matched, li, si, port["spread_qty"])
+                if matched[li]:
+                    break
+
+
+def _match_diagonal_spreads(legs: list[dict], matched: list[bool],
+                            und_indices: list[int], portfolios: list[dict]) -> None:
+    """Round 2：同标的 + 同类型 + 不同到期日 → 日历/对角价差（按到期日由近到远配对）。"""
+    dir_groups: dict[str, list[int]] = {}
+    for i in und_indices:
+        if matched[i]:
+            continue
+        dir_groups.setdefault(legs[i]["direction"], []).append(i)
+
+    for _dir, group in dir_groups.items():
+        longs  = sorted([i for i in group if legs[i]["qty"] > 0], key=lambda i: legs[i]["expiry"])
+        shorts = sorted([i for i in group if legs[i]["qty"] < 0], key=lambda i: legs[i]["expiry"])
+        for li in longs:
+            if matched[li]:
+                continue
+            for si in shorts:
+                if matched[si]:
+                    continue
+                if legs[li]["expiry"] == legs[si]["expiry"]:
+                    continue
+                port = _make_diagonal_portfolio(legs, li, si)
+                portfolios.append(port)
+                _consume_spread_pair(legs, matched, li, si, port["spread_qty"])
+                if matched[li]:
+                    break
+
+
+def _build_spread_portfolios(acct_id: str) -> list[dict]:
+    """
+    读取 options_positions，自动识别期权组合关系。
+    优先级：同标的+同到期日+同方向 → 垂直价差；
+            同标的+不同到期日+同方向 → 日历/对角价差；
+            其余 → 裸仓。
+    返回 list[dict]，按风险等级从高到低排序。
+    """
+    df = _load_options_positions(acct_id)
+    if df.empty:
+        return []
+
+    legs = _parse_spread_legs(df, datetime.date.today())
+    matched = [False] * len(legs)
     portfolios: list[dict] = []
 
-    # ── helpers ──────────────────────────────────────────
-    def _make_vertical(li: int, si: int) -> dict:
-        ll = legs[li]   # long leg
-        sl = legs[si]   # short leg
-        qty = min(abs(ll["qty"]), abs(sl["qty"]))
-        direction = ll["direction"]
-        und  = ll["underlying"]
-
-        if direction == "call":
-            stype = "Bull Call Spread" if ll["strike"] < sl["strike"] else "Bear Call Spread"
-        else:
-            stype = "Bear Put Spread"  if ll["strike"] > sl["strike"] else "Bull Put Spread"
-
-        low_s  = min(ll["strike"], sl["strike"])
-        high_s = max(ll["strike"], sl["strike"])
-        width  = round(high_s - low_s, 4)
-
-        # positive net = debit paid; negative = credit received
-        net_ps   = ll["unit_cost"] - sl["unit_cost"]
-        net_tot  = round(net_ps * qty * 100, 2)
-        is_debit = net_ps > 0
-
-        if is_debit:
-            max_profit = round((width - abs(net_ps)) * qty * 100, 2)
-            max_loss   = round(abs(net_tot), 2)
-            if direction == "call":
-                breakeven = round(ll["strike"] + abs(net_ps), 4)
-            else:
-                breakeven = round(ll["strike"] - abs(net_ps), 4)
-        else:
-            max_profit = round(abs(net_tot), 2)
-            max_loss   = round((width - abs(net_ps)) * qty * 100, 2)
-            if direction == "call":
-                breakeven = round(sl["strike"] + abs(net_ps), 4)
-            else:
-                breakeven = round(sl["strike"] - abs(net_ps), 4)
-
-        long_frac  = qty / abs(ll["qty"])
-        short_frac = qty / abs(sl["qty"])
-        pnl = _leg_pnl(ll, long_frac) + _leg_pnl(sl, short_frac)
-
-        dte_v = min(ll["dte"], sl["dte"])
-        if dte_v <= _DTE_CRITICAL:
-            risk_level = "CRITICAL"
-        elif dte_v <= _DTE_REVIEW:
-            risk_level = "HIGH"
-        else:
-            risk_level = "LOW"
-
-        if is_debit:
-            basis   = abs(max_loss)
-            pnl_pct = round(pnl / basis * 100, 1) if basis else 0
-            rec = (f"净权利金 ${abs(net_tot):,.0f}（付），"
-                   f"当前盈亏 ${pnl:+,.0f}（{pnl_pct:+.0f}% on cost），"
-                   f"最大盈利 ${max_profit:,.0f}，盈亏平衡点 ${breakeven:,.2f}")
-        else:
-            # 收权价差：pnl_pct = 盈亏 / 最大亏损（风险资本），而非 / 权利金收入
-            basis   = abs(max_loss)
-            pnl_pct = round(pnl / basis * 100, 1) if basis else 0
-            rec = (f"收权利金 ${abs(net_tot):,.0f}，"
-                   f"当前盈亏 ${pnl:+,.0f}（{pnl_pct:+.0f}% on risk），"
-                   f"最大亏损 ${max_loss:,.0f}，盈亏平衡点 ${breakeven:,.2f}")
-
-        if dte_v <= _DTE_CRITICAL:
-            rec = f"🚨 DTE={dte_v}天，立即决策展期或平仓！" + rec
-        elif dte_v <= _DTE_REVIEW:
-            rec = f"⚠️ DTE={dte_v}天，" + rec
-
-        return {
-            "id": f"{und}_{stype}_{ll['expiry']}",
-            "type": stype, "underlying": und, "direction": direction,
-            "legs": [dict(li=li, **ll), dict(li=si, **sl)],
-            "spread_qty": qty,
-            "expiry": ll["expiry"], "dte": dte_v,
-            "low_strike": low_s, "high_strike": high_s, "strike_width": width,
-            "is_debit": is_debit,
-            "net_per_share": round(net_ps, 4), "net_total": net_tot,
-            "max_profit": max_profit, "max_loss": max_loss,
-            "breakeven": breakeven,
-            "current_pnl": round(pnl, 2),
-            "pnl_pct": pnl_pct,
-            "risk_level": risk_level,
-            "recommendation": rec,
-        }
-
-    def _make_diagonal(li: int, si: int) -> dict:
-        ll = legs[li]
-        sl = legs[si]
-        qty = min(abs(ll["qty"]), abs(sl["qty"]))
-        direction = ll["direction"]
-        und = ll["underlying"]
-
-        # Identify near/far by expiry
-        if ll["expiry"] < sl["expiry"]:
-            near_leg, far_leg = ll, sl
-        else:
-            near_leg, far_leg = sl, ll
-
-        near_is_short = near_leg["qty"] < 0
-        far_is_long   = far_leg["qty"]  > 0
-        is_proper     = near_is_short and far_is_long
-
-        same_strike = abs(near_leg["strike"] - far_leg["strike"]) < 0.001
-        if is_proper:
-            stype = "Calendar Spread" if same_strike else "Diagonal Spread (LEAPS)"
-        else:
-            stype = "Reversed Diagonal (⚠️ 买腿先到期)"
-
-        # net cost: positive = debit
-        if is_proper:
-            net_ps  = far_leg["unit_cost"] - near_leg["unit_cost"]
-        else:
-            net_ps  = near_leg["unit_cost"] - far_leg["unit_cost"]
-        net_tot = round(net_ps * qty * 100, 2)
-
-        long_frac  = qty / abs(ll["qty"])
-        short_frac = qty / abs(sl["qty"])
-        pnl = _leg_pnl(ll, long_frac) + _leg_pnl(sl, short_frac)
-
-        near_dte = near_leg["dte"]
-        if near_dte <= _DTE_CRITICAL:
-            risk_level = "CRITICAL"
-            rec = (f"🚨 近月腿 DTE={near_dte}天 — 立即决策展期或平仓！"
-                   f"当前盈亏 ${pnl:+,.0f}")
-        elif not is_proper:
-            risk_level = "HIGH"
-            rec = (f"⚠️ 买腿（{near_leg['expiry']}）早于卖腿（{far_leg['expiry']}）到期，"
-                   f"买腿失效后卖腿变裸空仓！当前盈亏 ${pnl:+,.0f}")
-        elif near_dte <= _DTE_REVIEW:
-            risk_level = "HIGH"
-            rec = (f"⚠️ 近月腿 DTE={near_dte}天，制定展期计划；"
-                   f"当前盈亏 ${pnl:+,.0f}")
-        else:
-            risk_level = "MEDIUM"
-            rec = (f"对角价差持有中，Theta 时间优势在近月卖腿；"
-                   f"当前盈亏 ${pnl:+,.0f}，净成本 ${abs(net_tot):,.0f}")
-
-        # 正向对角价差（买远月+卖近月）= 净权利金支出封顶最大亏损
-        diag_max_loss   = round(abs(net_tot), 2) if (is_proper and net_ps > 0) else None
-        diag_pnl_pct    = round(pnl / diag_max_loss * 100, 1) if diag_max_loss else None
-
-        return {
-            "id": f"{und}_{stype}_{near_leg['expiry']}_vs_{far_leg['expiry']}",
-            "type": stype, "underlying": und, "direction": direction,
-            "legs": [dict(li=li, **ll), dict(li=si, **sl)],
-            "spread_qty": qty,
-            "expiry": near_leg["expiry"], "dte": near_dte,
-            "near_expiry": near_leg["expiry"], "far_expiry": far_leg["expiry"],
-            "near_strike": near_leg["strike"], "far_strike": far_leg["strike"],
-            "is_proper": is_proper,
-            "net_per_share": round(net_ps, 4), "net_total": net_tot,
-            "max_profit": None, "max_loss": diag_max_loss, "breakeven": None,
-            "current_pnl": round(pnl, 2), "pnl_pct": diag_pnl_pct,
-            "risk_level": risk_level,
-            "recommendation": rec,
-        }
-
-    def _make_naked(idx: int) -> dict:
-        leg = legs[idx]
-        qty = leg["qty"]
-        is_long  = qty > 0
-        direction = leg["direction"]
-        und = leg["underlying"]
-        dte_v = leg["dte"]
-
-        stype = f"Naked {'Long' if is_long else 'Short'} {direction.capitalize()}"
-        pnl   = _leg_pnl(leg)
-        if is_long:
-            max_loss_naked = round(leg["unit_cost"] * abs(qty) * 100, 2)
-        elif direction == "put":
-            # 裸卖 Put：最大亏损 = 行权价×100×手数（标的跌至 0）
-            max_loss_naked = round(leg["strike"] * abs(qty) * 100, 2)
-        else:
-            max_loss_naked = None  # 裸卖 Call：理论无限亏损
-
-        if is_long:
-            risk_level = "MEDIUM" if dte_v > _DTE_REVIEW else ("CRITICAL" if dte_v <= _DTE_CRITICAL else "HIGH")
-            rec = f"买权持有，最大亏损权利金 ${max_loss_naked:,.0f}，当前盈亏 ${pnl:+,.0f}"
-        elif direction == "put":
-            risk_level = "CRITICAL" if dte_v <= _DTE_CRITICAL else "HIGH"
-            rec = f"⚠️ 裸卖 Put，最大亏损 ${max_loss_naked:,.0f}（标的归零），当前盈亏 ${pnl:+,.0f}"
-        else:
-            risk_level = "CRITICAL" if dte_v <= _DTE_CRITICAL else "HIGH"
-            rec = f"⚠️ 裸卖 Call，风险无限，当前盈亏 ${pnl:+,.0f}"
-
-        if dte_v <= _DTE_CRITICAL:
-            rec = f"🚨 DTE={dte_v}天 — 立即处理！" + rec
-        elif dte_v <= _DTE_REVIEW:
-            rec = f"⚠️ DTE={dte_v}天 — " + rec
-
-        return {
-            "id": f"{und}_{stype}_{leg['expiry']}",
-            "type": stype, "underlying": und, "direction": direction,
-            "legs": [dict(li=idx, **leg)],
-            "spread_qty": abs(qty),
-            "expiry": leg["expiry"], "dte": dte_v,
-            "net_per_share": leg["unit_cost"], "net_total": leg["unit_cost"] * abs(qty) * 100,
-            "max_profit": None, "max_loss": max_loss_naked, "breakeven": None,
-            "current_pnl": round(pnl, 2), "pnl_pct": None,
-            "risk_level": risk_level,
-            "recommendation": rec,
-        }
-
-    # ── Main matching loop ────────────────────────────────────────
+    # ── Main matching loop: per underlying, rounds 1 → 2 → 3 ─────
     und_groups: dict[str, list[int]] = {}
     for i, leg in enumerate(legs):
         und_groups.setdefault(leg["underlying"], []).append(i)
 
     for und, und_indices in sorted(und_groups.items()):
-
-        # Round 1: Same expiry + same direction → vertical spreads
-        exp_dir: dict[tuple, list[int]] = {}
-        for i in und_indices:
-            if matched[i]:
-                continue
-            exp_dir.setdefault((legs[i]["expiry"], legs[i]["direction"]), []).append(i)
-
-        for (_exp, _dir), group in sorted(exp_dir.items()):
-            longs  = [i for i in group if legs[i]["qty"] > 0]
-            shorts = [i for i in group if legs[i]["qty"] < 0]
-            for li in longs:
-                if matched[li]:
-                    continue
-                for si in shorts:
-                    if matched[si]:
-                        continue
-                    port = _make_vertical(li, si)
-                    portfolios.append(port)
-                    sq = port["spread_qty"]
-                    rem_l = abs(legs[li]["qty"]) - sq
-                    rem_s = abs(legs[si]["qty"]) - sq
-                    if rem_l <= 0:
-                        matched[li] = True
-                    else:
-                        legs[li]["qty"] = rem_l
-                    if rem_s <= 0:
-                        matched[si] = True
-                    else:
-                        legs[si]["qty"] = -rem_s
-                    if matched[li]:
-                        break
-
-        # Round 2: Cross-expiry → diagonal / calendar
-        dir_groups: dict[str, list[int]] = {}
-        for i in und_indices:
-            if matched[i]:
-                continue
-            dir_groups.setdefault(legs[i]["direction"], []).append(i)
-
-        for _dir, group in dir_groups.items():
-            longs  = sorted([i for i in group if legs[i]["qty"] > 0], key=lambda i: legs[i]["expiry"])
-            shorts = sorted([i for i in group if legs[i]["qty"] < 0], key=lambda i: legs[i]["expiry"])
-            for li in longs:
-                if matched[li]:
-                    continue
-                for si in shorts:
-                    if matched[si]:
-                        continue
-                    if legs[li]["expiry"] == legs[si]["expiry"]:
-                        continue
-                    port = _make_diagonal(li, si)
-                    portfolios.append(port)
-                    sq = port["spread_qty"]
-                    rem_l = abs(legs[li]["qty"]) - sq
-                    rem_s = abs(legs[si]["qty"]) - sq
-                    if rem_l <= 0:
-                        matched[li] = True
-                    else:
-                        legs[li]["qty"] = rem_l
-                    if rem_s <= 0:
-                        matched[si] = True
-                    else:
-                        legs[si]["qty"] = -rem_s
-                    if matched[li]:
-                        break
+        _match_vertical_spreads(legs, matched, und_indices, portfolios)
+        _match_diagonal_spreads(legs, matched, und_indices, portfolios)
 
         # Round 3: Remaining → naked
         for i in und_indices:
             if not matched[i] and abs(legs[i]["qty"]) > 0:
-                portfolios.append(_make_naked(i))
+                portfolios.append(_make_naked_portfolio(legs, i))
                 matched[i] = True
 
     # Sort: CRITICAL → HIGH → MEDIUM → LOW
