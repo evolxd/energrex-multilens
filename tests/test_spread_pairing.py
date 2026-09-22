@@ -55,9 +55,12 @@ sys.modules["streamlit"] = _st
 # ── Now safe to import account packages ──────────────────────────────────────
 import account.db as account_db
 from account.options_repository import save_options_positions
+from freezegun import freeze_time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ACCT = "test_acct"
+# Fixed "today" for every _build call: keeps the DTE values below exact.
+FROZEN_TODAY = "2026-06-18"
 
 
 # ── Helper: minimal position dict accepted by save_options_positions ──────────
@@ -82,11 +85,11 @@ class SpreadPairingTests(unittest.TestCase):
     Each test inserts positions into a temp DB, calls _build_spread_portfolios,
     and asserts on the returned portfolio list.
 
-    OCC symbols used:
-      - Far expiry  2027-06-18  → 270618  (DTE ≈ 365, well above CRITICAL/REVIEW)
-      - Near expiry 2026-09-19  → 260919  (DTE ≈ 93, still above REVIEW=21)
+    Every _build call runs with today frozen at FROZEN_TODAY (2026-06-18), so:
+      - Far expiry  2027-06-18  → 270618  (DTE = 365, well above CRITICAL/REVIEW)
+      - Near expiry 2026-09-19  → 260919  (DTE = 93, still above REVIEW=21)
     This keeps risk_level out of CRITICAL/HIGH so it does not interfere with
-    type / pairing assertions.
+    type / pairing assertions, regardless of the real calendar date.
     """
 
     _tmp = None
@@ -120,7 +123,15 @@ class SpreadPairingTests(unittest.TestCase):
         # This exec calls _init_db() (line 67 of account_monitor.py),
         # creating all tables in the temp database.
         exec(compile(filtered, str(ROOT / "account_monitor.py"), "exec"), ns)
-        cls._build = staticmethod(ns["_build_spread_portfolios"])
+        build = ns["_build_spread_portfolios"]
+
+        def _frozen_build(account_id):
+            # _build_spread_portfolios reads datetime.date.today(); pin it so
+            # DTE (and therefore risk_level) does not drift with the calendar.
+            with freeze_time(FROZEN_TODAY):
+                return build(account_id)
+
+        cls._build = staticmethod(_frozen_build)
 
     @classmethod
     def tearDownClass(cls):
@@ -312,6 +323,12 @@ class SpreadPairingTests(unittest.TestCase):
         by_und = {p["underlying"]: p["type"] for p in result}
         self.assertEqual(by_und["ARM"], "Bear Put Spread")
         self.assertEqual(by_und["META"], "Bull Call Spread")
+
+    def test_frozen_clock_reaches_build(self):
+        """If freezegun stopped reaching the exec'd namespace, DTE would drift daily."""
+        self._save([_pos("ARM270618P00400000", 1, "long", 8.0)])
+        (port,) = self._build(ACCT)
+        self.assertEqual(port["dte"], 365)
 
     def test_empty_positions_returns_empty_list(self):
         """No positions → empty portfolio list, no error."""

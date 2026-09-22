@@ -59,13 +59,17 @@ sys.modules["streamlit"] = _st
 
 import account.db as account_db
 from account.options_repository import save_options_positions
+from freezegun import freeze_time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ACCT = "test_calc_acct"
 
-# OCC date codes:
-#   far  2027-06-18 → 270618
-#   near 2026-09-19 → 260919
+# Fixed "today" for every _build call, so DTE does not drift with the calendar.
+FROZEN_TODAY = "2026-06-18"
+
+# OCC date codes (DTE relative to FROZEN_TODAY):
+#   far  2027-06-18 → 270618  (DTE = 365)
+#   near 2026-09-19 → 260919  (DTE = 93)
 
 
 def _pos(symbol, qty, direction, unit_cost, current_price=None, strike=None, expiry=None):
@@ -114,7 +118,15 @@ class SpreadCalcTests(unittest.TestCase):
             "__name__": "account_monitor",
         }
         exec(compile(filtered, str(ROOT / "account_monitor.py"), "exec"), ns)
-        cls._build = staticmethod(ns["_build_spread_portfolios"])
+        build = ns["_build_spread_portfolios"]
+
+        def _frozen_build(account_id):
+            # _build_spread_portfolios reads datetime.date.today(); pin it so
+            # DTE (and therefore risk_level) does not drift with the calendar.
+            with freeze_time(FROZEN_TODAY):
+                return build(account_id)
+
+        cls._build = staticmethod(_frozen_build)
 
     @classmethod
     def tearDownClass(cls):
