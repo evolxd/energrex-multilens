@@ -1,0 +1,56 @@
+[
+ {
+  "id": "GRK_Bull Call Spread_2027-06-18",
+  "type": "Bull Call Spread",
+  "underlying": "GRK",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "GRK270618C00100000",
+    "underlying": "GRK",
+    "direction": "call",
+    "strike": 100.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 6.0,
+    "cur_price": 6.6,
+    "total_pnl": null,
+    "delta": 0.61,
+    "iv": 0.45,
+    "dte": 270
+   },
+   {
+    "li": 1,
+    "symbol": "GRK270618C00110000",
+    "underlying": "GRK",
+    "direction": "call",
+    "strike": 110.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 2.5,
+    "cur_price": 2.2,
+    "total_pnl": null,
+    "delta": -0.33,
+    "iv": 0.41,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 100.0,
+  "high_strike": 110.0,
+  "strike_width": 10.0,
+  "is_debit": true,
+  "net_per_share": 3.5,
+  "net_total": 350.0,
+  "max_profit": 650.0,
+  "max_loss": 350.0,
+  "breakeven": 103.5,
+  "current_pnl": 90.0,
+  "pnl_pct": 25.7,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $350（付），当前盈亏 $+90（+26% on cost），最大盈利 $650，盈亏平衡点 $103.50"
+ }
+]

@@ -1,0 +1,57 @@
+[
+ {
+  "id": "PLTR_Calendar Spread_2026-12-18_vs_2027-06-18",
+  "type": "Calendar Spread",
+  "underlying": "PLTR",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 1,
+    "symbol": "PLTR270618C00150000",
+    "underlying": "PLTR",
+    "direction": "call",
+    "strike": 150.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 18.0,
+    "cur_price": 19.5,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 0,
+    "symbol": "PLTR261218C00150000",
+    "underlying": "PLTR",
+    "direction": "call",
+    "strike": 150.0,
+    "expiry": "2026-12-18",
+    "qty": -1,
+    "unit_cost": 6.0,
+    "cur_price": 5.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 88
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2026-12-18",
+  "dte": 88,
+  "near_expiry": "2026-12-18",
+  "far_expiry": "2027-06-18",
+  "near_strike": 150.0,
+  "far_strike": 150.0,
+  "is_proper": true,
+  "net_per_share": 12.0,
+  "net_total": 1200.0,
+  "max_profit": null,
+  "max_loss": 1200.0,
+  "breakeven": null,
+  "current_pnl": 250.0,
+  "pnl_pct": 20.8,
+  "risk_level": "MEDIUM",
+  "recommendation": "对角价差持有中，Theta 时间优势在近月卖腿；当前盈亏 $+250，净成本 $1,200"
+ }
+]

@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0",
   "status": "IN_PROGRESS",
-  "current_phase": "PHASE_1_ARCH_SCOUTING",
+  "current_phase": "PHASE_2_SAFETY_NET",
   "target_module": "account_monitor.py",
   "motivation": "物理剥离纯内存期权配对引擎，根除跨模块字典键反射，并消灭全库 7 处重复的 AST 切片加载器",
   "progress": {
-    "tests_passed": 0,
-    "tests_total": 0
+    "tests_passed": 828,
+    "tests_total": 828
   },
   "logs": [
     {
@@ -18,6 +18,16 @@
       "time": "2026-09-22T10:30:00-07:00",
       "event": "PHASE_1_PROGRESS",
       "message": "已完成现状诊断图谱落盘，发现 40处st.*、84处IO及7处AST切片技术债。准备规划目标独立内核模块。"
+    },
+    {
+      "time": "2026-09-22T14:00:00-07:00",
+      "event": "PHASE_1_COMPLETE",
+      "message": "契约敲定：build_spread_portfolios(df, today) + 三种组合 TypedDict + Protocol。拒绝夹带行为变更——用户明确要求保留缺列时的现状行为；核实后发现现状并非 KeyError 崩溃，而是 row.get() 静默退化（数值列缺失→0.0/None，symbol 缺失→整行跳过），已按真实行为（而非此前误传的 KeyError）立项特征测试。正式启动阶段二。"
+    },
+    {
+      "time": "2026-09-22T15:00:00-07:00",
+      "event": "PHASE_2_PROGRESS",
+      "message": "tests/golden/test_spread_pairing_contract_golden.py 落地：27 个场景（Vertical/Diagonal/Naked 三形态 + DTE 边界 + NaN 处理 + 两个缺列场景），3 次不同 PYTHONHASHSEED 稳定通过，交叉验证测试证明新契约 harness 与真实 acct_id 入口逐字节一致。反向证伪：改坏 _vertical_economics 一行乘数（100→1），9 个纯垂直场景 + 6 个含垂直分量的混合场景精确变红，对角/裸仓/空账户/缺列场景零误报；已还原，CRLF 完整，git diff 归零。全量测试 828 passed（799 基线 + 29 新增）。"
     }
   ]
 }

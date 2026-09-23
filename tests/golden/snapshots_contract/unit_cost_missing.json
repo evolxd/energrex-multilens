@@ -1,0 +1,37 @@
+[
+ {
+  "id": "NOCOST_Naked Long Call_2027-06-18",
+  "type": "Naked Long Call",
+  "underlying": "NOCOST",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "NOCOST270618C00025000",
+    "underlying": "NOCOST",
+    "direction": "call",
+    "strike": 25.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 0.0,
+    "cur_price": 1.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "net_per_share": 0.0,
+  "net_total": 0.0,
+  "max_profit": null,
+  "max_loss": 0.0,
+  "breakeven": null,
+  "current_pnl": 100.0,
+  "pnl_pct": null,
+  "risk_level": "MEDIUM",
+  "recommendation": "买权持有，最大亏损权利金 $0，当前盈亏 $+100"
+ }
+]
