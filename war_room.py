@@ -389,6 +389,67 @@ elif _draw_st and _draw_st != "GREEN":
 if not _chrome:
     st.caption("🔴 Chrome CDP 未连接 — 运行 `start_chrome.bat` 并登录 Firstrade 后自动同步")
 
+
+# ─── 重构流水线看板（只读，见 docs/REFACTORING_WORKFLOW.md）─────
+def render_refactor_dashboard() -> None:
+    """重构流水线状态看板（只读）：读取 .refactor_status.json 并渲染，从不写入。
+    文件不存在或格式损坏时静默/温和降级，不能拖垮作战室主页面。"""
+    _status_path = _ROOT / ".refactor_status.json"
+    try:
+        _raw = _status_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return  # 还没有任何重构在跑，不显示这块面板
+    try:
+        _data = json.loads(_raw)
+    except json.JSONDecodeError as _exc:
+        st.warning(f"⚠️ 重构看板：.refactor_status.json 解析失败（{_exc}）")
+        return
+
+    _status = _data.get("status", "IDLE")
+    _phase = _data.get("current_phase")
+    _target = _data.get("target_module")
+    _motivation = _data.get("motivation")
+    _logs = _data.get("logs") or []
+
+    _PHASE_PCT = {
+        "PHASE_1_ARCH_SCOUTING": 0.25,
+        "PHASE_2_SAFETY_NET": 0.50,
+        "PHASE_3_SANDBOX_REFACTOR": 0.75,
+        "PHASE_4_VERIFY_MERGE": 1.00,
+        "DONE": 1.00,
+    }
+    _frac = _PHASE_PCT.get(_phase, 0.0)
+
+    st.markdown("##### 🛠️ 重构流水线看板")
+    if _status == "IN_PROGRESS":
+        st.warning(f"进行中 · 当前阶段：{_phase or '未知'}")
+    elif _status == "COMPLETED":
+        st.success(f"已完成 · {_phase or 'DONE'}")
+    else:
+        st.info("当前待命，暂无进行中的重构。")
+
+    st.progress(_frac, text=f"{_phase or _status} · {int(_frac * 100)}%")
+
+    _c1, _c2 = st.columns(2)
+    with _c1:
+        st.markdown(f"**目标模块**\n\n{_target or '（未设定）'}")
+    with _c2:
+        st.markdown(f"**重构动机**\n\n{_motivation or '（未设定）'}")
+
+    with st.expander("📝 最新重构日志", expanded=True):
+        if not _logs:
+            st.caption("暂无日志记录。")
+        else:
+            for _entry in reversed(_logs[-5:]):
+                st.markdown(
+                    f"`{_entry.get('time', '?')}` **{_entry.get('event', '?')}**  \n"
+                    f"{_entry.get('message', '')}"
+                )
+    st.divider()
+
+
+render_refactor_dashboard()
+
 # ─── 行 2：简报 + 账户 ──────────────────────────────
 _left, _right = st.columns([6, 4], gap="medium")
 
