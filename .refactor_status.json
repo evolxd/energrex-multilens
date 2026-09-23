@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "status": "COMPLETED",
-  "current_phase": "DONE",
-  "target_module": "account_monitor.py",
-  "motivation": "物理剥离纯内存期权配对引擎，根除跨模块字典键反射，并消灭全库 7 处重复的 AST 切片加载器",
+  "status": "IN_PROGRESS",
+  "current_phase": "PHASE_1_ARCH_SCOUTING",
+  "target_module": "account_monitor.py (等待选定新靶点)",
+  "motivation": "扫描并评估下一个高价值解耦目标",
   "progress": {
     "tests_passed": 828,
     "tests_total": 828
@@ -43,6 +43,11 @@
       "time": "2026-09-23T11:00:00-07:00",
       "event": "REFACTOR_COMPLETE",
       "message": "spread_pairing 重构圆满完成，内核已纯净剥离，测试全绿。拆分为两次提交：7f740f2（内核搬迁）、8f43c8b（调用方清理 + 测试迁移）。"
+    },
+    {
+      "time": "2026-09-23T13:00:00-07:00",
+      "event": "PHASE_1_SCOUTING",
+      "message": "新一轮阶段一：全量 AST 扫描 account_monitor.py 剩余 ~6220 行，按行数+分支+IO/st.*混合+反射依赖排序。Top 3 候选：_compute_risk_snapshot（647-779，97行/23分支/9处DB IO/全库最重反射依赖——_cascade.py x2、pages/5_⚖️_仓位管理.py、pre_trade_check.py 共4处）、_compute_iv_regime（407-477，57行/18分支/5处IO/pre_trade_check.py 1处反射）、_compute_portfolio_greeks（1051-1187，108行/19分支/3处IO/无反射）。_download_positions_xlsx（188行）与 _scrape_and_diff_positions（139行/10处IO，全库最高）体量更大但属浏览器自动化/文件IO，非『业务计算被污染』范畴，本轮不列入。等待用户从候选一/二/三中拍板。"
     }
   ]
 }
