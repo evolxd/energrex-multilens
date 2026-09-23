@@ -1,21 +1,22 @@
-"""Golden (characterization) tests rehearsing the FUTURE account/spread_pairing.py
-contract: build_spread_portfolios(df, today) -> list[SpreadPortfolio]
+"""Golden (characterization) tests for account.spread_pairing.build_spread_portfolios(df, today)
 (see docs/architecture/spread_pairing_contracts_draft.py for the Protocol).
 
-Phase 2 safety net ahead of the Phase 3 code move (docs/REFACTORING_WORKFLOW.md).
-The real implementation still lives inside account_monitor.py's private helpers
-(_parse_spread_legs / _match_vertical_spreads / _match_diagonal_spreads /
-_make_naked_portfolio). This file drives them through `build_spread_portfolios()`
-below, a harness that mirrors _build_spread_portfolios' orchestration body
-VERBATIM but takes (df, today) as parameters instead of (acct_id). When Phase 3
-moves this code into account/spread_pairing.py, this test file's import swaps
-from "exec the AST-sliced account_monitor.py" to a direct
-`from account.spread_pairing import build_spread_portfolios` -- the scenarios
-and snapshots below do not change.
+Phase 3 update (docs/REFACTORING_WORKFLOW.md): the pairing/recognition logic
+that used to live inside account_monitor.py's private helpers has physically
+moved to account/spread_pairing.py (no streamlit import, no I/O). This file
+originally drove those helpers through an AST-sliced account_monitor.py
+namespace via a hand-written harness that mirrored the orchestration body;
+that harness is gone now -- this file calls the real, moved
+`account.spread_pairing.build_spread_portfolios` directly. Before the move,
+every scenario below was verified byte-for-byte identical between the harness
+and the real acct_id entrypoint, and the snapshots did not need to change
+when the import was swapped -- exactly the point of writing the tests this
+way in Phase 2.
 
-test_harness_matches_real_entrypoint cross-checks the harness against the REAL
-`_build_spread_portfolios(acct_id)` (via a throwaway SQLite DB) for one scenario
-per category, proving the harness is not a second, drifting implementation.
+test_harness_matches_real_entrypoint now cross-checks the moved module against
+account_monitor.py's thin wrapper `_build_spread_portfolios(acct_id)` (via a
+throwaway SQLite DB) for one scenario per category, proving the wrapper still
+delegates correctly after the move.
 
 Behavior-preservation decision (user, 2026-09-22): a prior draft of this file's
 sibling contract document (spread_pairing_contracts_draft.py) claimed missing
@@ -94,6 +95,7 @@ sys.modules["streamlit"] = _st
 
 import account.db as account_db  # noqa: E402
 from account.options_repository import save_options_positions  # noqa: E402
+from account.spread_pairing import build_spread_portfolios  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SNAPSHOT_DIR = pathlib.Path(__file__).parent / "snapshots_contract"
@@ -258,9 +260,13 @@ SCENARIOS: dict[str, list[dict]] = {
 def ns():
     """AST-slice account_monitor.py (only the pre-st.set_page_config portion) and
     exec it into a namespace, redirecting the DB path first so _init_db() never
-    touches the real data/energrex.db. This test suite never writes real
-    options_positions rows through this namespace -- it only reaches into the
-    private helper functions."""
+    touches the real data/energrex.db.
+
+    Post-move (Phase 3), this is only needed by test_harness_matches_real_entrypoint,
+    to reach the thin wrapper `_build_spread_portfolios(acct_id)` and
+    `_load_options_positions` that still live in account_monitor.py. The pairing
+    logic itself is imported directly from account.spread_pairing -- see the
+    module-level import above."""
     tmp_dir = tempfile.mkdtemp()
     original = account_db.DB_PATH
     account_db.DB_PATH = pathlib.Path(tmp_dir) / "contract_probe.db"
@@ -280,36 +286,6 @@ def ns():
         account_db.DB_PATH = original
 
 
-def build_spread_portfolios(namespace: dict, df: pd.DataFrame, today: datetime.date) -> list[dict]:
-    """Rehearsal of the future account.spread_pairing.build_spread_portfolios(df, today).
-
-    This mirrors account_monitor.py::_build_spread_portfolios' orchestration body
-    VERBATIM (verified line-by-line against the current source on 2026-09-22),
-    substituting the `df = _load_options_positions(acct_id)` step for an
-    already-loaded `df` parameter. Do not let this drift from the real body
-    without re-verifying against account_monitor.py -- see
-    test_harness_matches_real_entrypoint below, which catches exactly that.
-    """
-    if df.empty:
-        return []
-    legs = namespace["_parse_spread_legs"](df, today)
-    matched = [False] * len(legs)
-    portfolios: list[dict] = []
-    und_groups: dict[str, list[int]] = {}
-    for i, leg in enumerate(legs):
-        und_groups.setdefault(leg["underlying"], []).append(i)
-    for und, und_indices in sorted(und_groups.items()):
-        namespace["_match_vertical_spreads"](legs, matched, und_indices, portfolios)
-        namespace["_match_diagonal_spreads"](legs, matched, und_indices, portfolios)
-        for i in und_indices:
-            if not matched[i] and abs(legs[i]["qty"]) > 0:
-                portfolios.append(namespace["_make_naked_portfolio"](legs, i))
-                matched[i] = True
-    _risk_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-    portfolios.sort(key=lambda p: (_risk_order.get(p["risk_level"], 9), p["underlying"]))
-    return portfolios
-
-
 def _load_df(rows: list[dict]) -> pd.DataFrame:
     """Build the DataFrame the way a real caller will hand it in.
 
@@ -317,7 +293,7 @@ def _load_df(rows: list[dict]) -> pd.DataFrame:
     `SELECT * FROM options_positions WHERE account_id=? ORDER BY expiry, symbol`.
     Every row this test suite (and its sibling acct_id-based suite) inserts has
     `expiry=NULL` (the code re-derives expiry from the OCC symbol instead of
-    trusting the stored column -- see account_monitor.py::_parse_spread_legs),
+    trusting the stored column -- see account.spread_pairing._parse_spread_legs),
     so with the primary sort key constant/NULL across all rows, `symbol` alone
     is the effective, empirically-verified tie-breaker. Skipping this sort was
     caught by test_harness_matches_real_entrypoint: the `li`/`si` positional
@@ -336,9 +312,9 @@ def _canonical(result) -> str:
 
 
 @pytest.mark.parametrize("name", sorted(SCENARIOS))
-def test_golden(ns, name):
+def test_golden(name):
     df = _load_df(SCENARIOS[name])
-    actual = _canonical(build_spread_portfolios(ns, df, TODAY))
+    actual = _canonical(build_spread_portfolios(df, TODAY))
 
     snapshot = SNAPSHOT_DIR / f"{name}.json"
     if os.environ.get("UPDATE_GOLDEN") == "1":
@@ -357,14 +333,15 @@ def test_every_scenario_has_a_snapshot():
     assert on_disk == set(SCENARIOS)
 
 
-def test_harness_matches_real_entrypoint(ns):
-    """Proves build_spread_portfolios(df, today) is not a second, drifting
-    implementation: for one scenario per category, seed the SAME rows into a
-    throwaway DB, then compare the real `_build_spread_portfolios(acct_id)`
-    (via freezegun pinning date.today() to TODAY) against the harness fed with
-    the EXACT DataFrame `_load_options_positions` returns for that account --
-    not an independently-reconstructed DataFrame, so no assumption about row
-    order needs to be made or kept in sync by hand."""
+def test_thin_wrapper_still_delegates_correctly(ns):
+    """Proves account_monitor.py's thin wrapper `_build_spread_portfolios(acct_id)`
+    still produces exactly what the moved `account.spread_pairing.build_spread_portfolios`
+    produces: for one scenario per category, seed the SAME rows into a throwaway
+    DB, then compare the wrapper (via freezegun pinning date.today() to TODAY,
+    since the wrapper still calls datetime.date.today() internally) against a
+    direct call fed with the EXACT DataFrame `_load_options_positions` returns
+    for that account -- not an independently-reconstructed DataFrame, so no
+    assumption about row order needs to be made or kept in sync by hand."""
     from freezegun import freeze_time
 
     for name in ("vertical_bull_call_debit", "diagonal_debit", "naked_all_kinds"):
@@ -375,9 +352,9 @@ def test_harness_matches_real_entrypoint(ns):
         ])
         real_df = ns["_load_options_positions"](acct)
         with freeze_time(TODAY.isoformat()):
-            via_db = ns["_build_spread_portfolios"](acct)
-        via_harness = build_spread_portfolios(ns, real_df, TODAY)
-        assert _canonical(via_db) == _canonical(via_harness), (
-            f"{name}: harness diverges from the real acct_id entrypoint -- "
-            "the harness has drifted from account_monitor.py's orchestration body"
+            via_wrapper = ns["_build_spread_portfolios"](acct)
+        via_direct_import = build_spread_portfolios(real_df, TODAY)
+        assert _canonical(via_wrapper) == _canonical(via_direct_import), (
+            f"{name}: account_monitor.py's thin wrapper no longer matches "
+            "account.spread_pairing.build_spread_portfolios -- the wrapper has drifted"
         )
