@@ -11,10 +11,14 @@ build_recommendations()` 第3段"新开仓候选"（AI评分≥70 + IV regime匹
 只是候选池的初筛，不是可以直接下单的建议：没看硬约束余量（仓位管理页
 门③才有）、没看 Kelly 建议仓位（同样在门③）。开仓前建议接着去门③过一遍。
 """
+import datetime
 import pathlib
 
 import pandas as pd
 import streamlit as st
+
+from account.options_repository import load_options_positions as _load_options_positions
+from account.spread_pairing import build_spread_portfolios as _build_spread_portfolios
 
 _ROOT = pathlib.Path(__file__).parent
 
@@ -46,7 +50,11 @@ try:
     _snap = _am["_compute_risk_snapshot"](_ACCT)
     _iv   = _am["_compute_iv_regime"](_ACCT)
     _ai   = _am["_load_ai_scores"]()
-    _held = {p["underlying"] for p in _am["_build_spread_portfolios"](_ACCT)}
+    # 2026-09: spread pairing moved to account.spread_pairing, so this no
+    # longer needs _get_am() reflection. Data loading (middleware) stays
+    # here; the pure pairing logic (core) is a normal import.
+    _positions_df = _load_options_positions(_ACCT)
+    _held = {p["underlying"] for p in _build_spread_portfolios(_positions_df, datetime.date.today())}
 
     _candidates = new_opportunity_candidates(
         risk_snapshot=_snap, iv_regime=_iv, ai_scores=_ai, held_underlyings=_held,

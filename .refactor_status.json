@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "status": "IN_PROGRESS",
-  "current_phase": "PHASE_2_SAFETY_NET",
+  "status": "COMPLETED",
+  "current_phase": "DONE",
   "target_module": "account_monitor.py",
   "motivation": "物理剥离纯内存期权配对引擎，根除跨模块字典键反射，并消灭全库 7 处重复的 AST 切片加载器",
   "progress": {
@@ -28,6 +28,21 @@
       "time": "2026-09-22T15:00:00-07:00",
       "event": "PHASE_2_PROGRESS",
       "message": "tests/golden/test_spread_pairing_contract_golden.py 落地：27 个场景（Vertical/Diagonal/Naked 三形态 + DTE 边界 + NaN 处理 + 两个缺列场景），3 次不同 PYTHONHASHSEED 稳定通过，交叉验证测试证明新契约 harness 与真实 acct_id 入口逐字节一致。反向证伪：改坏 _vertical_economics 一行乘数（100→1），9 个纯垂直场景 + 6 个含垂直分量的混合场景精确变红，对角/裸仓/空账户/缺列场景零误报；已还原，CRLF 完整，git diff 归零。全量测试 828 passed（799 基线 + 29 新增）。"
+    },
+    {
+      "time": "2026-09-23T09:00:00-07:00",
+      "event": "PHASE_3_PROGRESS",
+      "message": "范围核实：账户所说的『7 处 AST 切片 / 5 个反射调用文件』里，只有 1 处（pre_trade_check.py 的 _am['_build_spread_portfolios']）实际指向本次搬迁的函数；其余 6 处访问的是尚未抽离、没有黄金快照保护的其他函数（_RISK_LIMITS / _generate_and_save_daily_briefing / _compute_risk_snapshot / _compute_iv_regime / _load_ai_scores），按 cleancode-skills『严禁追溯』原则未动，留给各自未来的重构任务。已在独立分支 refactor/account_monitor-spread_pairing（非 master）上创建 account/spread_pairing.py，13 个函数原样搬入（不引入 streamlit、不做 IO），逐一核对：新模块对 27 个既有快照的输出逐字节一致后，才动 account_monitor.py——删除原 13 个函数定义，_build_spread_portfolios(acct_id) 改为薄包装（读 DB 后委托新模块）。仅注释/文档字符串译成英文（按项目语言偏好），业务字符串（recommendation 文案等，快照锁定的部分）一字未改。"
+    },
+    {
+      "time": "2026-09-23T10:00:00-07:00",
+      "event": "PHASE_4_PROGRESS",
+      "message": "pre_trade_check.py 那一处反射调用改为直接 import + 依赖注入。Phase 2 的契约测试文件同步『瘦身迁移』：从 exec 账户监控源码取内部函数，改为直接 import account.spread_pairing——这正是当初设计该测试的目的，迁移后 29 个用例和快照零改动即全部通过。全量回归 828 passed（与迁移前基线完全一致），0 失败。当前停在独立分支，未合并 master、未 push，改动已 git add 暂存，等待用户审阅后决定是否提交与合并。"
+    },
+    {
+      "time": "2026-09-23T11:00:00-07:00",
+      "event": "REFACTOR_COMPLETE",
+      "message": "spread_pairing 重构圆满完成，内核已纯净剥离，测试全绿。拆分为两次提交：7f740f2（内核搬迁）、8f43c8b（调用方清理 + 测试迁移）。"
     }
   ]
 }
