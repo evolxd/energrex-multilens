@@ -49,7 +49,7 @@
 - [ ] 现状 Mermaid 图 + 目标 Mermaid 图已落盘到 `docs/architecture/<MODULE_NAME>.md`
 - [ ] 每个计划新增的跨模块调用点，都有对应的 `Protocol`/ABC 接口草案
 - [ ] 已按 `cleancode-skills` Step 1–3 的格式列出诊断表 + 拆分清单，并取得用户确认
-- [ ] `.refactor_status.json`：`current_phase` 置为 `"1_recon"`，追加一条 log
+- [ ] `.refactor_status.json`：`current_phase` 置为 `"PHASE_1_ARCH_SCOUTING"`，追加一条 log
 
 ---
 
@@ -80,7 +80,7 @@
 - [ ] 反向验证已执行，证明测试能真正捕获行为回归
 - [ ] 分支覆盖率报告已生成，未覆盖分支已逐条写明原因
 - [ ] Git 检查点已提交，`CHECKPOINT` sha 已记录并写入 `.refactor_status.json`
-- [ ] `.refactor_status.json`：`current_phase` 置为 `"2_safety_net"`，
+- [ ] `.refactor_status.json`：`current_phase` 置为 `"PHASE_2_SAFETY_NET"`，
       `progress.tests_total` 更新为当前全量用例数
 
 ---
@@ -114,7 +114,7 @@
 - [ ] 目标范围内已无 `st.*`/直接 DB 调用混入核心计算逻辑
 - [ ] 目标范围内已无字典键反射调用残留（旧调用点已改为显式 import）
 - [ ] 每一步 diff 经自查，未超出清单范围；CRLF 裸 LF 数为 0
-- [ ] `.refactor_status.json`：`current_phase` 置为 `"3_sandbox_refactor"`，
+- [ ] `.refactor_status.json`：`current_phase` 置为 `"PHASE_3_SANDBOX_REFACTOR"`，
       每完成一个函数抽离追加一条 log
 
 ---
@@ -166,8 +166,8 @@
 
 | SOP 阶段 | `current_phase` 取值 |
 |---|---|
-| 阶段一 | `"1_recon"` |
-| 阶段二 | `"2_safety_net"` |
-| 阶段三 | `"3_sandbox_refactor"` |
-| 阶段四 | `"4_verify_merge"` |
+| 阶段一 | `"PHASE_1_ARCH_SCOUTING"` |
+| 阶段二 | `"PHASE_2_SAFETY_NET"` |
+| 阶段三 | `"PHASE_3_SANDBOX_REFACTOR"` |
+| 阶段四 | `"PHASE_4_VERIFY_MERGE"` |
 | 未在进行中 | `null`（同时 `status: "IDLE"`） |
