@@ -8,6 +8,14 @@
 > 进度实时写入项目根目录的 `.refactor_status.json`（结构见该文件本身），供
 > `war_room.py` 未来读取展示。每个阶段开始/结束时更新 `current_phase` 与 `logs`。
 
+## 已产出的架构诊断资产索引
+
+按 `arch` 第四节规范，细节拓扑图只存放在各自的专属文档，此处只留索引：
+
+| 模块 | 诊断文档 | 状态 |
+|---|---|---|
+| `account_monitor.py` | [docs/architecture/account_monitor.md](architecture/account_monitor.md) | 阶段一已完成，待启动阶段二 |
+
 ---
 
 ## 阶段一：架构侦察与契约设计
