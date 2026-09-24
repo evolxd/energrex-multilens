@@ -36,6 +36,7 @@ sys.path.insert(0, str(_ROOT / "scoring"))
 from spread_ui_common import pick_source_and_expirations  # noqa: E402
 from bull_call_spread import (             # noqa: E402
     BullCallCandidate,
+    BullCallScore,
     generate_call_candidates_from_chain,
     rank_candidates,
 )
@@ -44,6 +45,39 @@ import macro_calendar                      # noqa: E402
 _BG, _SURF, _BORDER = "#0A1628", "#0F1923", "#1E2D3D"
 _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD, _BLUE = "#00D4AA", "#FFB347", "#FF4B6E", "#4FC3F7"
+
+
+def _dte(exp_str: str, today: datetime.date) -> int:
+    return (datetime.date.fromisoformat(exp_str) - today).days
+
+
+def _release_risk_label(expiration: str, today: datetime.date) -> str:
+    """同 Bull Put Spread 页——已知宏观发布日中落在[今天, expiration]窗口内的
+    那些，不代表"发布结果好坏"，只提示这段窗口里有一次已知会放大已实现波动
+    率的日程事件。"""
+    return macro_calendar.release_risk_label(today, expiration)
+
+
+def _in_target_window(exp_str: str, today: datetime.date, target_months: tuple[int, ...]) -> bool:
+    d = datetime.date.fromisoformat(exp_str)
+    return d.year == today.year and d.month in target_months
+
+
+def _row(s: BullCallScore, today: datetime.date) -> dict:
+    c = s.candidate
+    return {
+        "到期日": c.expiration, "DTE": c.dte,
+        "Long/Short": f"{c.long_strike:g}/{c.short_strike:g}",
+        "Width": s.width, "Net Debit": round(c.net_debit, 2),
+        "Max Profit": s.max_profit, "Max Loss": s.max_loss,
+        "Breakeven": s.breakeven,
+        "ROM": f"{s.rom*100:.1f}%", "ADR": f"{s.adr*100:.0f}%",
+        "所需涨幅%": f"{s.move_needed_pct*100:+.1f}%",
+        "ADR得分": s.score_adr, "所需涨幅得分": s.score_move,
+        "ROM得分": s.score_rom, "DTE得分": s.score_dte,
+        "总分": s.total_score,
+        "发布日风险": _release_risk_label(c.expiration, today),
+    }
 
 
 def render() -> None:
@@ -59,22 +93,15 @@ def render() -> None:
 
     today = datetime.date.today()
 
-    def _dte(exp_str: str) -> int:
-        return (datetime.date.fromisoformat(exp_str) - today).days
-
     exp_with_dte = sorted(
-        ((e, _dte(e)) for e in expirations if _dte(e) > 0),
+        ((e, _dte(e, today)) for e in expirations if _dte(e, today) > 0),
         key=lambda x: x[1],
     )
 
     # ── 默认预选落在"9-12月交割日"日历窗口内的到期日（同一年）────────────
     _TARGET_MONTHS = (9, 10, 11, 12)
 
-    def _in_target_window(exp_str: str) -> bool:
-        d = datetime.date.fromisoformat(exp_str)
-        return d.year == today.year and d.month in _TARGET_MONTHS
-
-    default_selection = [e for e, _ in exp_with_dte if _in_target_window(e)]
+    default_selection = [e for e, _ in exp_with_dte if _in_target_window(e, today, _TARGET_MONTHS)]
 
     st.markdown(
         f"<div style='color:{_MUTED};font-size:11px;margin-top:8px'>"
@@ -86,12 +113,6 @@ def render() -> None:
     selected_labels = st.multiselect("到期日", list(exp_labels.keys()), default=default_labels)
     selected_exps = [exp_labels[lbl] for lbl in selected_labels]
 
-    def _release_risk_label(expiration: str) -> str:
-        """同 Bull Put Spread 页——已知宏观发布日中落在[今天, expiration]窗口内的
-        那些，不代表"发布结果好坏"，只提示这段窗口里有一次已知会放大已实现波动
-        率的日程事件。"""
-        return macro_calendar.release_risk_label(today, expiration)
-
     if selected_exps:
         st.markdown(
             f"<div style='color:{_MUTED};font-size:11px;margin:4px 0'>"
@@ -100,7 +121,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
         for exp in selected_exps:
-            label = _release_risk_label(exp)
+            label = _release_risk_label(exp, today)
             color = _MUTED if label == "—" else _WARN
             st.markdown(
                 f"<div style='font-size:11px;color:{color};margin-left:8px'>"
@@ -168,24 +189,8 @@ def render() -> None:
     if "bcs_ranked" in st.session_state and st.session_state.get("bcs_ticker_scored") == ticker:
         ranked = st.session_state["bcs_ranked"]
 
-        def _row(s):
-            c = s.candidate
-            return {
-                "到期日": c.expiration, "DTE": c.dte,
-                "Long/Short": f"{c.long_strike:g}/{c.short_strike:g}",
-                "Width": s.width, "Net Debit": round(c.net_debit, 2),
-                "Max Profit": s.max_profit, "Max Loss": s.max_loss,
-                "Breakeven": s.breakeven,
-                "ROM": f"{s.rom*100:.1f}%", "ADR": f"{s.adr*100:.0f}%",
-                "所需涨幅%": f"{s.move_needed_pct*100:+.1f}%",
-                "ADR得分": s.score_adr, "所需涨幅得分": s.score_move,
-                "ROM得分": s.score_rom, "DTE得分": s.score_dte,
-                "总分": s.total_score,
-                "发布日风险": _release_risk_label(c.expiration),
-            }
-
         st.markdown(f"#### 排名前十 · {ticker}（共 {len(ranked)} 个候选价差参与评分）")
-        top10_df = pd.DataFrame([_row(s) for s in ranked[:10]])
+        top10_df = pd.DataFrame([_row(s, today) for s in ranked[:10]])
         top10_df.insert(0, "排名", range(1, len(top10_df) + 1))
         st.dataframe(top10_df, use_container_width=True, hide_index=True)
 
@@ -223,7 +228,7 @@ def render() -> None:
         )
 
         st.markdown("#### 全部候选（按总分排序）")
-        full_df = pd.DataFrame([_row(s) for s in ranked])
+        full_df = pd.DataFrame([_row(s, today) for s in ranked])
         full_df.insert(0, "排名", range(1, len(full_df) + 1))
         st.dataframe(full_df, use_container_width=True, hide_index=True, height=400)
 
