@@ -179,7 +179,7 @@
     <ul class="bullets tight">
       <li>从<b>原始数据</b>到<b>回头验证</b>的一条线，中间五道关卡</li>
       <li>前半是<b>研究阶段</b>（关 1–2）：这家公司好不好、市场哪里错了</li>
-      <li>后半是<b>购买行为阶段</b>（关 3–5）：如何表达这个判断、放多大仓位、执行、用真实结果校验</li>
+      <li>后半是<b>购买行为阶段</b>（关 3–5）：放多大仓位并建仓、要不要给仓位加保护、用真实结果校验</li>
       <li>贯穿全套的底线：<span class="k">永不自动下单</span> · <span class="k">只给信号强度，不给可执行指令</span> · <span class="k">生存先于增长</span></li>
     </ul>
     <p class="note">代码分在两个仓库（<span class="mono">ai_valuation</span> 研究 + <span class="mono">ENERGREX期权量化系统</span> 风控运营），是同一个系统的两半——历史和隔离原因，不是两套东西。</p>
@@ -221,7 +221,7 @@
     <h2>五道关卡：从"看懂公司"到"活下来"</h2>
     <div class="rule"></div>
     <figure>
-      <svg viewBox="0 0 960 748" role="img" aria-label="同一套系统的五道关卡：关1评分、关2误价发现是研究阶段；关3对冲纪律、关4仓位管理独立决策层、关5执行与验证是购买行为阶段；关5回头校验前四关">
+      <svg viewBox="0 0 960 748" role="img" aria-label="同一套系统的五道关卡：关1评分、关2误价发现是研究阶段；关3仓位管理独立决策层、关4对冲纪律、关5执行与验证是购买行为阶段；关5回头校验前四关">
         <defs>
           <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
         </defs>
@@ -245,17 +245,17 @@
         <line x1="480" y1="304" x2="480" y2="326" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
 
         <text x="40" y="344" font-size="14" fill="var(--sienna)" class="mono">购买行为阶段</text>
-        <rect x="120" y="328" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--sienna)" stroke-width="1.4"/>
-        <text x="142" y="362" font-size="21" font-weight="700">关 3 · 对冲纪律</text>
-        <text x="142" y="387" font-size="15" fill="var(--muted)">看纪律不看情绪 · 无风险触发信号，不允许买保护性期权</text>
-        <text x="816" y="362" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">工具纪律</text>
-        <line x1="480" y1="422" x2="480" y2="444" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
+        <rect x="120" y="328" width="720" height="102" rx="14" fill="color-mix(in srgb,var(--sienna) 12%,var(--surface))" stroke="var(--sienna)" stroke-width="2"/>
+        <text x="142" y="362" font-size="21" font-weight="700">关 3 · 仓位管理　<tspan fill="var(--sienna)" font-size="15">独立决策层</tspan></text>
+        <text x="142" y="387" font-size="15" fill="var(--muted)">先定份量再建仓，只做多 · 杠杆 / Beta-Delta / 压力 / 回撤 硬红线</text>
+        <text x="142" y="410" font-size="14" fill="var(--sienna)" font-weight="700">评分不驱动仓位</text>
+        <text x="816" y="362" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">活下来</text>
+        <line x1="480" y1="430" x2="480" y2="452" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
 
-        <rect x="120" y="446" width="720" height="102" rx="14" fill="color-mix(in srgb,var(--sienna) 12%,var(--surface))" stroke="var(--sienna)" stroke-width="2"/>
-        <text x="142" y="480" font-size="21" font-weight="700">关 4 · 仓位管理　<tspan fill="var(--sienna)" font-size="15">独立决策层</tspan></text>
-        <text x="142" y="505" font-size="15" fill="var(--muted)">先问会不会死，再问能赚多少 · 杠杆 / Beta-Delta / 压力 / 回撤 硬红线</text>
-        <text x="142" y="528" font-size="14" fill="var(--sienna)" font-weight="700">评分不驱动仓位</text>
-        <text x="816" y="480" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">活下来</text>
+        <rect x="120" y="454" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--sienna)" stroke-width="1.4"/>
+        <text x="142" y="488" font-size="21" font-weight="700">关 4 · 对冲纪律</text>
+        <text x="142" y="513" font-size="15" fill="var(--muted)">手上先有仓位，才谈要不要买保护 · 无风险触发信号，不允许买保护性期权</text>
+        <text x="816" y="488" text-anchor="end" font-size="16" font-weight="700" fill="var(--sienna)" class="mono">工具纪律</text>
         <line x1="480" y1="548" x2="480" y2="570" stroke="currentColor" stroke-width="1.6" marker-end="url(#d)"/>
 
         <rect x="120" y="572" width="720" height="94" rx="14" fill="var(--surface)" stroke="var(--sienna)" stroke-width="1.4"/>
@@ -540,7 +540,7 @@
         </tbody>
       </table>
     </div>
-    <p class="note">进入购买行为阶段时，系统只<b>读</b>这个结果（<span class="mono">ticker / decision / gates / evidence / monitor_rules / blocking_reasons</span>），再决定要不要用现股或<b>有限风险期权</b>去表达。</p>
+    <p class="note">进入购买行为阶段时，系统只<b>读</b>这个结果（<span class="mono">ticker / decision / gates / evidence / monitor_rules / blocking_reasons</span>），再决定要不要用现股或<b>有限风险期权</b>去表达——系统<b>只做多，不做空</b>，六条路径找的都是"市场低估了"或"市场反应过度了"的机会。</p>
     <div class="src">
       <span class="lbl">源码</span>
       <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/docs/03_MISPRICING_ENGINE_INTERFACE.md" target="_blank" rel="noopener">docs/03_MISPRICING_ENGINE_INTERFACE.md</a>
@@ -554,7 +554,7 @@
     <p class="eyebrow">第三 / 四 / 五关 · 购买行为阶段</p>
     <h2>从判断到仓位：先问会不会死</h2>
     <div class="rule"></div>
-    <p class="lead">研究阶段说完"这家公司、这个误价"之后，才轮到这三关：<b>用什么工具表达、放多大仓位、执行、用真实结果回校</b>。<br>盯的是我的<b>真实持仓</b>，<span class="k">永不下单</span>，只输出建议、预警、看板。</p>
+    <p class="lead">研究阶段说完"这家公司、这个误价"之后，才轮到这三关：<b>先定份量建仓，再看要不要加保护，最后用真实结果回校</b>。<br>盯的是我的<b>真实持仓</b>，<span class="k">永不下单</span>，只输出建议、预警、看板。</p>
   </div>
 </section>
 
@@ -596,30 +596,11 @@
   </div>
 </section>
 
-<!-- 23 · 关3 对冲纪律 -->
+<!-- 23 · 关3 仓位管理 硬红线 -->
 <section class="slide">
   <div class="inner">
-    <p class="eyebrow">关 3 · 对冲纪律</p>
-    <h2>保护性期权是临时保险，不是长期资产</h2>
-    <div class="rule"></div>
-    <ul class="bullets tight">
-      <li>只在有<b>系统性风险触发信号</b>时才允许买：Beta-Delta 超标 / VIX 冲高 / QQQ 破 MA200 / 事件簇。<span class="k">无触发 = idle hedge 违规</span>，要复核退出</li>
-      <li>宏观风险<b>优先用 QQQ ETF 对冲</b>（<span class="mono">qqq_hedge_shares = −目标 Delta 缩减 / QQQ 价</span>，用 Beta 加权 Delta 口径）</li>
-      <li>IV regime 主控：IV 分位 ≥85% 禁追买 long premium → ≥95% 把 long call 转 debit spread / diagonal；财报前 7 日且 ≥80% 必须评估 IV crush</li>
-      <li>默认结构 debit put spread；单次对冲预算 ≤ 账户净值 1%</li>
-    </ul>
-    <div class="src">
-      <span class="lbl">源码</span>
-      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §4</a>
-    </div>
-  </div>
-</section>
-
-<!-- 24 · 关4 仓位管理 硬红线 -->
-<section class="slide">
-  <div class="inner">
-    <p class="eyebrow">关 4 · 仓位管理 · 独立决策层</p>
-    <h2>硬红线：回答"错了会不会死"</h2>
+    <p class="eyebrow">关 3 · 仓位管理 · 独立决策层</p>
+    <h2>先定份量再建仓：硬红线回答"错了会不会死"</h2>
     <div class="rule"></div>
     <div class="index-wrap">
       <table class="index">
@@ -634,7 +615,7 @@
         </tbody>
       </table>
     </div>
-    <p class="note">这些红线<b>不需要预测力</b>——哪怕所有评分都是噪声，它们照样保护你。风险画像 <span class="mono">HIGH_CONVICTION_AI_GROWTH</span> 允许高 Beta/Delta 方向性暴露，但主触发器是 IV 极端 / DTE / 回撤 / 数据异常，不是 Delta 本身。</p>
+    <p class="note">这些红线<b>不需要预测力</b>——哪怕所有评分都是噪声，它们照样保护你。系统<b>只做多、不做空</b>，只在这些红线之内建仓；风险画像 <span class="mono">HIGH_CONVICTION_AI_GROWTH</span> 允许高 Beta/Delta 方向性暴露，但主触发器是 IV 极端 / DTE / 回撤 / 数据异常，不是 Delta 本身。</p>
     <div class="src">
       <span class="lbl">源码</span>
       <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §2–§7</a>
@@ -642,10 +623,10 @@
   </div>
 </section>
 
-<!-- 25 · 关4 Kelly + 评分不驱动仓位 -->
+<!-- 24 · 关3 Kelly + 评分不驱动仓位 -->
 <section class="slide">
   <div class="inner">
-    <p class="eyebrow">关 4 · 仓位管理 · 上限怎么定</p>
+    <p class="eyebrow">关 3 · 仓位管理 · 上限怎么定</p>
     <h2>只用 1/3 Kelly，评分暂时不驱动仓位</h2>
     <div class="rule"></div>
     <ul class="bullets tight">
@@ -657,6 +638,25 @@
       <span class="lbl">源码</span>
       <a href="file:///C:/Users/evolx/ai_valuation/POSITION_MODULE_DESIGN.md" target="_blank" rel="noopener">ai_valuation/POSITION_MODULE_DESIGN.md</a>
       <a href="file:///C:/Users/evolx/ai_valuation/scoring/weight_config_backtest_report.json" target="_blank" rel="noopener">weight_config_backtest_report.json</a>
+    </div>
+  </div>
+</section>
+
+<!-- 25 · 关4 对冲纪律 -->
+<section class="slide">
+  <div class="inner">
+    <p class="eyebrow">关 4 · 对冲纪律</p>
+    <h2>保护性期权是临时保险，前提是先有仓位</h2>
+    <div class="rule"></div>
+    <ul class="bullets tight">
+      <li><b>手上先有仓位</b>（关 3 建的），才轮到问要不要买保护——保护性期权保护的是已经持有的仓位，不是买入前的准备动作</li>
+      <li>只在有<b>系统性风险触发信号</b>时才允许买：Beta-Delta 超标 / VIX 冲高 / QQQ 破 MA200 / 事件簇。<span class="k">无触发 = idle hedge 违规</span>，要复核退出</li>
+      <li>宏观风险<b>优先用 QQQ ETF 对冲</b>（<span class="mono">qqq_hedge_shares = −目标 Delta 缩减 / QQQ 价</span>，用 Beta 加权 Delta 口径）</li>
+      <li>IV regime 主控：IV 分位 ≥85% 禁追买 long premium → ≥95% 把 long call 转 debit spread / diagonal；默认结构 debit put spread，单次对冲预算 ≤ 账户净值 1%</li>
+    </ul>
+    <div class="src">
+      <span class="lbl">源码</span>
+      <a href="file:///C:/Users/evolx/Documents/ENERGREX期权量化系统/Wind_Risk_Protocol.md" target="_blank" rel="noopener">Wind_Risk_Protocol.md · §4</a>
     </div>
   </div>
 </section>
