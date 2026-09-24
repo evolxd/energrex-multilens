@@ -26,7 +26,10 @@ import streamlit as st
 _ROOT = pathlib.Path(__file__).parent
 sys.path.insert(0, str(_ROOT / "scoring"))
 
-from spread_ui_common import pick_source_and_expirations  # noqa: E402
+# dte 别名成 compute_dte：render() 取数循环里有个同名局部变量
+# `dte = int(puts["dte"].iloc[0]) ...`，Python 作用域规则下裸 `dte` 会被那处
+# 赋值判定成整个函数体内的局部名，导致更早的调用点报 UnboundLocalError。
+from spread_ui_common import dte as compute_dte, pick_source_and_expirations, release_risk_label  # noqa: E402
 from bull_put_spread import (              # noqa: E402
     BullPutCandidate,
     BullPutScore,
@@ -41,15 +44,10 @@ from bull_put_spread import (              # noqa: E402
     score_bull_put_spread,
     spread_width,
 )
-import macro_calendar                      # noqa: E402
 
 _BG, _SURF, _BORDER = "#0A1628", "#0F1923", "#1E2D3D"
 _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD, _BLUE = "#00D4AA", "#FFB347", "#FF4B6E", "#4FC3F7"
-
-
-def _dte(exp_str: str, today: datetime.date) -> int:
-    return (datetime.date.fromisoformat(exp_str) - today).days
 
 
 def _closest_in_tier(lo: int, hi: int, exp_with_dte: list[tuple[str, int]]) -> str | None:
@@ -61,14 +59,6 @@ def _closest_in_tier(lo: int, hi: int, exp_with_dte: list[tuple[str, int]]) -> s
     if not exp_with_dte:
         return None
     return min(exp_with_dte, key=lambda x: abs(x[1] - mid))[0]
-
-
-def _release_risk_label(expiration: str, today: datetime.date) -> str:
-    """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
-    结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
-    scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
-    已实现波动率的日程事件"。"""
-    return macro_calendar.release_risk_label(today, expiration)
 
 
 def _row(s: BullPutScore, today: datetime.date) -> dict:
@@ -85,7 +75,7 @@ def _row(s: BullPutScore, today: datetime.date) -> dict:
         "ADR得分": s.score_adr, "Buffer得分": s.score_buffer,
         "ROM得分": s.score_rom, "DTE得分": s.score_dte,
         "总分": s.total_score,
-        "发布日风险": _release_risk_label(c.expiration, today),
+        "发布日风险": release_risk_label(c.expiration, today),
     }
 
 
@@ -103,7 +93,7 @@ def render() -> None:
     today = datetime.date.today()
 
     exp_with_dte = sorted(
-        ((e, _dte(e, today)) for e in expirations if _dte(e, today) > 0),
+        ((e, compute_dte(e, today)) for e in expirations if compute_dte(e, today) > 0),
         key=lambda x: x[1],
     )
 
@@ -141,7 +131,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
         for exp in selected_exps:
-            label = _release_risk_label(exp, today)
+            label = release_risk_label(exp, today)
             color = _MUTED if label == "—" else _WARN
             st.markdown(
                 f"<div style='font-size:11px;color:{color};margin-left:8px'>"
@@ -185,7 +175,7 @@ def render() -> None:
                 if pd.to_numeric(puts["und_px"], errors="coerce").dropna().empty:
                     fetch_errors.append(f"{exp}: 缺少现价 (underlyingPrice)")
                     continue
-                dte = int(puts["dte"].iloc[0]) if "dte" in puts.columns else _dte(exp)
+                dte = int(puts["dte"].iloc[0]) if "dte" in puts.columns else compute_dte(exp, today)
 
                 all_candidates.extend(generate_put_candidates_from_chain(
                     ticker, puts, exp, dte, widths, otm_lo, otm_hi,

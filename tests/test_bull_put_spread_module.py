@@ -1,6 +1,11 @@
 """Unit tests for the private helpers extracted from
 bull_put_spread_module.render() (see _scratch plan / conversation record):
-_dte, _closest_in_tier, _release_risk_label, _row.
+_closest_in_tier, _row.
+
+`_dte`/`_release_risk_label` used to live here too, but were consolidated
+into spread_ui_common.py (2026-09-24, shared with bull_call_spread_module.py
+which had byte-identical copies) -- their tests moved to
+tests/test_spread_ui_common.py along with them.
 
 These were closures trapped inside render() with no independent callers, so
 there is no pre-extraction runtime snapshot to diff against (unlike the
@@ -15,23 +20,11 @@ without any streamlit stub.
 """
 import datetime
 import unittest
-from unittest.mock import patch
 
 import bull_put_spread_module  # noqa: F401  (side effect: adds scoring/ to sys.path)
 import macro_calendar
-from bull_put_spread_module import _closest_in_tier, _dte, _release_risk_label, _row
+from bull_put_spread_module import _closest_in_tier, _row
 from bull_put_spread import BullPutCandidate, score_bull_put_spread
-
-
-class DteTests(unittest.TestCase):
-    def test_days_between_today_and_expiration(self):
-        self.assertEqual(_dte("2026-01-31", datetime.date(2026, 1, 1)), 30)
-
-    def test_zero_when_expiration_is_today(self):
-        self.assertEqual(_dte("2026-01-01", datetime.date(2026, 1, 1)), 0)
-
-    def test_negative_when_expiration_already_passed(self):
-        self.assertEqual(_dte("2025-12-25", datetime.date(2026, 1, 1)), -7)
 
 
 class ClosestInTierTests(unittest.TestCase):
@@ -52,15 +45,6 @@ class ClosestInTierTests(unittest.TestCase):
 
     def test_no_expirations_at_all_returns_none(self):
         self.assertIsNone(_closest_in_tier(20, 30, []))
-
-
-class ReleaseRiskLabelTests(unittest.TestCase):
-    def test_delegates_to_macro_calendar_with_explicit_today(self):
-        today = datetime.date(2026, 9, 24)
-        with patch.object(macro_calendar, "release_risk_label", return_value="__SENTINEL__") as mocked:
-            result = _release_risk_label("2026-10-16", today)
-        mocked.assert_called_once_with(today, "2026-10-16")
-        self.assertEqual(result, "__SENTINEL__")
 
 
 class RowTests(unittest.TestCase):

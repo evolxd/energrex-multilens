@@ -1,11 +1,18 @@
 """
 spread_ui_common.py — bull_put_spread_module.py / bull_call_spread_module.py
-共用的数据源选择 + 到期日拉取 UI。
+共用的数据源选择 + 到期日拉取 UI，以及两个页面各自 render() 里逐字重复的
+DTE 计算 + 发布日风险标签。
 
 2026-09-09 抽出来：这段"选MarketData还是Firstrade + 输入标的 + 拉到期日 +
 拉不到时报错"逐字复制在那两个文件里，跟价差是put还是call没有任何关系，
 纯粹是"怎么拿到一个标的的期权到期日列表"这个通用问题，抽成一个函数。
+
+2026-09-24 追加 dte()/release_risk_label()：这两个函数之前各自在 Put/Call
+两个页面里独立重复了一份（先是闭包，后来提升成模块级私有函数），逐字节
+相同（release_risk_label 只有 docstring 措辞不同）。跟 pick_source_and_
+expirations 一样去掉下划线、放在这里共享，不再维护两份。
 """
+import datetime
 import pathlib
 import sys
 
@@ -20,6 +27,19 @@ from options_chain import (               # noqa: E402
     fetch_expirations_firstrade,
     fetch_expirations_marketdata,
 )
+import macro_calendar                     # noqa: E402
+
+
+def dte(exp_str: str, today: datetime.date) -> int:
+    return (datetime.date.fromisoformat(exp_str) - today).days
+
+
+def release_risk_label(expiration: str, today: datetime.date) -> str:
+    """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
+    结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
+    scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
+    已实现波动率的日程事件"。Bull Put / Bull Call 两个价差评分页共用。"""
+    return macro_calendar.release_risk_label(today, expiration)
 
 
 def pick_source_and_expirations(ticker_key: str):
