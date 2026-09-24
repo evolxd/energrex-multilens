@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0",
   "status": "IN_PROGRESS",
-  "current_phase": "PHASE_1_ARCH_SCOUTING",
-  "target_module": "account_monitor.py (等待选定新靶点)",
-  "motivation": "扫描并评估下一个高价值解耦目标",
+  "current_phase": "PHASE_2_SAFETY_NET",
+  "target_module": "account_monitor.py -> _compute_risk_snapshot + _compute_iv_regime (落点 account/risk.py)",
+  "motivation": "97行/23分支的全库最重反射依赖函数 + 57行/18分支的关联函数，组合拆分，建立黄金快照防线",
   "progress": {
-    "tests_passed": 828,
-    "tests_total": 828
+    "tests_passed": 847,
+    "tests_total": 847
   },
   "logs": [
     {
@@ -48,6 +48,16 @@
       "time": "2026-09-23T13:00:00-07:00",
       "event": "PHASE_1_SCOUTING",
       "message": "新一轮阶段一：全量 AST 扫描 account_monitor.py 剩余 ~6220 行，按行数+分支+IO/st.*混合+反射依赖排序。Top 3 候选：_compute_risk_snapshot（647-779，97行/23分支/9处DB IO/全库最重反射依赖——_cascade.py x2、pages/5_⚖️_仓位管理.py、pre_trade_check.py 共4处）、_compute_iv_regime（407-477，57行/18分支/5处IO/pre_trade_check.py 1处反射）、_compute_portfolio_greeks（1051-1187，108行/19分支/3处IO/无反射）。_download_positions_xlsx（188行）与 _scrape_and_diff_positions（139行/10处IO，全库最高）体量更大但属浏览器自动化/文件IO，非『业务计算被污染』范畴，本轮不列入。等待用户从候选一/二/三中拍板。"
+    },
+    {
+      "time": "2026-09-23T14:00:00-07:00",
+      "event": "PHASE_1_COMPLETE",
+      "message": "候选一+候选二组合拳拍板：_compute_risk_snapshot + _compute_iv_regime，落点确立为既有 account/risk.py（不新建文件）。docs/architecture/risk_and_iv_architecture.md 落盘：2 张 Mermaid 图（现状 9 处数据源+5 处反射调用；目标三层态）+ 验证过的 RiskSnapshotInputs/RiskSnapshotResult TypedDict（24 字段逐一核对现状返回值）+ compute_risk_snapshot/compute_iv_regime 函数签名草案。"
+    },
+    {
+      "time": "2026-09-23T15:00:00-07:00",
+      "event": "PHASE_2_SAFETY_NET",
+      "message": "tests/golden/test_risk_and_iv_golden.py 落地：12 个基线场景（6 个 iv_regime 状态分支 + 6 个 risk_snapshot 账户形态）+ 硬核比对 today 参数注入（原始远期场景 1 个 + dte=0/dte=1/已过期三个边界场景 + 多腿混合到期场景，共 6 个 today 等价性测试，全部逐字节比对 today=None 与 today=显式冻结日期），全量 19 用例。过程中自查纠正一处测试设计错误：iv_history 场景种子曾误用标的代码（如 NVDA）而非 _compute_iv_regime 实际按完整 OCC 期权代码做 history 查找 key（已用 account/options_repository.py 的真实写入逻辑核实），导致 4 个『应落入 NORMAL/EXTREME_IV/LOW_IV』的场景全部误判为 INSUFFICIENT_HISTORY；修正种子 symbol 后重新生成基线，6 个状态分支各自精确落位。3 组不同 PYTHONHASHSEED 稳定通过。反向证伪两次：改坏 leverage 乘数（1x→2x），4 个杠杆非零账户精确变红，2 个杠杆为零/受其他分支保护的账户零误报；改坏 EXTREME_PIV 阈值（0.95→0.50），2 个 piv=0.52 的场景精确变红，其余零误报。已还原，CRLF 完整，account_monitor.py git diff 归零。全量回归 847 passed（828 基线 + 19 新增）。发现一处需用户裁决但本轮未处理的潜在问题：_compute_risk_snapshot 现状用裸 datetime.date.today()（取服务器本地时区日期，本机为 Pacific），而非基于 ET 感知 now 派生的日期；若阶段三把 today 实现为 inputs['now'].date()（ET 口径），在 ET 午夜前后（本机时区下约为太平洋时间晚 9 点到午夜之间）二者会给出不同日期，从而改变 dte 计算——这不是本轮引入的问题，是现状已有的潜在时区口径不一致，但阶段三如果真的注入 today，必须先决定注入源到底是『服务器本地日期』（严格保行为）还是『ET 日历日期』（修正潜在时区偏差，但属于行为变更）。严禁触碰 account_monitor.py 原有业务逻辑，测试文件与快照均待用户审阅。"
     }
   ]
 }

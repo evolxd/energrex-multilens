@@ -1,0 +1,21 @@
+{
+ "status": "LOW_IV",
+ "positions": [
+  {
+   "symbol": "AVGO270618C00280000",
+   "iv": 0.28,
+   "n": 26,
+   "iv_rank": 0.0,
+   "piv": 0.038461538461538464,
+   "status": "LOW_IV"
+  }
+ ],
+ "max_piv": {
+  "symbol": "AVGO270618C00280000",
+  "iv": 0.28,
+  "n": 26,
+  "iv_rank": 0.0,
+  "piv": 0.038461538461538464,
+  "status": "LOW_IV"
+ }
+}

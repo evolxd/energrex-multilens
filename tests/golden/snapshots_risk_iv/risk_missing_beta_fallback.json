@@ -1,0 +1,28 @@
+{
+ "equity": 50000.0,
+ "drawdown": 0.0,
+ "drawdown_basis": "cash_flow_adjusted_since_2026-06-01",
+ "gross_notional": 250.0,
+ "delta_notional": 250.0,
+ "leverage": 0.01,
+ "leverage_delta": 0.01,
+ "beta_delta": 0.0,
+ "beta_delta_ratio": 0.0,
+ "theta_per_day": 0.0,
+ "vega_per_pt": 0.0,
+ "gamma_total": 0.0,
+ "stress_10": 0.0,
+ "stress_10_ratio": 0.0,
+ "stress_20": 0.0,
+ "stress_20_ratio": 0.0,
+ "nearest_expiry_date": "2027-06-18",
+ "nearest_expiry_sym": "ZZZZ",
+ "risk_status": "GREEN",
+ "drawdown_status": "GREEN",
+ "data_synced_at": "2026-09-22T16:00:00-04:00",
+ "data_age_hours": 20.0,
+ "data_stale": false,
+ "iv_fallback_symbols": [
+  "ZZZZ"
+ ]
+}
