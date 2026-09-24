@@ -1,0 +1,56 @@
+[
+ {
+  "id": "QCOM_Bull Call Spread_2027-06-18",
+  "type": "Bull Call Spread",
+  "underlying": "QCOM",
+  "direction": "call",
+  "legs": [
+   {
+    "li": 0,
+    "symbol": "QCOM270618C00170000",
+    "underlying": "QCOM",
+    "direction": "call",
+    "strike": 170.0,
+    "expiry": "2027-06-18",
+    "qty": 1,
+    "unit_cost": 11.0,
+    "cur_price": 12.0,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   },
+   {
+    "li": 1,
+    "symbol": "QCOM270618C00190000",
+    "underlying": "QCOM",
+    "direction": "call",
+    "strike": 190.0,
+    "expiry": "2027-06-18",
+    "qty": -1,
+    "unit_cost": 5.0,
+    "cur_price": 4.5,
+    "total_pnl": null,
+    "delta": null,
+    "iv": null,
+    "dte": 270
+   }
+  ],
+  "spread_qty": 1,
+  "expiry": "2027-06-18",
+  "dte": 270,
+  "low_strike": 170.0,
+  "high_strike": 190.0,
+  "strike_width": 20.0,
+  "is_debit": true,
+  "net_per_share": 6.0,
+  "net_total": 600.0,
+  "max_profit": 1400.0,
+  "max_loss": 600.0,
+  "breakeven": 176.0,
+  "current_pnl": 150.0,
+  "pnl_pct": 25.0,
+  "risk_level": "LOW",
+  "recommendation": "净权利金 $600（付），当前盈亏 $+150（+25% on cost），最大盈利 $1,400，盈亏平衡点 $176.00"
+ }
+]

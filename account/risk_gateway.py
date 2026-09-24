@@ -27,7 +27,7 @@ import pathlib
 from account.beta_quality import beta_overrides as _derived_beta_overrides
 from account.db import db as _db
 from account.marketdata import fetch_underlying_prices, get_atm_iv_batch
-from account.options import parse_occ
+from account.options import parse_occ, signed_quantity
 from account.repository import load_latest_balance
 from account.risk import IVRegimeSnapshot, RiskSnapshotInputs, RiskSnapshotResult
 from account.risk import compute_iv_regime as _compute_iv_regime_pure
@@ -134,10 +134,20 @@ def gather_risk_snapshot_inputs(acct_id: str) -> RiskSnapshotInputs:
         "SELECT trade_date, SUM(amount) AS cf FROM transactions "
         "WHERE account_id=? AND type IN ('提款','存款','DEPOSIT','WITHDRAWAL') "
         "GROUP BY trade_date", (acct_id,)).fetchall()
-    opts = conn.execute(
-        "SELECT symbol, quantity, current_price, market_value, strike, expiry "
-        "FROM options_positions WHERE account_id=? AND current_price IS NOT NULL",
-        (acct_id,)).fetchall()
+    # quantity 必须过 signed_quantity：这张表里 xlsx 导入存带符号的张数，而
+    # Chrome 抓取存 abs(张数) + direction='short'。直接用 raw quantity 的话，
+    # 卖出的腿被当成买入的——Beta-Delta 符号反掉，压力测试里崩盘变成赚钱。
+    # 见 account/options.py::signed_quantity。
+    opts = [
+        {"symbol": r["symbol"],
+         "quantity": signed_quantity(r["quantity"], r["direction"]),
+         "current_price": r["current_price"], "market_value": r["market_value"],
+         "strike": r["strike"], "expiry": r["expiry"]}
+        for r in conn.execute(
+            "SELECT symbol, quantity, direction, current_price, market_value, "
+            "strike, expiry FROM options_positions "
+            "WHERE account_id=? AND current_price IS NOT NULL", (acct_id,))
+    ]
     # positions 是逐次同步追加的快照表：必须每只股票只取最新一条（跟
     # account_monitor.py 的取数逻辑同口径，见那边注释里的重复计入事故）。
     stks = conn.execute(

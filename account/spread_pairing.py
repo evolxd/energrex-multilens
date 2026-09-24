@@ -31,6 +31,7 @@ import datetime
 import pandas as pd
 
 from account.options import parse_occ as _parse_occ
+from account.options import signed_quantity as _signed_quantity
 
 _DTE_CRITICAL = 14
 _DTE_REVIEW = 21
@@ -63,13 +64,12 @@ def _parse_spread_legs(df: pd.DataFrame, today: datetime.date) -> list[dict]:
         p = _parse_occ(sym)
         if not p:
             continue
-        qty = int(row.get("quantity") or 0)
+        # abs(qty)+direction='short' (Chrome scrape) and signed qty (xlsx
+        # import) both occur in this table; normalized in one place by
+        # account.options.signed_quantity.
+        qty = int(_signed_quantity(row.get("quantity"), row.get("direction")))
         if qty == 0:
             continue
-        # Backward compat: old DB rows stored abs(qty) with direction="short"/"long"
-        _db_dir = str(row.get("direction") or "").lower()
-        if qty > 0 and _db_dir == "short":
-            qty = -qty
         # read_sql_query yields NaN (not None) for NULLs in partially-filled REAL
         # columns, so check with pd.notna to treat both as missing.
         legs.append({

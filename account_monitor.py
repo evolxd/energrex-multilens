@@ -282,6 +282,7 @@ from account.options import option_market_value as _option_market_value
 from account.options import OCC_RE as _OCC_RE
 from account.options import parse_occ as _parse_occ
 from account.options import parse_occ_sym as _parse_occ_sym
+from account.options import signed_quantity as _signed_qty
 from account.beta_quality import beta_overrides as _derived_beta_overrides
 from account.beta_quality import low_confidence_held as _low_confidence_betas
 from account.positions_xlsx import parse_stocks_xlsx as _parse_stocks_xlsx
@@ -613,10 +614,20 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         "WHERE account_id=? AND type IN ('提款','存款','DEPOSIT','WITHDRAWAL') "
         "GROUP BY trade_date", (acct_id,)).fetchall()
 
-    opts = conn.execute(
-        "SELECT symbol, quantity, current_price, market_value, strike, expiry "
-        "FROM options_positions WHERE account_id=? AND current_price IS NOT NULL",
-        (acct_id,)).fetchall()
+    # quantity 必须过 _signed_qty：这张表里 xlsx 导入存带符号的张数，而
+    # Chrome 抓取存 abs(张数) + direction='short'。直接用 raw quantity 的话，
+    # 卖出的腿被当成买入的——Beta-Delta 符号反掉，压力测试里崩盘变成赚钱。
+    # 见 account/options.py signed_quantity。
+    opts = [
+        {"symbol": r["symbol"],
+         "quantity": _signed_qty(r["quantity"], r["direction"]),
+         "current_price": r["current_price"], "market_value": r["market_value"],
+         "strike": r["strike"], "expiry": r["expiry"]}
+        for r in conn.execute(
+            "SELECT symbol, quantity, direction, current_price, market_value, "
+            "strike, expiry FROM options_positions "
+            "WHERE account_id=? AND current_price IS NOT NULL", (acct_id,))
+    ]
     # positions 是逐次同步追加的快照表：必须每只股票只取最新一条，
     # 否则每同步一次，股票敞口就被多算一遍（实测同步 4 次后 BD 被重复计入 4 倍
     # 股票，224%→263%→320%→378%）。跟 account.repository.load_positions 同口径。

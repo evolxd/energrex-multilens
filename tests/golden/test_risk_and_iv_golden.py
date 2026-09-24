@@ -90,7 +90,7 @@ sys.modules["streamlit"] = _st
 
 import account.db as account_db  # noqa: E402
 import account.repository as account_repository  # noqa: E402
-from account.options import parse_occ  # noqa: E402
+from account.options import parse_occ, signed_quantity  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SNAPSHOT_DIR = pathlib.Path(__file__).parent / "snapshots_risk_iv"
@@ -274,10 +274,18 @@ def _gather_risk_snapshot_inputs(ns, acct, now):
         "SELECT trade_date, SUM(amount) AS cf FROM transactions "
         "WHERE account_id=? AND type IN ('提款','存款','DEPOSIT','WITHDRAWAL') "
         "GROUP BY trade_date", (acct,)).fetchall()
-    opts = conn.execute(
-        "SELECT symbol, quantity, current_price, market_value, strike, expiry "
-        "FROM options_positions WHERE account_id=? AND current_price IS NOT NULL",
-        (acct,)).fetchall()
+    # quantity must go through signed_quantity -- mirrors account_monitor.py's
+    # wrapper / account.risk_gateway's own fix for the same table.
+    opts = [
+        {"symbol": r["symbol"],
+         "quantity": signed_quantity(r["quantity"], r["direction"]),
+         "current_price": r["current_price"], "market_value": r["market_value"],
+         "strike": r["strike"], "expiry": r["expiry"]}
+        for r in conn.execute(
+            "SELECT symbol, quantity, direction, current_price, market_value, "
+            "strike, expiry FROM options_positions "
+            "WHERE account_id=? AND current_price IS NOT NULL", (acct,))
+    ]
     stks = conn.execute(
         "SELECT symbol, quantity, market_value FROM positions p1 "
         "WHERE p1.account_id=? AND p1.position_type='stock' "
@@ -445,6 +453,21 @@ def _missing_beta_fallback_account(acct):
     _seed_stocks(acct, [])
 
 
+def _short_position_unsigned_quantity_account(acct):
+    # Chrome-scrape write shape: abs(qty) + direction="short" -- exactly the
+    # pattern that used to make a sold put read as a bought put (see
+    # account/options.py::signed_quantity and tests/test_signed_quantity.py).
+    # A short put LOSES money when the underlying crashes; before the sign
+    # fix this scenario's stress_20/beta_delta would come out with the wrong
+    # sign (a "profit" on a market crash).
+    _seed_balance(acct, [("2026-09-22T16:00:00-04:00", 60000.0, 10000.0, 0, 0, 0, 0)])
+    _seed_options(acct, [
+        dict(symbol="NVDA270618P00100000", direction="short", strike=100, expiry="2027-06-18",
+             quantity=2, unit_cost=8.0, current_price=10.0, market_value=-2000.0),
+    ])
+    _seed_stocks(acct, [])
+
+
 RISK_SCENARIOS = {
     "zero_equity": _zero_equity_account,
     "healthy_account": _healthy_account,
@@ -452,6 +475,7 @@ RISK_SCENARIOS = {
     "high_leverage": _high_leverage_account,
     "drawdown": _drawdown_account,
     "missing_beta_fallback": _missing_beta_fallback_account,
+    "short_position_unsigned_quantity": _short_position_unsigned_quantity_account,
 }
 
 

@@ -207,6 +207,15 @@ SCENARIOS: dict[str, list[dict]] = {
         _row(_sym("QCOM", FAR, "C", 170), 1, "long", 11.0, 12.0),
         _row(_sym("QCOM", FAR, "C", 190), 1, "short", 5.0, 4.5),
     ],
+    "positive_qty_with_wider_sell_synonym_direction": [
+        # account/options.py::signed_quantity recognizes a wider vocabulary
+        # than the old inline "direction == 'short'" check this module used
+        # to have (see tests/test_signed_quantity.py); this scenario proves
+        # the widened vocabulary flows through build_spread_portfolios too,
+        # not just the isolated signed_quantity() unit tests.
+        _row(_sym("QCOM", FAR, "C", 170), 1, "long", 11.0, 12.0),
+        _row(_sym("QCOM", FAR, "C", 190), 1, "卖出", 5.0, 4.5),
+    ],
     "skipped_and_unparseable_rows": [
         _row("GARBAGE", 1, "long", 1.0, 1.0),
         _row(_sym("ZERO", FAR, "C", 10), 0, "long", 1.0, 1.0),
