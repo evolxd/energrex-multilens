@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0",
-  "status": "IN_PROGRESS",
-  "current_phase": "PHASE_2_SAFETY_NET",
+  "status": "COMPLETED",
+  "current_phase": "DONE",
   "target_module": "account_monitor.py -> _compute_risk_snapshot + _compute_iv_regime (落点 account/risk.py)",
   "motivation": "97行/23分支的全库最重反射依赖函数 + 57行/18分支的关联函数，组合拆分，建立黄金快照防线",
   "progress": {
-    "tests_passed": 847,
-    "tests_total": 847
+    "tests_passed": 859,
+    "tests_total": 859
   },
   "logs": [
     {
@@ -58,6 +58,11 @@
       "time": "2026-09-23T15:00:00-07:00",
       "event": "PHASE_2_SAFETY_NET",
       "message": "tests/golden/test_risk_and_iv_golden.py 落地：12 个基线场景（6 个 iv_regime 状态分支 + 6 个 risk_snapshot 账户形态）+ 硬核比对 today 参数注入（原始远期场景 1 个 + dte=0/dte=1/已过期三个边界场景 + 多腿混合到期场景，共 6 个 today 等价性测试，全部逐字节比对 today=None 与 today=显式冻结日期），全量 19 用例。过程中自查纠正一处测试设计错误：iv_history 场景种子曾误用标的代码（如 NVDA）而非 _compute_iv_regime 实际按完整 OCC 期权代码做 history 查找 key（已用 account/options_repository.py 的真实写入逻辑核实），导致 4 个『应落入 NORMAL/EXTREME_IV/LOW_IV』的场景全部误判为 INSUFFICIENT_HISTORY；修正种子 symbol 后重新生成基线，6 个状态分支各自精确落位。3 组不同 PYTHONHASHSEED 稳定通过。反向证伪两次：改坏 leverage 乘数（1x→2x），4 个杠杆非零账户精确变红，2 个杠杆为零/受其他分支保护的账户零误报；改坏 EXTREME_PIV 阈值（0.95→0.50），2 个 piv=0.52 的场景精确变红，其余零误报。已还原，CRLF 完整，account_monitor.py git diff 归零。全量回归 847 passed（828 基线 + 19 新增）。发现一处需用户裁决但本轮未处理的潜在问题：_compute_risk_snapshot 现状用裸 datetime.date.today()（取服务器本地时区日期，本机为 Pacific），而非基于 ET 感知 now 派生的日期；若阶段三把 today 实现为 inputs['now'].date()（ET 口径），在 ET 午夜前后（本机时区下约为太平洋时间晚 9 点到午夜之间）二者会给出不同日期，从而改变 dte 计算——这不是本轮引入的问题，是现状已有的潜在时区口径不一致，但阶段三如果真的注入 today，必须先决定注入源到底是『服务器本地日期』（严格保行为）还是『ET 日历日期』（修正潜在时区偏差，但属于行为变更）。严禁触碰 account_monitor.py 原有业务逻辑，测试文件与快照均待用户审阅。"
+    },
+    {
+      "time": "2026-09-23T16:00:00-07:00",
+      "event": "PHASE_3_SANDBOX_REFACTOR",
+      "message": "用户裁决 today/now 时区口径：阶段三严格『行为保真』，today 默认值继续用服务器本地 datetime.date.today()，不隐式变更；已在架构文档第 6 节记录漂移问题留给独立任务。核心搬家：compute_iv_regime / compute_risk_snapshot 连同 24 字段 RiskSnapshot TypedDict、IVRow/IVPositionStatus/IVRegimeSnapshot、Protocol 契约整体落地 account/risk.py，纯函数不 import streamlit/DB/网络，_BETA_SPY/_RISK_LIMITS 等全局态全部改参数注入。account_monitor.py 的两个函数瘦身为薄包装（取数+组装 Inputs），签名不变；4 个因搬家变成死代码的 import（_classify_stress_status/_classify_drawdown_status/_compute_twr_drawdown/_compute_portfolio_stress_test）一并清理，已核实全库（含 _cascade.py 的 _get_am() 反射字典）无其他调用点。搬家过程中交叉验证测试当场抓到一个真实 bug：RiskSnapshotInputs['now'] 最初设计成传 naive datetime.datetime.now()，freezegun 冻结测试下 4 个场景 data_age_hours 差 7 小时、data_stale 甚至翻转——根因是 naive now() 在 freezegun 下的返回值跟 astimezone() 对 naive 输入的本地时区解读不是同一套语义；改为要求调用方传 aware datetime（datetime.datetime.now(datetime.timezone.utc)），内部统一 astimezone() 换算后问题消失，已在契约 docstring 记录这次教训。验证：12 个新增交叉验证测试（新纯函数 vs 阶段二黄金快照）12/12 通过；搬家后原有 19 个黄金快照测试（经新薄包装）19/19 通过；3 组 PYTHONHASHSEED 稳定；在新落点 account/risk.py 反向证伪 leverage 乘数，4+4 个场景（薄包装路径+直接调用路径）精确变红、零误报，已还原；全量回归 859 passed（847 基线 + 12 新增）。提交 5c07f13。反射调用点（_cascade.py x2、pages/5_⚖️_仓位管理.py、pre_trade_check.py 共 4+1 处）本轮按用户指示不动——薄包装签名不变，这些调用点无需改动即可正常工作，留给未来单独清理。"
     }
   ]
 }
