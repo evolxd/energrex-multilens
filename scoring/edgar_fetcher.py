@@ -38,6 +38,41 @@ TICKER_CIK: dict[str, str] = {
     "DVA":  "0000927066",
     "ADBE": "0000796343",
     "FUTU": "0001754581",
+    # 2026-09-21 补：账户实际持有、但此前没配 CIK 的标的。448 只 universe 里
+    # 原本只有 11 只有覆盖，公司结构解读页对其余的一律只能报"覆盖缺口"。
+    #
+    # CIK 取自 Alpha Vantage COMPANY_OVERVIEW 返回的 SEC 编号（sec.gov 在
+    # 取数环境里被挡，拿不到官方 company_tickers.json）。每条都用返回的公司
+    # 名核过——CIK 错一位不会报错，只会安静地拉来另一家公司的财报。
+    "AMD":  "0000002488",   # Advanced Micro Devices, Inc.
+    "ARM":  "0001973239",   # Arm Holdings plc（英国，ADS）
+    "DDOG": "0001561550",   # Datadog, Inc.
+    "FCX":  "0000831259",   # Freeport-McMoRan Inc.
+    "KLAC": "0000319201",   # KLA Corporation
+    "META": "0001326801",   # Meta Platforms, Inc.
+    "PATH": "0001734722",   # UiPath, Inc.
+    "VST":  "0001692819",   # Vistra Corp.
+    # SPCX —— Alpha Vantage 对它返回 CIK: None（2026-06-12 才上市），这条是
+    # 另外查证的，取数环境连不上 sec.gov（curl 和 WebFetch 都被出口代理挡死），
+    # 所以**没能直接对 EDGAR 核过**，靠的是几条互相独立的旁证凑齐：
+    #   · 两次独立检索都给出 CIK 1181412，SEC file number 001-43344 一致；
+    #   · /Archives/edgar/data/1181412/ 下有三份 SpaceX 命名的文件（S-1、
+    #     IPO 定价 8-K spcx-pricing8xk.htm、S-8 spacex-formsx8xresalesx8.htm）；
+    #   · CIK 落在 118xxxx 段，对应 2002 年前后分配，跟 SpaceX 2002 年成立吻合；
+    #   · 2026-08-04 报出一份 10-Q（截至 2026-06-30），口径是 Space /
+    #     Connectivity / AI 三个分部、同比 +92%，而 Alpha Vantage 对 SPCX 返回的
+    #     QuarterlyRevenueGrowthYOY 是 0.919——同一家公司同一期，对得上。
+    # 你那边能连 EDGAR，第一次打开结构解读页时顺手确认一下公司名是不是
+    # "Space Exploration Technologies Corp."；对不上就把这条删掉。
+    #
+    # 注意它只有一个季度的 XBRL：segment_mix 出得来，growth_attribution 要五期
+    # 才算得了同比，structural_drift 要两期——这两项会显示"数据不足"，那是真的
+    # 不足，不是取数失败。
+    "SPCX": "0001181412",   # Space Exploration Technologies Corp.
+    #
+    # 仍然没有的：
+    # ETHU/QQQ/SMH —— 是 ETF，背后没有公司，没有分部收入可拉，见
+    #                 scoring.exposure_context.is_fund_like。
 }
 
 
