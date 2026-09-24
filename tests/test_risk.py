@@ -19,6 +19,7 @@ from account.risk import (
     compute_portfolio_stress_test,
     compute_index_hedge_plan,
     compute_qqq_hedge_plan,
+    compute_sim_impact,
     compute_twr_drawdown,
     delta_drift_trigger,
     load_options_cost_ratio_limit,
@@ -878,6 +879,168 @@ class RiskStatusClassificationTests(unittest.TestCase):
                   "stress_hard_stop": 0.15}
         self.assertEqual(classify_stress_status(0.10, binary), "GREEN")
         self.assertEqual(classify_stress_status(0.15, binary), "RED_HARD_STOP")
+
+
+class ComputeSimImpactTests(unittest.TestCase):
+    """13 scenarios ported 1:1 from tests/golden/test_sim_impact_golden.py's
+    SCENARIOS table -- same inputs, expected values pulled from the golden
+    snapshots captured off the original, unmodified
+    account_monitor.py._compute_sim_impact. This class calls
+    account.risk.compute_sim_impact directly with plain dict/list literals
+    (no sqlite, no account_monitor.py AST-slice/exec) for a fast, DB-free
+    unit layer; tests/golden/test_sim_impact_golden.py is the byte-for-byte
+    cross-validation against the real DB-backed shell."""
+
+    BASE_SNAP = {
+        "equity": 100_000.0, "beta_delta": 5000.0, "theta_per_day": -50.0,
+        "stress_10": -2000.0, "stress_20": -4000.0, "vega_per_pt": 300.0,
+    }
+    PRICES = {"NVDA": 120.0, "AMD": 150.0, "QQQ": 560.0}
+    BETAS = {"NVDA": 1.8, "AMD": 2.1}
+    NVDA_ROW = {"quantity": 2, "current_price": 10.0, "delta": 0.5, "gamma": 0.01,
+                "theta": -0.05, "vega": 0.2, "market_value": 2000.0}
+    ZZZZ_ROW = {"quantity": 3, "current_price": 2.5, "delta": 0.4, "gamma": 0.02,
+                "theta": -0.03, "vega": 0.15, "market_value": 750.0}
+    HPLAN_ZERO_N = {
+        "plan_a": {"n_total": 0, "buy_strike": 550.0, "sell_strike": 530.0, "total_cost": 1000.0},
+        "qqq_price": 560.0, "qqq_iv": 18.0, "b_qqq": 1.0, "plan_dte": 30,
+    }
+    HPLAN_NORMAL = {
+        "plan_a": {"n_total": 3, "buy_strike": 550.0, "sell_strike": 530.0, "total_cost": 900.0},
+        "qqq_price": 560.0, "qqq_iv": 18.0, "b_qqq": 1.0, "plan_dte": 30,
+    }
+
+    def _call(self, sim_actions, base_snap=None, hplan=None, options_by_underlying=None):
+        return compute_sim_impact(
+            sim_actions, base_snap if base_snap is not None else self.BASE_SNAP, hplan,
+            underlying_prices=self.PRICES, beta_map=self.BETAS,
+            options_by_underlying=options_by_underlying or {},
+        )
+
+    def test_empty_actions(self):
+        result = self._call([])
+        self.assertEqual(result, {
+            "bd_delta": 0.0, "theta_delta": 0.0, "s10_delta": 0.0, "s20_delta": 0.0,
+            "cash_delta": 0.0, "beta_delta": 5000.0, "beta_delta_ratio": 5.0,
+            "theta_per_day": -50.0, "stress_10": -2000.0, "stress_10_ratio": -2.0,
+            "stress_20": -4000.0, "stress_20_ratio": -4.0, "actions": [],
+        })
+
+    def test_unknown_type_default_label(self):
+        result = self._call([{"type": "no_sim"}])
+        self.assertEqual(result["actions"], ["持有（不变）"])
+        self.assertEqual(result["bd_delta"], 0.0)
+
+    def test_unknown_type_custom_label(self):
+        result = self._call([{"type": "hold", "label": "部分平仓观察"}])
+        self.assertEqual(result["actions"], ["部分平仓观察"])
+
+    def test_close_underlying_normal(self):
+        result = self._call(
+            [{"type": "close_underlying", "underlying": "NVDA"}],
+            options_by_underlying={"NVDA": [self.NVDA_ROW]},
+        )
+        self.assertEqual(result, {
+            "bd_delta": -21600.0, "theta_delta": 10.0, "s10_delta": 736.0,
+            "s20_delta": 1184.0, "cash_delta": 2000.0, "beta_delta": -16600.0,
+            "beta_delta_ratio": -16.6, "theta_per_day": -40.0, "stress_10": -1264.0,
+            "stress_10_ratio": -1.3, "stress_20": -2816.0, "stress_20_ratio": -2.8,
+            "actions": ["关闭 NVDA 期权（收回约$+2,000）"],
+        })
+
+    def test_close_underlying_no_matching_positions(self):
+        result = self._call(
+            [{"type": "close_underlying", "underlying": "AMD"}],
+            options_by_underlying={},
+        )
+        self.assertEqual(result["cash_delta"], 0.0)
+        self.assertEqual(result["actions"], ["关闭 AMD 期权（收回约$+0）"])
+        self.assertEqual(result["beta_delta"], 5000.0)
+
+    def test_close_underlying_missing_price(self):
+        """ZZZZ absent from the price map -> S falls back to 0.0. bd_delta
+        and the two stress deltas are gated on S>0 and stay at zero, but
+        theta/vega/cash deltas are NOT gated on S and still apply -- an
+        easy-to-miss asymmetry in the original code (see
+        account.risk.compute_sim_impact's docstring)."""
+        result = self._call(
+            [{"type": "close_underlying", "underlying": "ZZZZ"}],
+            options_by_underlying={"ZZZZ": [self.ZZZZ_ROW]},
+        )
+        self.assertEqual(result, {
+            "bd_delta": 0.0, "theta_delta": 9.0, "s10_delta": 0.0, "s20_delta": 0.0,
+            "cash_delta": 750.0, "beta_delta": 5000.0, "beta_delta_ratio": 5.0,
+            "theta_per_day": -41.0, "stress_10": -2000.0, "stress_10_ratio": -2.0,
+            "stress_20": -4000.0, "stress_20_ratio": -4.0,
+            "actions": ["关闭 ZZZZ 期权（收回约$+750）"],
+        })
+
+    def test_close_underlying_duplicate_underlying_applies_twice(self):
+        """Two actions on the same underlying both draw from the SAME
+        (deduplicated, single-query) row list and each add their own
+        contribution -- deduplicating the DB round-trip must not deduplicate
+        the computed effect."""
+        result = self._call(
+            [{"type": "close_underlying", "underlying": "NVDA"},
+             {"type": "close_underlying", "underlying": "NVDA"}],
+            options_by_underlying={"NVDA": [self.NVDA_ROW]},
+        )
+        self.assertEqual(result, {
+            "bd_delta": -43200.0, "theta_delta": 20.0, "s10_delta": 1472.0,
+            "s20_delta": 2368.0, "cash_delta": 4000.0, "beta_delta": -38200.0,
+            "beta_delta_ratio": -38.2, "theta_per_day": -30.0, "stress_10": -528.0,
+            "stress_10_ratio": -0.5, "stress_20": -1632.0, "stress_20_ratio": -1.6,
+            "actions": ["关闭 NVDA 期权（收回约$+2,000）", "关闭 NVDA 期权（收回约$+2,000）"],
+        })
+
+    def test_qqq_hedge_none_hplan_skips(self):
+        result = self._call([{"type": "qqq_hedge"}], hplan=None)
+        self.assertEqual(result["actions"], ["QQQ对冲（数据不足，跳过）"])
+        self.assertEqual(result["bd_delta"], 0.0)
+
+    def test_qqq_hedge_error_hplan_skips(self):
+        result = self._call([{"type": "qqq_hedge"}], hplan={"error": "insufficient_data"})
+        self.assertEqual(result["actions"], ["QQQ对冲（数据不足，跳过）"])
+
+    def test_qqq_hedge_zero_n_skips(self):
+        result = self._call([{"type": "qqq_hedge"}], hplan=self.HPLAN_ZERO_N)
+        self.assertEqual(result["actions"], ["QQQ对冲（现有对冲已足够）"])
+        self.assertEqual(result["bd_delta"], 0.0)
+
+    def test_qqq_hedge_normal(self):
+        result = self._call([{"type": "qqq_hedge"}], hplan=self.HPLAN_NORMAL)
+        self.assertEqual(result, {
+            "bd_delta": -34514.0, "theta_delta": -18.48, "s10_delta": 6643.0,
+            "s20_delta": 18448.0, "cash_delta": -900.0, "beta_delta": -29514.0,
+            "beta_delta_ratio": -29.5, "theta_per_day": -68.48, "stress_10": 4643.0,
+            "stress_10_ratio": 4.6, "stress_20": 14448.0, "stress_20_ratio": 14.4,
+            "actions": ["QQQ Put Spread×3张（方案A，成本$900）"],
+        })
+
+    def test_equity_zero_division_guard(self):
+        """equity=0 must not raise ZeroDivisionError -- all three ratio
+        fields fall back to the bare int 0 (via `if equity else 0`), not
+        0.0, matching the original's exact quirk."""
+        zero_equity_snap = {**self.BASE_SNAP, "equity": 0.0}
+        result = self._call([], base_snap=zero_equity_snap)
+        self.assertEqual(result["beta_delta_ratio"], 0)
+        self.assertEqual(result["stress_10_ratio"], 0)
+        self.assertEqual(result["stress_20_ratio"], 0)
+
+    def test_multi_action_stacking(self):
+        result = self._call(
+            [{"type": "close_underlying", "underlying": "NVDA"},
+             {"type": "qqq_hedge"}],
+            hplan=self.HPLAN_NORMAL,
+            options_by_underlying={"NVDA": [self.NVDA_ROW]},
+        )
+        self.assertEqual(result, {
+            "bd_delta": -56114.0, "theta_delta": -8.48, "s10_delta": 7379.0,
+            "s20_delta": 19632.0, "cash_delta": 1100.0, "beta_delta": -51114.0,
+            "beta_delta_ratio": -51.1, "theta_per_day": -58.48, "stress_10": 5379.0,
+            "stress_10_ratio": 5.4, "stress_20": 15632.0, "stress_20_ratio": 15.6,
+            "actions": ["关闭 NVDA 期权（收回约$+2,000）", "QQQ Put Spread×3张（方案A，成本$900）"],
+        })
 
 
 if __name__ == "__main__":

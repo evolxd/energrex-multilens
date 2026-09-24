@@ -1,12 +1,20 @@
-"""Golden (characterization) tests for account_monitor._compute_sim_impact,
-ahead of moving its pure core into account/risk.py -- the last remaining
-orphan closure per .refactor_status.json PHASE_1_SCOUTING (see
-_scratch_handoff_sim_impact.md and docs/REFACTORING_WORKFLOW.md).
+"""Golden (characterization) tests for account_monitor._compute_sim_impact --
+the last remaining orphan closure per .refactor_status.json PHASE_1_SCOUTING
+(see _scratch_handoff_sim_impact.md and docs/REFACTORING_WORKFLOW.md).
 
-These lock the CURRENT unmodified implementation's behavior via the real
-function inside account_monitor.py, reached through the same AST-slice +
-streamlit-stub technique as the sibling tests/golden/test_risk_and_iv_golden.py
-suite -- not an invented contract implementation.
+Snapshots were captured off the ORIGINAL, unmodified monolithic
+implementation (regenerate only against that version -- see the command
+below). Since then _compute_sim_impact has been extracted: the pure core
+now lives in account.risk.compute_sim_impact, and account_monitor.py's
+_compute_sim_impact is a thin IO-prefetch shell delegating to it. This file
+now serves double duty:
+  - test_sim_impact_golden: runs the CURRENT shell (via the same AST-slice
+    + streamlit-stub exec as tests/golden/test_risk_and_iv_golden.py) and
+    diffs it against the pre-extraction snapshots -- the shell-level
+    equivalence proof.
+  - test_new_sim_impact_core_matches_golden_snapshot /
+    test_new_sim_impact_core_dedupes_db_query_for_duplicate_underlying:
+    call account.risk.compute_sim_impact directly -- the core-level proof.
 
 Determinism sources pinned (both newly confirmed while reading the real
 code, a subset of the two the risk_snapshot/iv_regime golden suite pins):
@@ -18,17 +26,16 @@ code, a subset of the two the risk_snapshot/iv_regime golden suite pins):
     table on the exec'd namespace.
 _compute_sim_impact itself never touches datetime/random/uuid/env, so no
 freezegun is needed here (unlike the risk_snapshot/iv_regime suite).
-`_bs_greeks` (account.risk.bs_greeks, used by the qqq_hedge branch) is
-already a pure, deterministic math function -- not mocked, called for real.
+account.risk.bs_greeks (used by the qqq_hedge branch) is already a pure,
+deterministic math function -- not mocked, called for real.
 
-The DB dependency (`_db()` + one SELECT against options_positions per
-close_underlying action, scoped to `symbol LIKE '{underlying}%'`) is
+The DB dependency (`_db()` + a SELECT against options_positions, now one
+query per unique underlying instead of one per action -- see
+account.risk.compute_sim_impact's docstring for why that is safe) is
 exercised against a real throwaway sqlite DB seeded per scenario -- not
-mocked -- since sqlite reads are deterministic and this SELECT is exactly
-the dependency the planned refactor will hoist into an IO-prefetch shell
-(deduplicated by underlying, see _scratch_handoff_sim_impact.md).
+mocked -- since sqlite reads are deterministic.
 
-Regenerate ONLY on the unmodified original code:
+Regenerate ONLY on the pre-extraction original code:
     UPDATE_GOLDEN=1 python -m pytest tests/golden/test_sim_impact_golden.py -q
 A missing snapshot fails the test; it is never created silently.
 """
@@ -276,3 +283,100 @@ def test_every_scenario_has_a_snapshot():
     on_disk = {p.stem for p in SNAPSHOT_DIR.glob("*.json")}
     expected = set(SCENARIOS)
     assert on_disk == expected
+
+
+# ════════════════════════════════════════════════════════════════
+# 阶段三核对：新的纯内核（account.risk.compute_sim_impact）跟本阶段锁定的
+# 黄金快照逐字节一致，证明搬家过程没有夹带任何行为变更。
+# account_monitor.py 里的旧实现此时还没被删除。
+# ════════════════════════════════════════════════════════════════
+
+def _clear_options(acct):
+    conn = _conn()
+    conn.execute("DELETE FROM options_positions WHERE account_id=?", (acct,))
+    conn.commit()
+    conn.close()
+
+
+def _gather_sim_impact_inputs(ns, acct, sim_actions):
+    """Literal copy of what account_monitor.py's new _compute_sim_impact
+    shell will do post-extraction: dedupe close_underlying actions by
+    underlying, fetch prices once over the deduplicated set (unchanged --
+    it was already deduplicated in the original code), and query
+    options_positions ONCE PER UNIQUE UNDERLYING (not once per action, the
+    one deliberate behavior change -- see account.risk.compute_sim_impact's
+    docstring and _scratch_handoff_sim_impact.md)."""
+    _unds = {a["underlying"] for a in sim_actions if a.get("type") == "close_underlying"}
+    und_prices = ns["_fetch_underlying_prices"](tuple(sorted(_unds))) if _unds else {}
+    options_by_underlying = {}
+    if _unds:
+        conn = _conn()
+        for und in _unds:
+            options_by_underlying[und] = [
+                dict(r) for r in conn.execute(
+                    "SELECT quantity, current_price, delta, gamma, theta, vega, market_value "
+                    "FROM options_positions WHERE account_id=? AND symbol LIKE ?",
+                    (acct, f"{und}%")).fetchall()
+            ]
+        conn.close()
+    return und_prices, options_by_underlying
+
+
+@pytest.mark.parametrize("name", sorted(SCENARIOS))
+def test_new_sim_impact_core_matches_golden_snapshot(ns, name):
+    from account.risk import compute_sim_impact as new_compute_sim_impact
+
+    acct = f"sim_{name}"
+    spec = SCENARIOS[name]
+    _clear_options(acct)
+    spec["seed"](acct)
+    und_prices, options_by_underlying = _gather_sim_impact_inputs(ns, acct, spec["sim_actions"])
+    result = new_compute_sim_impact(
+        spec["sim_actions"], spec["base_snap"], spec["hplan"],
+        underlying_prices=und_prices, beta_map=ns["_BETA_SPY"],
+        options_by_underlying=options_by_underlying,
+    )
+    actual = _canonical(result)
+
+    snapshot = SNAPSHOT_DIR / f"{name}.json"
+    assert actual == snapshot.read_text(encoding="utf-8"), (
+        f"新的 account.risk.compute_sim_impact 在场景 {name} 下跟本阶段锁定的"
+        "黄金快照不一致 -- 搬家过程中夹带了行为变更。")
+
+
+def test_new_sim_impact_core_dedupes_db_query_for_duplicate_underlying():
+    """重复标的场景下，新契约要求外壳按标的去重查库 -- 只查一次，而不是像
+    旧实现那样每个 action 各查一次。这里直接验证：给纯核心传入「只包含一份
+    去重后的行」的 options_by_underlying（模拟去重后的外壳），跟旧实现「两次
+    查询、两次原样叠加」的黄金快照逐字节一致 -- 证明去重不改变任何计算结果，
+    只减少 DB 往返次数（这一点已经如实告诉过用户，见
+    _scratch_handoff_sim_impact.md）。"""
+    from account.risk import compute_sim_impact as new_compute_sim_impact
+
+    name = "close_underlying_duplicate_underlying"
+    acct = f"sim_{name}"
+    spec = SCENARIOS[name]
+    _clear_options(acct)
+    spec["seed"](acct)
+
+    # Simulate the deduplicated shell: query once, reuse the same row list
+    # for both actions instead of querying twice.
+    conn = _conn()
+    rows_once = [
+        dict(r) for r in conn.execute(
+            "SELECT quantity, current_price, delta, gamma, theta, vega, market_value "
+            "FROM options_positions WHERE account_id=? AND symbol LIKE ?",
+            (acct, "NVDA%")).fetchall()
+    ]
+    conn.close()
+
+    result = new_compute_sim_impact(
+        spec["sim_actions"], spec["base_snap"], spec["hplan"],
+        underlying_prices=dict(_FIXED_PRICES), beta_map=dict(_FIXED_BETA),
+        options_by_underlying={"NVDA": rows_once},
+    )
+    actual = _canonical(result)
+    snapshot = SNAPSHOT_DIR / f"{name}.json"
+    assert actual == snapshot.read_text(encoding="utf-8"), (
+        "去重查库（同一份行列表被两个 action 复用）跟旧实现两次独立查询的"
+        "黄金快照不一致 -- 去重不应该改变计算结果。")

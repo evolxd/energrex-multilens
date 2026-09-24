@@ -1613,6 +1613,148 @@ def compute_qqq_hedge_plan(
     )
 
 
+class SimAction(TypedDict, total=False):
+    type: str
+    underlying: str
+    label: str
+
+
+class SimOptionRow(TypedDict, total=False):
+    quantity: float
+    current_price: float | None
+    delta: float | None
+    gamma: float | None
+    theta: float | None
+    vega: float | None
+    market_value: float | None
+
+
+class SimImpactResult(TypedDict):
+    bd_delta: float
+    theta_delta: float
+    s10_delta: float
+    s20_delta: float
+    cash_delta: float
+    beta_delta: float
+    beta_delta_ratio: float
+    theta_per_day: float
+    stress_10: float
+    stress_10_ratio: float
+    stress_20: float
+    stress_20_ratio: float
+    actions: list[str]
+
+
+def compute_sim_impact(
+    sim_actions: list[SimAction],
+    base_snap: dict,
+    hplan: dict | None,
+    *,
+    underlying_prices: dict[str, float],
+    beta_map: dict[str, float],
+    options_by_underlying: dict[str, list[SimOptionRow]],
+) -> SimImpactResult:
+    """Apply sim_actions to base_snap and return post-simulation metrics.
+
+    action types: 'close_underlying', 'qqq_hedge', 'no_sim', 'no_change'.
+
+    Logic is a byte-for-byte port of account_monitor.py's original
+    _compute_sim_impact (see tests/golden/test_sim_impact_golden.py) --
+    the three impure dependencies it used to reach for directly (a network
+    price lookup, the module-level _BETA_SPY beta table, and a per-action
+    `options_positions` DB query) are now read-only parameters. The caller
+    is expected to have already deduplicated `options_by_underlying` by
+    underlying (one query per distinct symbol, not one per action) -- this
+    changes only how many times the DB is hit, never the rows a given
+    underlying resolves to, so re-processing the same underlying across two
+    actions still adds its contribution twice, exactly as before.
+    """
+    equity = base_snap.get("equity", 1)
+    bd_delta_sim = theta_delta_sim = vega_delta_sim = s10_delta_sim = s20_delta_sim = cash_delta_sim = 0.0
+    descs: list[str] = []
+
+    for action in sim_actions:
+        atype = action.get("type", "no_change")
+
+        if atype == "close_underlying":
+            und  = action["underlying"]
+            S    = underlying_prices.get(und, 0.0)
+            b    = beta_map.get(und, 1.0)
+            mult = 100.0
+
+            _rows = options_by_underlying.get(und, [])
+
+            _mv_sum = 0.0
+            for r in _rows:
+                q   = float(r.get("quantity") or 0)
+                d   = float(r.get("delta") or 0)
+                g   = float(r.get("gamma") or 0)
+                th  = float(r.get("theta") or 0)
+                vg  = float(r.get("vega") or 0)
+                mv  = float(r.get("market_value") or 0)
+                bd_delta_sim    -= q * mult * d * S * b if S > 0 else 0.0
+                theta_delta_sim -= q * mult * th
+                vega_delta_sim  -= q * mult * vg
+                _mv_sum += mv
+                if S > 0:
+                    ds10 = -0.10 * S;  ds20 = -0.20 * S
+                    s10_delta_sim -= (q * mult * (d * ds10 + 0.5 * g * ds10**2)
+                               + q * mult * vg * 8)
+                    s20_delta_sim -= (q * mult * (d * ds20 + 0.5 * g * ds20**2)
+                               + q * mult * vg * 16)
+            cash_delta_sim += _mv_sum
+            descs.append(f"关闭 {und} 期权（收回约${_mv_sum:+,.0f}）")
+
+        elif atype == "qqq_hedge":
+            if not hplan or "error" in hplan:
+                descs.append("QQQ对冲（数据不足，跳过）");  continue
+            _pa = hplan.get("plan_a", {})
+            n   = _pa.get("n_total", 0)
+            if n <= 0:
+                descs.append("QQQ对冲（现有对冲已足够）");  continue
+            S   = hplan["qqq_price"];  iv  = hplan["qqq_iv"] / 100
+            b   = hplan["b_qqq"];      T   = hplan["plan_dte"] / 365.0
+            bk  = _pa["buy_strike"];   sk  = _pa["sell_strike"]
+            mult = 100.0
+            gb = bs_greeks(S, bk, T, iv, "put")
+            gs = bs_greeks(S, sk, T, iv, "put")
+            dn  = gb["delta"] - gs["delta"];   gn  = gb["gamma"] - gs["gamma"]
+            thn = gb["theta"] - gs["theta"];   vgn = gb["vega"]  - gs["vega"]
+            bd_delta_sim    += n * mult * dn  * S * b
+            theta_delta_sim += n * mult * thn
+            vega_delta_sim  += n * mult * vgn
+            ds10 = -0.10 * S;  ds20 = -0.20 * S
+            s10_delta_sim += n * (mult * (dn * ds10 + 0.5 * gn * ds10**2) + mult * vgn * 8)
+            s20_delta_sim += n * (mult * (dn * ds20 + 0.5 * gn * ds20**2) + mult * vgn * 16)
+            cash_delta_sim -= _pa.get("total_cost", 0)
+            descs.append(f"QQQ Put Spread×{n}张（方案A，成本${_pa.get('total_cost',0):,.0f}）")
+
+        else:
+            descs.append(action.get("label", "持有（不变）"))
+
+    new_bd   = base_snap.get("beta_delta", 0)    + bd_delta_sim
+    new_bdr  = new_bd / equity if equity else 0
+    new_th   = base_snap.get("theta_per_day", 0) + theta_delta_sim
+    new_s10  = base_snap.get("stress_10", 0)     + s10_delta_sim
+    new_s20  = base_snap.get("stress_20", 0)     + s20_delta_sim
+    new_s10r = new_s10 / equity if equity else 0
+    new_s20r = new_s20 / equity if equity else 0
+
+    return {
+        "bd_delta":    round(bd_delta_sim, 0),   "theta_delta": round(theta_delta_sim, 2),
+        "s10_delta":   round(s10_delta_sim, 0),  "s20_delta":   round(s20_delta_sim, 0),
+        "cash_delta":  round(cash_delta_sim, 0),
+        "beta_delta":       round(new_bd,  0),
+        "beta_delta_ratio": round(new_bdr * 100, 1),
+        "theta_per_day":    round(new_th,  2),
+        "stress_10":        round(new_s10, 0),
+        "stress_10_ratio":  round(new_s10r * 100, 1),
+        "stress_20":        round(new_s20, 0),
+        "stress_20_ratio":  round(new_s20r * 100, 1),
+        "actions":     descs,
+    }
+
+
 def check_otm_spread_alerts(rows: list, *, today: datetime.date | None = None) -> list[dict]:
     """Flag debit spreads (Bear Put / Bull Call) whose combined market value
     has fallen under 10% of what was originally paid for them.

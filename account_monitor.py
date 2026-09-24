@@ -288,7 +288,6 @@ from account.beta_quality import low_confidence_held as _low_confidence_betas
 from account.positions_xlsx import parse_stocks_xlsx as _parse_stocks_xlsx
 from account.positions_xlsx import stock_snapshot_rows
 from account.fifo import calculate_fifo_matches as _calculate_fifo_matches
-from account.risk import bs_greeks as _bs_greeks
 from account.risk import build_recommendations as _build_recommendations
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
 from account.risk import check_otm_spread_alerts as _check_otm_spread_alerts_impl
@@ -296,6 +295,7 @@ from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
 from account.risk import compute_index_hedge_plan as _compute_index_hedge_plan_impl
 from account.risk import compute_iv_regime as _compute_iv_regime_pure
 from account.risk import compute_risk_snapshot as _compute_risk_snapshot_pure
+from account.risk import compute_sim_impact as _compute_sim_impact_pure
 from account.hedge_split import split_hedge_need as _split_hedge_need
 from account.hedge_governance import HEDGE_UNDERLYINGS as _HEDGE_UNDERLYINGS
 from account.hedge_width import assess_width as _assess_width
@@ -1504,100 +1504,33 @@ def _compute_sim_impact(acct_id: str, sim_actions: list, base_snap: dict,
     """
     Apply sim_actions to base_snap and return post-simulation metrics.
     action types: 'close_underlying', 'qqq_hedge', 'no_sim', 'no_change'
-    """
-    equity  = base_snap.get("equity", 1)
-    bd_delta_sim    = theta_delta_sim = vega_delta_sim = s10_delta_sim = s20_delta_sim = cash_delta_sim = 0.0
-    descs: list[str] = []
 
-    # Collect underlyings needed for close actions
+    IO-prefetch shell around account.risk.compute_sim_impact: batches the
+    underlying-price lookup (unchanged -- already deduplicated via _unds)
+    and queries options_positions ONCE PER UNIQUE UNDERLYING instead of once
+    per action (the original re-queried per action; two actions on the same
+    underlying still each apply their own contribution from the same
+    prefetched rows, so this only cuts redundant DB round-trips, it does not
+    change any computed value -- see tests/golden/test_sim_impact_golden.py).
+    """
     _unds = {a["underlying"] for a in sim_actions if a.get("type") == "close_underlying"}
     _und_p = _fetch_underlying_prices(tuple(sorted(_unds))) if _unds else {}
-
-    for action in sim_actions:
-        atype = action.get("type", "no_change")
-
-        if atype == "close_underlying":
-            und  = action["underlying"]
-            S    = _und_p.get(und, 0.0)
-            b    = _BETA_SPY.get(und, 1.0)
-            mult = 100.0
-
-            conn  = _db()
-            _rows = conn.execute(
-                "SELECT quantity, current_price, delta, gamma, theta, vega, market_value "
-                "FROM options_positions WHERE account_id=? AND symbol LIKE ?",
-                (acct_id, f"{und}%")).fetchall()
-            conn.close()
-
-            _mv_sum = 0.0
-            for r in _rows:
-                q   = float(r[0] or 0)
-                d   = float(r[2] or 0)
-                g   = float(r[3] or 0)
-                th  = float(r[4] or 0)
-                vg  = float(r[5] or 0)
-                mv  = float(r[6] or 0)
-                bd_delta_sim    -= q * mult * d * S * b if S > 0 else 0.0
-                theta_delta_sim -= q * mult * th
-                vega_delta_sim  -= q * mult * vg
-                _mv_sum += mv
-                if S > 0:
-                    ds10 = -0.10 * S;  ds20 = -0.20 * S
-                    s10_delta_sim -= (q * mult * (d * ds10 + 0.5 * g * ds10**2)
-                               + q * mult * vg * 8)
-                    s20_delta_sim -= (q * mult * (d * ds20 + 0.5 * g * ds20**2)
-                               + q * mult * vg * 16)
-            cash_delta_sim += _mv_sum
-            descs.append(f"关闭 {und} 期权（收回约${_mv_sum:+,.0f}）")
-
-        elif atype == "qqq_hedge":
-            if not hplan or "error" in hplan:
-                descs.append("QQQ对冲（数据不足，跳过）");  continue
-            _pa = hplan.get("plan_a", {})
-            n   = _pa.get("n_total", 0)
-            if n <= 0:
-                descs.append("QQQ对冲（现有对冲已足够）");  continue
-            S   = hplan["qqq_price"];  iv  = hplan["qqq_iv"] / 100
-            b   = hplan["b_qqq"];      T   = hplan["plan_dte"] / 365.0
-            bk  = _pa["buy_strike"];   sk  = _pa["sell_strike"]
-            mult = 100.0
-            gb = _bs_greeks(S, bk, T, iv, "put")
-            gs = _bs_greeks(S, sk, T, iv, "put")
-            dn  = gb["delta"] - gs["delta"];   gn  = gb["gamma"] - gs["gamma"]
-            thn = gb["theta"] - gs["theta"];   vgn = gb["vega"]  - gs["vega"]
-            bd_delta_sim    += n * mult * dn  * S * b
-            theta_delta_sim += n * mult * thn
-            vega_delta_sim  += n * mult * vgn
-            ds10 = -0.10 * S;  ds20 = -0.20 * S
-            s10_delta_sim += n * (mult * (dn * ds10 + 0.5 * gn * ds10**2) + mult * vgn * 8)
-            s20_delta_sim += n * (mult * (dn * ds20 + 0.5 * gn * ds20**2) + mult * vgn * 16)
-            cash_delta_sim -= _pa.get("total_cost", 0)
-            descs.append(f"QQQ Put Spread×{n}张（方案A，成本${_pa.get('total_cost',0):,.0f}）")
-
-        else:
-            descs.append(action.get("label", "持有（不变）"))
-
-    new_bd   = base_snap.get("beta_delta", 0)    + bd_delta_sim
-    new_bdr  = new_bd / equity if equity else 0
-    new_th   = base_snap.get("theta_per_day", 0) + theta_delta_sim
-    new_s10  = base_snap.get("stress_10", 0)     + s10_delta_sim
-    new_s20  = base_snap.get("stress_20", 0)     + s20_delta_sim
-    new_s10r = new_s10 / equity if equity else 0
-    new_s20r = new_s20 / equity if equity else 0
-
-    return {
-        "bd_delta":    round(bd_delta_sim, 0),   "theta_delta": round(theta_delta_sim, 2),
-        "s10_delta":   round(s10_delta_sim, 0),  "s20_delta":   round(s20_delta_sim, 0),
-        "cash_delta":  round(cash_delta_sim, 0),
-        "beta_delta":       round(new_bd,  0),
-        "beta_delta_ratio": round(new_bdr * 100, 1),
-        "theta_per_day":    round(new_th,  2),
-        "stress_10":        round(new_s10, 0),
-        "stress_10_ratio":  round(new_s10r * 100, 1),
-        "stress_20":        round(new_s20, 0),
-        "stress_20_ratio":  round(new_s20r * 100, 1),
-        "actions":     descs,
-    }
+    _opts_by_und: dict[str, list[dict]] = {}
+    if _unds:
+        conn = _db()
+        for und in sorted(_unds):
+            _opts_by_und[und] = [
+                dict(r) for r in conn.execute(
+                    "SELECT quantity, current_price, delta, gamma, theta, vega, market_value "
+                    "FROM options_positions WHERE account_id=? AND symbol LIKE ?",
+                    (acct_id, f"{und}%")).fetchall()
+            ]
+        conn.close()
+    return _compute_sim_impact_pure(
+        sim_actions, base_snap, hplan,
+        underlying_prices=_und_p, beta_map=_BETA_SPY,
+        options_by_underlying=_opts_by_und,
+    )
 
 
 def _run_scenarios(snap: dict) -> dict:
