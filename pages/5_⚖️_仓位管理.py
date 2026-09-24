@@ -101,8 +101,8 @@ if not chain_ok:
 # 同一个循环里。
 risk_snapshot_limits = effective_risk_limits(records, now)
 try:
-    import _cascade as _casc
-    _risk_snap = _casc._get_am()["_compute_risk_snapshot"]("account_1")
+    from account.risk_gateway import get_risk_snapshot as _get_risk_snapshot
+    _risk_snap = _get_risk_snapshot("account_1")
     if _risk_snap.get("error"):
         _risk_snap = None
 except Exception as _rs_exc:

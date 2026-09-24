@@ -5,6 +5,8 @@ _cascade.py — ENERGREX 级联更新引擎
 """
 import ast, datetime, logging, pathlib, sqlite3, sys
 
+from account.risk_gateway import get_risk_snapshot
+
 _ROOT = pathlib.Path(__file__).parent
 _DB   = _ROOT / "data" / "energrex.db"
 _log  = logging.getLogger("energrex.cascade")
@@ -374,7 +376,7 @@ def run_sync_cascade(step=None) -> dict:
     _s("🔄 重算 BD（Beta-Delta 比率）...")
     snap: dict = {}
     try:
-        snap = am["_compute_risk_snapshot"]("account_1")
+        snap = get_risk_snapshot("account_1")
         bd  = (snap.get("beta_delta_ratio") or 0) * 100
         eq  = float(snap.get("equity", 0) or 0)
         pnl = float(snap.get("day_pnl",  0) or 0)
@@ -503,7 +505,7 @@ def run_price_cascade(step=None) -> dict:
     # 3 ── 重算 BD
     _s("🔄 重算 BD + 压力测试...")
     try:
-        snap = am["_compute_risk_snapshot"]("account_1")
+        snap = get_risk_snapshot("account_1")
         bd  = (snap.get("beta_delta_ratio") or 0) * 100
         eq  = float(snap.get("equity", 0) or 0)
         pnl = float(snap.get("day_pnl",  0) or 0)

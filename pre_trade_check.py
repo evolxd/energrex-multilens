@@ -46,9 +46,10 @@ try:
     import _cascade
     _am = _cascade._get_am()
     from account.risk import new_opportunity_candidates
+    from account.risk_gateway import get_iv_regime, get_risk_snapshot
 
-    _snap = _am["_compute_risk_snapshot"](_ACCT)
-    _iv   = _am["_compute_iv_regime"](_ACCT)
+    _snap = get_risk_snapshot(_ACCT)
+    _iv   = get_iv_regime(_ACCT)
     _ai   = _am["_load_ai_scores"]()
     # 2026-09: spread pairing moved to account.spread_pairing, so this no
     # longer needs _get_am() reflection. Data loading (middleware) stays
