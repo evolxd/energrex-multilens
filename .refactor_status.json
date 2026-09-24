@@ -5,8 +5,8 @@
   "target_module": "account_monitor.py -> _compute_risk_snapshot + _compute_iv_regime (落点 account/risk.py)",
   "motivation": "97行/23分支的全库最重反射依赖函数 + 57行/18分支的关联函数，组合拆分，建立黄金快照防线",
   "progress": {
-    "tests_passed": 859,
-    "tests_total": 859
+    "tests_passed": 871,
+    "tests_total": 871
   },
   "logs": [
     {
@@ -63,6 +63,11 @@
       "time": "2026-09-23T16:00:00-07:00",
       "event": "PHASE_3_SANDBOX_REFACTOR",
       "message": "用户裁决 today/now 时区口径：阶段三严格『行为保真』，today 默认值继续用服务器本地 datetime.date.today()，不隐式变更；已在架构文档第 6 节记录漂移问题留给独立任务。核心搬家：compute_iv_regime / compute_risk_snapshot 连同 24 字段 RiskSnapshot TypedDict、IVRow/IVPositionStatus/IVRegimeSnapshot、Protocol 契约整体落地 account/risk.py，纯函数不 import streamlit/DB/网络，_BETA_SPY/_RISK_LIMITS 等全局态全部改参数注入。account_monitor.py 的两个函数瘦身为薄包装（取数+组装 Inputs），签名不变；4 个因搬家变成死代码的 import（_classify_stress_status/_classify_drawdown_status/_compute_twr_drawdown/_compute_portfolio_stress_test）一并清理，已核实全库（含 _cascade.py 的 _get_am() 反射字典）无其他调用点。搬家过程中交叉验证测试当场抓到一个真实 bug：RiskSnapshotInputs['now'] 最初设计成传 naive datetime.datetime.now()，freezegun 冻结测试下 4 个场景 data_age_hours 差 7 小时、data_stale 甚至翻转——根因是 naive now() 在 freezegun 下的返回值跟 astimezone() 对 naive 输入的本地时区解读不是同一套语义；改为要求调用方传 aware datetime（datetime.datetime.now(datetime.timezone.utc)），内部统一 astimezone() 换算后问题消失，已在契约 docstring 记录这次教训。验证：12 个新增交叉验证测试（新纯函数 vs 阶段二黄金快照）12/12 通过；搬家后原有 19 个黄金快照测试（经新薄包装）19/19 通过；3 组 PYTHONHASHSEED 稳定；在新落点 account/risk.py 反向证伪 leverage 乘数，4+4 个场景（薄包装路径+直接调用路径）精确变红、零误报，已还原；全量回归 859 passed（847 基线 + 12 新增）。提交 5c07f13。反射调用点（_cascade.py x2、pages/5_⚖️_仓位管理.py、pre_trade_check.py 共 4+1 处）本轮按用户指示不动——薄包装签名不变，这些调用点无需改动即可正常工作，留给未来单独清理。"
+    },
+    {
+      "time": "2026-09-23T17:00:00-07:00",
+      "event": "PHASE_4_COMPLETE",
+      "message": "反射调用解耦：新增 account/risk_gateway.py 作为共享取数层（get_risk_snapshot/get_iv_regime），复刻 account_monitor.py 原有 4 SQL + 2 网络调用 + beta缓存/风险限额读取逻辑，不依赖 Streamlit；唯一行为偏离是 _RISK_LIMITS/_BETA_SPY 从『随 account_monitor.py mtime 缓存』改成『每次调用都读最新』，只会更新不会更旧，已在模块文档记录。5 处外部反射调用点全部改直接 import：_cascade.py 2 处、pre_trade_check.py 2 处（risk_snapshot+iv_regime）、pages/5_⚖️_仓位管理.py 1 处，后者顺带移除了整个仅为此用途存在的 _cascade 依赖。account_monitor.py 自身的薄包装保持不变（不切到网关），因为它的 _get_atm_iv_batch 带 @st.cache_data(ttl=600)，切网关会让生产 UI 失去这层 10 分钟缓存、增加真实 MarketData API 调用——判断为不该在本轮静默接受的代价。验证：12 个网关交叉验证测试全部通过；反向证伪改坏 underlyings 提取逻辑，4 个含期权持仓场景精确变红、其余零误报，已还原；3 组 PYTHONHASHSEED 稳定；全量回归 871 passed（859 基线 + 12 新增）。提交 3e57eb5。全库 grep 确认 _compute_risk_snapshot/_compute_iv_regime 的字典式反射调用已清零。四阶段重构流水线（架构侦察→安全网→核心搬家→清理接线）圆满完成。"
     }
   ]
 }
