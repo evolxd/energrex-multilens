@@ -310,6 +310,7 @@ from account.marketdata import get_spot_prices_batch as _get_spot_prices_batch_m
 from account.marketdata import get_vix_snapshot as _get_vix_snapshot_md
 from account.importers import parse_money as _parse_money
 from account.importers import process_csv_file as _account_process_csv_file
+from account.snapshot_age import describe as _snapshot_age
 
 
 def _refresh_options_prices(acct_id: str) -> tuple[int, int]:
@@ -3882,11 +3883,29 @@ _brief_hdr_col, _brief_btn_col = st.columns([4, 1])
 with _brief_hdr_col:
     if _briefing:
         _gen_time_disp = (_briefing["gen_time"] or "")[:16].replace("T", " ")
+        # 这一整块的数字来自存库快照，而页面顶部那条横幅是打开页面时实时算
+        # 的——两者上下相邻，中间没有任何标记说它们不是同一时刻的数。
+        # 2026-09-20 实测：顶部 BD 271.3%、这里 187.5%，差 83.8 个点，差的
+        # 正是 SPCX/ETHU 两个 beta 修好之前生成的快照（独立复算 83.6 个点）。
+        # war_room.py 早就为同一个坑加了快照年龄，这份拷贝一直没有。
+        # gen_time 是不带时区的纽约墙上钟点（见 _save_daily_briefing），拿本地
+        # 时间去减会差出一个固定偏移——在太平洋时区的机器上正好 -3 小时，于是
+        # 3 分钟前的快照显示成「-3.0小时前」。换算收在 account/snapshot_age.py。
+        _b_hrs, _b_sev, _b_age = _snapshot_age(_briefing["gen_time"])
+        _b_col = {"stale": _RED, "future": _RED,
+                  "warn": _AMB}.get(_b_sev or "", _MUTED)
+        _b_age_txt = (
+            f"<span style='color:{_b_col}'> · 快照 {_b_age}</span>"
+            + (f"<br><span style='color:{_b_col}'>⚠ 这一块是冻结的旧数，"
+               f"顶部横幅才是实时值；两者不一致时以顶部为准，"
+               f"或点右侧「重新生成」。</span>"
+               if _b_sev in ("warn", "stale") else "")
+        )
         st.markdown(
             f"<div style='font-size:13px;font-weight:700;color:{_TEXT};"
             f"margin:8px 0 4px'>⚡ 今日操作简报</div>"
             f"<div style='font-size:11px;color:{_MUTED}'>"
-            f"生成时间：{_gen_time_disp} ET</div>",
+            f"生成时间：{_gen_time_disp} ET{_b_age_txt}</div>",
             unsafe_allow_html=True,
         )
     else:
