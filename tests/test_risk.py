@@ -17,6 +17,7 @@ from account.risk import (
     classify_stress_status,
     compute_exit_analysis,
     compute_portfolio_stress_test,
+    compute_index_hedge_plan,
     compute_qqq_hedge_plan,
     compute_twr_drawdown,
     delta_drift_trigger,
@@ -672,6 +673,82 @@ class ComputeQqqHedgePlanTests(unittest.TestCase):
         reasons = with_vix_and_event["hedge_governance"]["trigger_reasons"]
         self.assertIn("VIX_SPIKE", reasons)
         self.assertIn("EVENT_RISK", reasons)
+
+
+class ComputeIndexHedgePlanTests(unittest.TestCase):
+    """2026-09-20: QQQ 的对冲方案函数推广到任意指数 ETF，因为账户需要用 SMH
+    对冲半导体那一段，而 SMH 此前一张方案都算不出来。"""
+
+    def _smh(self, **overrides):
+        kwargs = dict(
+            underlying="SMH", equity=500000, current_bd=900000, current_bdr=1.8,
+            target_bd_ratio=1.50, spot=300.0, iv_pct=32.0, beta=1.75,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=10000.0, today=datetime.date(2026, 6, 1),
+        )
+        kwargs.update(overrides)
+        return compute_index_hedge_plan(**kwargs)
+
+    def test_qqq_wrapper_output_is_unchanged_by_the_generalisation(self):
+        """包装函数必须跟拆分之前逐字一致——门⑥账户监控的对冲卡片直接读
+        这些键，宽度和行权价对齐一变，它显示的下单指令就变了。"""
+        result = compute_qqq_hedge_plan(
+            equity=500000, current_bd=900000, current_bdr=1.8, target_bd_ratio=1.50,
+            qqq_price=500.0, qqq_iv_pct=20.0, beta_qqq=1.31,
+            existing_legs=[], existing_bd=0.0, n_existing=0,
+            current_option_cost=10000.0, today=datetime.date(2026, 6, 1),
+        )
+        self.assertAlmostEqual(result["plan_a"]["buy_strike"], 485.0)
+        self.assertAlmostEqual(result["plan_a"]["sell_strike"], 450.0)
+        self.assertAlmostEqual(result["plan_b"]["sell_strike"], 425.0)
+        self.assertAlmostEqual(result["qqq_price"], 500.0)
+        self.assertAlmostEqual(result["b_qqq"], 1.31)
+
+    def test_spread_width_scales_with_spot_instead_of_staying_at_qqq_dollars(self):
+        """$35 宽在 $600 的 QQQ 上是常规结构，在 $300 的 SMH 上是两倍宽——
+        照搬会把 SMH 的方案算成一个完全不同性质的结构。"""
+        plan = self._smh()["plan_a"]
+        width = plan["buy_strike"] - plan["sell_strike"]
+        self.assertAlmostEqual(width, 15.0)      # 300 × 5.8% → 对齐 $5
+        self.assertAlmostEqual(plan["buy_strike"], 290.0)   # 300 × 97%
+
+    def test_occ_symbols_carry_the_right_root(self):
+        plan = self._smh()["plan_a"]
+        self.assertEqual(plan["buy_occ"], "SMH260830P00290000")
+        self.assertEqual(plan["sell_occ"], "SMH260830P00275000")
+
+    def test_hedging_only_a_sleeve_needs_fewer_contracts_than_the_whole_book(self):
+        """半导体那一段只占超出量的一部分；按全额算 SMH 的张数就是重复对冲。"""
+        whole = self._smh()["plan_a"]["n_total"]
+        sleeve = self._smh(bd_to_hedge=60000.0)["plan_a"]["n_total"]
+        self.assertGreater(whole, 0)
+        self.assertLess(sleeve, whole)
+
+    def test_an_overridden_hedge_need_is_the_one_reported_back(self):
+        result = self._smh(bd_to_hedge=60000.0)
+        self.assertAlmostEqual(result["bd_to_hedge"], 60000.0)
+
+    def test_plan_c_tops_up_with_plan_a_width_not_a_hardcoded_thirty_five(self):
+        plan = self._smh()
+        self.assertAlmostEqual(
+            plan["plan_c"]["buy_strike"] - plan["plan_c"]["sell_strike"],
+            plan["plan_a"]["buy_strike"] - plan["plan_a"]["sell_strike"],
+        )
+
+    def test_max_loss_is_the_debit_and_max_payoff_is_the_width_less_the_debit(self):
+        plan = self._smh()["plan_a"]
+        n, width = plan["n_total"], plan["buy_strike"] - plan["sell_strike"]
+        self.assertAlmostEqual(plan["max_loss"], plan["total_cost"])
+        self.assertAlmostEqual(
+            plan["max_payoff"],
+            round(n * width * 100 - n * plan["cost_per_spread"], 0),
+        )
+
+    def test_a_low_priced_etf_still_gets_a_usable_width(self):
+        # 5.8% of $20 rounds to $0 on a $5 grid -- one strike step, not a
+        # zero-width "spread" that would divide by zero downstream.
+        plan = self._smh(spot=20.0)["plan_a"]
+        self.assertGreater(plan["buy_strike"] - plan["sell_strike"], 0)
 
 
 class CheckOtmSpreadAlertsTests(unittest.TestCase):

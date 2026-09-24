@@ -8,6 +8,7 @@
  "leverage_delta": 0.01,
  "beta_delta": 0.0,
  "beta_delta_ratio": 0.0,
+ "beta_delta_by_underlying": {},
  "theta_per_day": 0.0,
  "vega_per_pt": 0.0,
  "gamma_total": 0.0,
@@ -15,6 +16,14 @@
  "stress_10_ratio": 0.0,
  "stress_20": 0.0,
  "stress_20_ratio": 0.0,
+ "stress_ladder": {
+  "-5": 0.0,
+  "-10": 0.0,
+  "-15": 0.0,
+  "-20": 0.0
+ },
+ "protection_gap": null,
+ "bd_ceiling_from_stress": null,
  "nearest_expiry_date": "2027-06-18",
  "nearest_expiry_sym": "ZZZZ",
  "risk_status": "GREEN",

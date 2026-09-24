@@ -43,6 +43,11 @@ class Exposures:
     by_chain_pct: dict[str, float] = field(default_factory=dict)
     unclassified_tickers: list[str] = field(default_factory=list)
     by_ticker_days_to_exit: dict[str, float] = field(default_factory=dict)
+    #: 标的 → 产业链，by_chain_pct 汇总之前那一步的明细。汇总值回答"超没超
+    #: 限"，明细回答"超了该减哪一只"——account.rebalance 要按链把超出的部分
+    #: 摊到具体标的上，没有这张表就只能反推，而反推会在两只票占比相同时给出
+    #: 错的答案。
+    chain_by_ticker: dict[str, str] = field(default_factory=dict)
 
     @property
     def max_single_stock_pct(self) -> float:
@@ -181,12 +186,14 @@ def compute_exposures(
     }
 
     by_chain_pct: dict[str, float] = {}
+    chain_by_ticker: dict[str, str] = {}
     unclassified: list[str] = []
     for symbol, pct in by_ticker_pct.items():
         chain = category_of(symbol)
         if not chain:
             chain = UNCLASSIFIED
             unclassified.append(symbol)
+        chain_by_ticker[symbol] = chain
         by_chain_pct[chain] = by_chain_pct.get(chain, 0.0) + pct
 
     cash_pct = (float(cash_balance or 0.0) / total_equity) * 100.0
@@ -208,6 +215,7 @@ def compute_exposures(
         by_chain_pct=by_chain_pct,
         unclassified_tickers=sorted(unclassified),
         by_ticker_days_to_exit=by_ticker_days_to_exit,
+        chain_by_ticker=chain_by_ticker,
     )
 
 

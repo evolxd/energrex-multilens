@@ -8,6 +8,10 @@
  "leverage_delta": 0.35,
  "beta_delta": 12689.0,
  "beta_delta_ratio": 0.1154,
+ "beta_delta_by_underlying": {
+  "SPY": 5600.0,
+  "NVDA": 7089.0
+ },
  "theta_per_day": 1.21,
  "vega_per_pt": -17.05,
  "gamma_total": 2.9591,
@@ -15,6 +19,14 @@
  "stress_10_ratio": -0.0122,
  "stress_20": -2507.0,
  "stress_20_ratio": -0.0228,
+ "stress_ladder": {
+  "-5": -688.0,
+  "-10": -1339.0,
+  "-15": -1946.0,
+  "-20": -2507.0
+ },
+ "protection_gap": "0%→-5% 这一段亏 $688，而更深的 -5%→-10% 只多亏 $651——保护腿在深水区才起作用，头一段是敞着的。这种结构扛得住崩盘，却在温和回调里流血，而温和回调发生的次数多得多。",
+ "bd_ceiling_from_stress": 156324.2562465949,
  "nearest_expiry_date": "2027-06-18",
  "nearest_expiry_sym": "NVDA",
  "risk_status": "GREEN",

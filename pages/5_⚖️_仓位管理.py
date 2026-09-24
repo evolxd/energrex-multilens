@@ -26,8 +26,10 @@ from scoring.exposure_context import (  # noqa: E402
     load_avg_dollar_volume,
     load_limits,
     load_portfolio,
+    stock_prices_and_values,
     underlyings_in,
 )
+from account.rebalance import plan_rebalance  # noqa: E402
 from scoring.mispricing_store import append_snapshot  # noqa: E402
 from scoring.position_exposure import (  # noqa: E402
     UNCLASSIFIED,
@@ -207,6 +209,84 @@ else:
                 _room = _limit_v - (_reading or 0.0)
                 st.caption(f"上限 {_limit_v:.1f}{_spec.unit} ｜ 余量 {_room:+.1f}{_spec.unit}")
 
+    # ── 两条限额是否在互相矛盾 ──────────────────────────────────────
+    # BD 限额和压力限额治理的是同一个风险，但它们是各自独立设的，可以打架：
+    # 2026-09-20 实测 BD 273.5%（限额 350%，还剩 76.5 个点余量，看着很安全）
+    # 的同时，压力 -10% 是 17.5%（限额 15%，超了）。这时 BD 那条线根本不会
+    # 先触发，等于没在起约束作用。把压力线换算成 BD 口径摆在一起，这件事
+    # 才看得见。
+    _bd_ceiling = _risk_snap.get("bd_ceiling_from_stress")
+    _bd_now = abs(_risk_snap.get("beta_delta_ratio") or 0.0)
+    _bd_limit = risk_snapshot_limits.get("max_beta_delta_ratio")
+    if _bd_ceiling and _risk_snap.get("equity"):
+        _ceiling_ratio = _bd_ceiling / _risk_snap["equity"]
+        _c1, _c2, _c3 = st.columns(3)
+        _c1.metric("当前 Beta-Delta", f"{_bd_now * 100:.0f}%")
+        _c2.metric("BD 限额（已设）",
+                   f"{_bd_limit * 100:.0f}%" if _bd_limit else "—")
+        _c3.metric("压力线反推的 BD 上限", f"{_ceiling_ratio * 100:.0f}%",
+                   delta=f"{(_ceiling_ratio - _bd_now) * 100:+.0f} 个点",
+                   delta_color="normal" if _ceiling_ratio >= _bd_now else "inverse",
+                   help="按当前结构**等比例**减仓时，BD 降到这个数压力恰好回到线内。"
+                        "等比例减仓下它是精确值不是近似——BD 和压力损失都是持仓上的"
+                        "求和，同乘一个系数。但它对选择性减仓不成立：先平掉保护腿，"
+                        "BD 降了压力反而会涨。用它定「减多少」，不能定「减哪个」。")
+
+        if _bd_limit and _ceiling_ratio < _bd_limit:
+            st.warning(
+                f"**两条限额在打架。** BD 限额 {_bd_limit * 100:.0f}% 比压力线"
+                f"要求的 {_ceiling_ratio * 100:.0f}% 松了 "
+                f"{(_bd_limit - _ceiling_ratio) * 100:.0f} 个点——在这个组合结构下，"
+                "BD 那条线永远不会先触发，真正约束你的只有压力线。"
+                f"要让两条线说同一件事，BD 限额得收到 {_ceiling_ratio * 100:.0f}% 附近。"
+                "（改限额要走下面的哈希链治理：书面理由 + 冷静期，这里只是把"
+                "换算摆出来，不自动改。）"
+            )
+
+    # ── 损失曲线的形状 ──────────────────────────────────────────────
+    _ladder = _risk_snap.get("stress_ladder") or {}
+    if _ladder:
+        with st.expander("损失曲线形状（-5% / -10% / -15% / -20%）"):
+            from account.risk import stress_curve_shape as _curve_shape
+            import pandas as _pd_sc
+            _eq_sc = _risk_snap.get("equity") or 0.0
+            _bands = _curve_shape({int(k): float(v) for k, v in _ladder.items()})
+            st.dataframe(
+                _pd_sc.DataFrame([
+                    {
+                        "区间": f"{_b['from_pct']}% → {_b['to_pct']}%",
+                        "这一段多亏": f"${abs(_b['marginal']):,.0f}",
+                        "累计亏损": f"${abs(_b['cumulative']):,.0f}",
+                        "累计占净值": (f"{abs(_b['cumulative']) / _eq_sc * 100:.1f}%"
+                                       if _eq_sc else "—"),
+                        "比上一段便宜": "是" if _b["cheaper_than_previous"] else "",
+                    }
+                    for _b in _bands
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(
+                "只看 -10/-20 两个总数，看不出曲线的形状。拆成分段之后才看得见"
+                "后一段是不是比前一段便宜——那说明长 put 在深水区才起作用。"
+            )
+
+    _gap = _risk_snap.get("protection_gap")
+    if _gap:
+        st.info(f"🛡️ {_gap}")
+
+    # ── beta 用的是哪一种口径 ───────────────────────────────────────
+    # 压力测试算的是 beta × 负的冲击，要的是下跌日回归出来的系数；但下跌日
+    # 只用得上一半样本、标准误约 √2 倍，不是每个标的都测得出够精确的值。
+    # 测不出的保留全样本口径——这是刻意取舍。危险的不是口径不齐，是看不出
+    # 某个标的现在用的是哪一种，所以这里把它显示出来。
+    try:
+        from account.beta_quality import mixed_kind_note as _mixed_kind_note
+        _kind_note = _mixed_kind_note(_underlyings)
+    except Exception:
+        _kind_note = None
+    if _kind_note:
+        st.caption(f"📐 {_kind_note}")
+
 
 # ── 预警 ────────────────────────────────────────────────────────────
 st.subheader("预警")
@@ -235,6 +315,282 @@ else:
             f"**逼近 · {item['label']}**{detail}：当前 {item['reading']:.1f}{unit}，"
             f"限额 {item['limit']:.1f}{unit}。"
         )
+
+
+# ── 调仓指令 ─────────────────────────────────────────────────────────
+# 上面的「预警」只会说"超限期间无法调高该限额，只能调整持仓"——那句话本身
+# 不可执行：调哪一只、调多少、调完还超不超，一个数字都没有。这一节补上。
+#
+# 两条路径，对应两种把敞口降下来的办法：
+#   现货调仓  —— 真卖掉，集中度/流动性/现金下限这几条只能靠它。算法住在
+#                account/rebalance.py：顺序结算，一笔减仓同时满足多条限额时
+#                不会被各条各要求一遍。
+#   指数对冲  —— 不动现货，用 put spread 把方向性敞口压下去，Beta-Delta 这
+#                条靠它。半导体那一段配 SMH、其余配 QQQ，见 account/hedge_split.py。
+st.subheader("调仓指令")
+
+_reb_tab, _hedge_tab = st.tabs(["🔻 现货调仓", "🛡️ 指数对冲（QQQ / SMH）"])
+
+with _reb_tab:
+    if exposures is None:
+        st.caption("无持仓数据，无法给出调仓指令。")
+    elif not any(v is not None for v in current_limits.values()):
+        st.caption("尚未设定任何限额，没有需要回到线内的约束。")
+    else:
+        _prices, _stock_value = stock_prices_and_values(positions)
+        _plan = plan_rebalance(
+            exposures,
+            current_limits,
+            prices=_prices,
+            stock_value=_stock_value,
+            avg_dollar_volume=avg_dollar_volume,
+        )
+        if _plan.is_empty:
+            st.success("全部硬约束都在线内，没有必须执行的减仓。")
+        else:
+            st.caption(
+                f"按「流动性 → 单票 → 产业链 → 现金下限」顺序结算：每一步都在前一步"
+                f"减完之后重算，所以同一笔仓位不会被几条限额各要求卖一遍。"
+                f"合计减仓 ${_plan.proceeds:,.0f}，现金占比 "
+                f"{_plan.cash_pct_before:.1f}% → {_plan.cash_pct_after:.1f}%。"
+                "股数向上取整——宁可多卖一股落到线内，也不要算出一个刚好卡在线上的数。"
+            )
+            import pandas as _pd_reb
+            st.dataframe(
+                _pd_reb.DataFrame([
+                    {
+                        "标的": t.symbol,
+                        "卖出股数": f"{t.shares:,}" if t.shares is not None else "—",
+                        "减仓金额": f"${t.dollars:,.0f}",
+                        "占比": f"{t.from_pct:.1f}% → {t.to_pct:.1f}%",
+                        "触发限额": "、".join(t.reasons),
+                        "期权腿待处理": f"${t.option_dollars:,.0f}" if t.needs_manual_option_leg else "—",
+                    }
+                    for t in _plan.trims
+                ]),
+                use_container_width=True, hide_index=True,
+                height=min(60 + len(_plan.trims) * 38, 400),
+            )
+            if any(t.needs_manual_option_leg for t in _plan.trims):
+                st.warning(
+                    "带「期权腿待处理」的标的，光卖现货减不到线内——剩下的敞口在价差里。"
+                    "减哪一腿、平仓还是往外滚，这一页没有信息回答，要到门②期权分析页看结构。"
+                )
+            if any(t.shares is None for t in _plan.trims):
+                st.info("「卖出股数」为「—」的标的，持仓快照里没有股数，只能给金额。")
+            for _note in _plan.unresolved:
+                st.error(_note)
+
+with _hedge_tab:
+    st.caption(
+        "QQQ 和 SMH 不是二选一，也不能各按全额买一遍——那是把同一笔敞口对冲两次。"
+        "下面先按产业链把「超出目标的那部分 Beta-Delta」切开：半导体那一段交给 SMH"
+        "（跟半导体同涨同跌，基差小），其余交给 QQQ（覆盖面广、权利金便宜），"
+        "两段相加正好等于要对冲的总量。现有的 QQQ/SMH 保护腿已经按各自那一侧扣掉了，"
+        "所以下面是「还差多少」，不是「一共要买多少」。"
+    )
+
+    # 两个数字不是一回事，滑块的量程必须同时装得下：
+    #   生效限额（上面「风险快照限额」那条，走哈希链治理）＝ 不能越过的红线；
+    #   工作目标 150%（Portfolio_Config 的建议值）＝ 平时要压到的水位。
+    # 量程写死 100–200 时，限额 350% 会被当成初值塞进一个上限 200 的滑块，
+    # 页面上就显示出「目标 350%」这种超出自己量程的数——所以量程跟着限额走。
+    _bd_limit_pct = (risk_snapshot_limits.get("max_beta_delta_ratio") or 1.5) * 100
+    _slider_max = int(max(200, round(_bd_limit_pct)))
+    _hedge_target_pct = st.slider(
+        "目标 Beta-Delta（% 净值）",
+        min_value=50, max_value=_slider_max,
+        value=int(min(150, _slider_max)),
+        step=5, key="pos_hedge_target",
+        help=(
+            f"把组合 Beta-Delta 压到这个水位。默认 150%（Portfolio_Config 的工作目标）；"
+            f"经治理生效的硬红线是 {_bd_limit_pct:.0f}%，那是不能越过的线，不是平时该待的地方。"
+        ),
+    )
+    if _hedge_target_pct > _bd_limit_pct:
+        st.warning(
+            f"目标 {_hedge_target_pct}% 已经高过生效限额 {_bd_limit_pct:.0f}%——"
+            "照这个目标对冲完仍然是超限状态。"
+        )
+
+    try:
+        import _cascade as _casc_h
+        _hedge = _casc_h._get_am()["_compute_hedge_split"](
+            "account_1", _hedge_target_pct / 100.0
+        )
+    except Exception as _h_exc:
+        _hedge = {"error": str(_h_exc)}
+
+    if _hedge.get("error"):
+        st.info(
+            f"算不出对冲方案：{_hedge['error']}。"
+            "先到「账户监控」页同步 Firstrade——方案要用到实时的 QQQ/SMH 报价和 IV。"
+        )
+    else:
+        _split = _hedge["split"]
+        _hc1, _hc2, _hc3, _hc4 = st.columns(4)
+        _hc1.metric("当前 Beta-Delta",
+                    f"{_split.total_bd / _split.equity * 100:.1f}%" if _split.equity else "—")
+        _hc2.metric("目标", f"{_hedge_target_pct}%")
+        _hc3.metric("半导体那一段", f"{_split.semi_pct_of_equity:.1f}%",
+                    delta=f"占超出量 {_split.semi_share * 100:.0f}%")
+        _hc4.metric("需对冲", f"${_split.bd_to_hedge:+,.0f}")
+
+        # ── 已有保护的宽度检查 ──────────────────────────────────
+        # 放在"需不需要加对冲"之前，因为这两件事互相独立：BD 已经达标的
+        # 账户，保护照样可能在 -10% 上拿不出内在价值。hedge_governance 查
+        # 的是成本率和 DTE，两项全合格也查不出价差太窄——2026-09-20 实测
+        # SMH 525/500 只有 4.4% 宽，大盘跌 7.1% 就打满。
+        _w = _hedge.get("width")
+        if _w and _w.get("windows"):
+            st.markdown("#### 已有保护的有效区间")
+            import pandas as _pd_w
+            st.dataframe(
+                _pd_w.DataFrame([
+                    {
+                        "结构": (f"{_x['underlying']} {_x['long_strike']:.0f}/"
+                                 f"{_x['short_strike']:.0f}"
+                                 if _x["short_strike"] is not None
+                                 else f"{_x['underlying']} {_x['long_strike']:.0f} 裸多头"),
+                        "张数": _x["contracts"],
+                        # None 有两种来由，必须分开显示：真的没有空头腿
+                        # （不封顶，是好事），还是缺现价/beta 算不出来（未知，
+                        # 不是好事）。混成一个"不封顶"会把取数失败读成保护充足。
+                        "起效（大盘跌）": (f"{abs(_x['activation_pct']) * 100:.1f}%"
+                                            if _x["activation_pct"] is not None else "算不出"),
+                        "打满（大盘跌）": (
+                            "不封顶" if _x["short_strike"] is None
+                            else (f"{abs(_x['cap_pct']) * 100:.1f}%"
+                                  if _x["cap_pct"] is not None else "算不出")),
+                        "有效窗口": (
+                            "无限" if _x["short_strike"] is None
+                            else (f"{_x['useful_window_pct'] * 100:.1f} 个点"
+                                  if _x["useful_window_pct"] is not None else "算不出")),
+                        "最大赔付": (f"${_x['max_payoff']:,.0f}"
+                                     if _x["max_payoff"] is not None else "无上限"),
+                    }
+                    for _x in _w["windows"]
+                ]),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(
+                "一个 put 价差只在「长腿行权价 → 短腿行权价」这个窗口里起作用："
+                "上面还没有内在价值，下面赔付已经打满。两个行权价除以标的 beta，"
+                "就换算成了「大盘要跌多少」，可以直接跟压力测试的情景比。"
+                "「起效」是就内在价值而言——在那之前价差还有 delta 和 vega，"
+                "但它的价值全是会流失的时间价值。"
+            )
+            for _f in _w["findings"]:
+                (st.warning if _f["severity"] == "WARN" else st.info)(_f["message"])
+            # notes 说的是"这次没算出来"，跟 findings 的"查出了问题"不是一回事，
+            # 两者都要显示——只显示 findings 的话，一个全是「算不出」的表格会
+            # 看起来像通过了检查。
+            if _w.get("notes"):
+                for _n in _w["notes"]:
+                    st.info(f"⚠ {_n}")
+            elif not _w["findings"]:
+                st.success("已有保护的有效区间覆盖了压力测试盯的两个跌幅，宽度没有问题。")
+        elif _w is not None:
+            for _n in _w.get("notes") or []:
+                st.caption(f"· {_n}")
+
+        if not _split.needs_hedge:
+            st.success(
+                f"Beta-Delta 已在目标之内（{_split.total_bd / _split.equity * 100:.1f}% "
+                f"≤ {_hedge_target_pct}%），不需要加对冲。"
+                "保护腿不是长期资产——没有触发条件时该考虑的是退出，不是加仓。"
+            )
+        else:
+            st.markdown(
+                f"**分段**：半导体 ${_split.semi_bd_to_hedge:,.0f} 交给 SMH　·　"
+                f"其余 ${_split.broad_bd_to_hedge:,.0f} 交给 QQQ"
+            )
+
+            # 两段一起做之后的合计。每张卡片上的「执行后」只算了它自己那一段，
+            # 两个数字都对，但都不是做完之后你实际看到的那个 Beta-Delta。
+            _comb = (_hedge.get("combined") or {}).get("plan_a")
+            if _comb and len(_comb["contracts"]) > 1:
+                _order = "　+　".join(
+                    f"{_root} × {_n} 张" for _root, _n in sorted(_comb["contracts"].items())
+                )
+                st.success(
+                    f"**两段都做（标准宽度）**：{_order}　·　"
+                    f"总成本 ${_comb['total_cost']:,.0f}（也是最大亏损）　·　"
+                    f"最大赔付 ${_comb['max_payoff']:,.0f}　·　"
+                    f"Theta {_comb['theta_change']:+.2f} $/天　·　"
+                    f"**执行后 Beta-Delta {_comb['post_bd_ratio']:.1f}%**。"
+                    "下面每张卡片上的「执行后」只算了它自己那一段，"
+                    "两段都做了之后是这里这个数。"
+                )
+
+            _plan_cols = st.columns(max(len(_hedge["plans"]), 1))
+            for _col, (_root, _hp) in zip(_plan_cols, sorted(_hedge["plans"].items())):
+                with _col:
+                    if _hp.get("error"):
+                        st.warning(
+                            f"**{_root}** 这一段算不出方案：{_hp['error']}。"
+                            f"张数要用 {_root} 的实时现价和 IV 算，取不到报价就没法给数字——"
+                            "先确认能连上行情源（账户监控页的报价也会一起失败）。"
+                        )
+                        continue
+                    _pa = _hp["plan_a"]
+                    _pb = _hp["plan_b"]
+                    st.markdown(f"#### {_root}")
+                    st.caption(
+                        f"现价 ${_hp['spot']:,.2f} ｜ IV {_hp['iv']:.1f}% ｜ β={_hp['beta']} ｜ "
+                        f"到期 {_hp['plan_exp_str']}（DTE≈{_hp['plan_dte']}天）"
+                    )
+                    for _label, _p in (("标准宽度", _pa), ("宽幅", _pb)):
+                        _width = _p["buy_strike"] - _p["sell_strike"]
+                        st.markdown(
+                            f"**{_label}（${_width:.0f} 宽）** — Put Debit Spread × "
+                            f"**{_p['n_total']}** 张\n\n"
+                            f"　🟢 买入 `{_p['buy_occ']}`\n\n"
+                            f"　🔴 卖出 `{_p['sell_occ']}`\n\n"
+                            f"　净权利金 ${_p['cost_per_spread']:.2f}/张　·　"
+                            f"总成本 **${_p['total_cost']:,.0f}**（也是最大亏损）\n\n"
+                            f"　最大赔付 ${_p['max_payoff']:,.0f}　·　"
+                            f"只做这一段则 Beta-Delta {_p['post_bd_ratio']:.1f}%　·　"
+                            f"Theta {_p['theta_change']:+.2f} $/天"
+                        )
+                    if _hp["n_existing"]:
+                        _pc = _hp["plan_c"]
+                        st.markdown(
+                            f"**保留现有 + 补充** — 已有 {_pc['n_existing']} 张"
+                            f"（已对冲 ${_pc['existing_bd']:+,.0f}），"
+                            f"再加 **{_pc['n_additional']}** 张同结构，"
+                            f"追加成本 ${_pc['additional_cost']:,.0f}"
+                        )
+
+            _gov = next(
+                (p.get("hedge_governance") for p in _hedge["plans"].values()
+                 if isinstance(p, dict) and p.get("hedge_governance")),
+                None,
+            )
+            if _gov:
+                st.caption(
+                    f"保护性 Put 纪律检查：{_gov.get('status', '—')}　·　"
+                    f"触发条件 {', '.join(_gov.get('trigger_reasons') or ['无'])}　·　"
+                    f"当前保护成本率 {_gov.get('campaign_cost_pct', 0):.2f}%。"
+                    "规则：保护不是长期资产；无触发条件时应退出，资金小优先用 put spread 控成本。"
+                )
+
+        with st.expander("这两段各包含哪些标的"):
+            _sc1, _sc2 = st.columns(2)
+            _sc1.markdown(
+                "**半导体（SMH 对冲）**\n\n" + ("、".join(_split.semi_symbols) or "—")
+            )
+            _sc2.markdown(
+                "**其余（QQQ 对冲）**\n\n" + ("、".join(_split.broad_symbols) or "—")
+            )
+            st.caption(
+                "口径 = 产业链「AI芯片」+「半导体设备」+「对冲(半导体)」。"
+                "「AI芯片」里混着 ANET/CSCO/DELL/TSLA 这些并非纯半导体的标的，"
+                "它们跟 SMH 的相关性不如 NVDA/AMD/MU——这是这个口径已知的近似之处，"
+                "所以名单摆在这里让你自己判断，而不是藏在计算里。"
+                "认不出产业链的标的一律落到 QQQ 一侧：宽基对冲什么都能沾一点，"
+                "当成半导体则会高估 SMH 该买的量。"
+            )
 
 
 # ── 仓位建议（历史胜率/赔率，按策略类型）────────────────────────────

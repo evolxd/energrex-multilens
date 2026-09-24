@@ -8,6 +8,9 @@
  "leverage_delta": 0.25,
  "beta_delta": 30327.0,
  "beta_delta_ratio": 0.3568,
+ "beta_delta_by_underlying": {
+  "AVGO": 30327.0
+ },
  "theta_per_day": -7.8,
  "vega_per_pt": 92.33,
  "gamma_total": 0.4272,
@@ -15,6 +18,14 @@
  "stress_10_ratio": -0.0231,
  "stress_20": -3453.0,
  "stress_20_ratio": -0.0406,
+ "stress_ladder": {
+  "-5": -1059.0,
+  "-10": -1967.0,
+  "-15": -2757.0,
+  "-20": -3453.0
+ },
+ "protection_gap": "0%→-5% 这一段亏 $1,059，而更深的 -5%→-10% 只多亏 $909——保护腿在深水区才起作用，头一段是敞着的。这种结构扛得住崩盘，却在温和回调里流血，而温和回调发生的次数多得多。",
+ "bd_ceiling_from_stress": 196534.466371276,
  "nearest_expiry_date": "2027-06-18",
  "nearest_expiry_sym": "AVGO",
  "risk_status": "GREEN",

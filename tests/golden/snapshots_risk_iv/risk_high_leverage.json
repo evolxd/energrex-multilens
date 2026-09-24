@@ -8,6 +8,9 @@
  "leverage_delta": 10.05,
  "beta_delta": 422165.0,
  "beta_delta_ratio": 21.1082,
+ "beta_delta_by_underlying": {
+  "AMD": 422165.0
+ },
  "theta_per_day": -115.97,
  "vega_per_pt": 978.71,
  "gamma_total": 10.7712,
@@ -15,6 +18,14 @@
  "stress_10_ratio": -1.4935,
  "stress_20": -51425.0,
  "stress_20_ratio": -2.5712,
+ "stress_ladder": {
+  "-5": -16038.0,
+  "-10": -29871.0,
+  "-15": -41634.0,
+  "-20": -51425.0
+ },
+ "protection_gap": "0%→-5% 这一段亏 $16,038，而更深的 -5%→-10% 只多亏 $13,833——保护腿在深水区才起作用，头一段是敞着的。这种结构扛得住崩盘，却在温和回调里流血，而温和回调发生的次数多得多。",
+ "bd_ceiling_from_stress": 42399.2780058461,
  "nearest_expiry_date": "2027-06-18",
  "nearest_expiry_sym": "AMD",
  "risk_status": "RED_HARD_STOP",
