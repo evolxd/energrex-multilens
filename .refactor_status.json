@@ -2,11 +2,11 @@
   "schema_version": "1.0",
   "status": "COMPLETED",
   "current_phase": "DONE",
-  "target_module": "account_monitor.py -> _compute_risk_snapshot + _compute_iv_regime (落点 account/risk.py)",
-  "motivation": "97行/23分支的全库最重反射依赖函数 + 57行/18分支的关联函数，组合拆分，建立黄金快照防线",
+  "target_module": "account_monitor.py -> _compute_sim_impact (落点 account/risk.py，全部四个已知孤立闭包中的最后一个)",
+  "motivation": "101行、唯一剩下的孤立闭包（close_underlying 平仓模拟 + qqq_hedge 对冲模拟），拆核心+按标的去重查库优化性能",
   "progress": {
-    "tests_passed": 871,
-    "tests_total": 871
+    "tests_passed": 1088,
+    "tests_total": 1088
   },
   "logs": [
     {
@@ -68,6 +68,31 @@
       "time": "2026-09-23T17:00:00-07:00",
       "event": "PHASE_4_COMPLETE",
       "message": "反射调用解耦：新增 account/risk_gateway.py 作为共享取数层（get_risk_snapshot/get_iv_regime），复刻 account_monitor.py 原有 4 SQL + 2 网络调用 + beta缓存/风险限额读取逻辑，不依赖 Streamlit；唯一行为偏离是 _RISK_LIMITS/_BETA_SPY 从『随 account_monitor.py mtime 缓存』改成『每次调用都读最新』，只会更新不会更旧，已在模块文档记录。5 处外部反射调用点全部改直接 import：_cascade.py 2 处、pre_trade_check.py 2 处（risk_snapshot+iv_regime）、pages/5_⚖️_仓位管理.py 1 处，后者顺带移除了整个仅为此用途存在的 _cascade 依赖。account_monitor.py 自身的薄包装保持不变（不切到网关），因为它的 _get_atm_iv_batch 带 @st.cache_data(ttl=600)，切网关会让生产 UI 失去这层 10 分钟缓存、增加真实 MarketData API 调用——判断为不该在本轮静默接受的代价。验证：12 个网关交叉验证测试全部通过；反向证伪改坏 underlyings 提取逻辑，4 个含期权持仓场景精确变红、其余零误报，已还原；3 组 PYTHONHASHSEED 稳定；全量回归 871 passed（859 基线 + 12 新增）。提交 3e57eb5。全库 grep 确认 _compute_risk_snapshot/_compute_iv_regime 的字典式反射调用已清零。四阶段重构流水线（架构侦察→安全网→核心搬家→清理接线）圆满完成。"
+    },
+    {
+      "time": "2026-09-24T09:00:00-07:00",
+      "event": "PHASE_1_SCOUTING",
+      "message": "新一轮阶段一：核对上一轮 PHASE_4_COMPLETE 之后 account_monitor.py 里『尚未处理』清单的最后一项——_compute_sim_impact（1502-1602 行，101 行，close_underlying 平仓模拟 + qqq_hedge 对冲模拟两条分支）。全库 grep 确认唯一真实调用点在 account_monitor.py 自身（模拟执行按钮回调），无 mock.patch 字符串引用、无反射调用，是全部四个已知孤立闭包（_build_spread_portfolios/_compute_risk_snapshot/_compute_iv_regime/_compute_sim_impact）中最后一个、也是依赖最简单的一个。"
+    },
+    {
+      "time": "2026-09-24T09:30:00-07:00",
+      "event": "PHASE_1_COMPLETE",
+      "message": "契约敲定：compute_sim_impact(sim_actions, base_snap, hplan, *, underlying_prices, beta_map, options_by_underlying) 落点既有 account/risk.py（同 compute_risk_snapshot/compute_qqq_hedge_plan），新增 SimAction/SimOptionRow/SimImpactResult 三个 TypedDict。三处不纯依赖梳理完毕：_fetch_underlying_prices（网络，已按标的去重）、_BETA_SPY（全局字典）、_db()+SQL（原为逐 action 查询 options_positions，本轮唯一计划的行为差异——外壳改为按标的去重后只查一次；已向用户挑明这只减少 DB 往返次数、不改变任何计算结果，同一标的两个 action 仍各自独立叠加，用户确认批准。"
+    },
+    {
+      "time": "2026-09-24T10:00:00-07:00",
+      "event": "PHASE_2_SAFETY_NET",
+      "message": "tests/golden/test_sim_impact_golden.py 落地：13 个场景（空动作、未知类型×2、close_underlying 正常/无持仓/价格缺失/重复标的、qqq_hedge 空/含error/n≤0/正常、equity=0 除零保护、多动作叠加），PYTHONHASHSEED 0/1/42 三组 + 显式反序执行全部稳定通过。反向证伪：改坏 close_underlying 分支的 beta 乘数，精确命中 3 个含 NVDA×S>0×b≠1 的场景变红，其余 10 个零误报；已还原，CRLF 完整（裸 LF 数=0），git diff 归零。检查点提交 0a3f608（14 files, 497 insertions），全量回归 1061 passed（1047 基线 + 14 新增）。"
+    },
+    {
+      "time": "2026-09-24T11:00:00-07:00",
+      "event": "PHASE_3_EXTRACT",
+      "message": "核心搬家：account/risk.py 新增 compute_sim_impact（与原函数逐行对应），account_monitor.py 的 _compute_sim_impact 瘦身为外壳（101→26 行，签名不变），按 sorted(_unds) 逐标的查一次 options_positions（原为逐 action 查询）后委托新核心；清理因搬家变成死代码的 `from account.risk import bs_greeks as _bs_greeks` 导入，已全库 grep 确认无其他引用。交叉验证：13 个新核心直调测试 + 1 个去重专项测试 + 13 个既有黄金快照（外壳级）全部逐字节一致，共 28 passed；tests/test_risk.py 新增 13 个 DB-free 纯函数单测，87 passed。export_sanity.py 确认 _compute_sim_impact 唯一外部引用即测试文件自身，签名/位置未变。全量回归 1088 passed（1061 基线 + 27 新增），0 失败，0 次熔断/自愈。提交 b268258。"
+    },
+    {
+      "time": "2026-09-24T11:30:00-07:00",
+      "event": "REFACTOR_COMPLETE",
+      "message": "分支 refactor/account_monitor-compute_sim_impact 快进合并（fast-forward, cb5112e..b268258）进 main，合并后在 main 上重跑全量回归确认 1088 passed；git push origin main 成功同步远端；本地分支已删除；临时交接文件 _scratch_handoff_sim_impact.md 已清理。至此本文件历史上记录过的全部四个孤立闭包（_build_spread_portfolios → account/spread_pairing.py；_compute_risk_snapshot + _compute_iv_regime → account/risk.py + account/risk_gateway.py；_compute_sim_impact → account/risk.py）均已完成抽离，account_monitor.py 目前没有已知的、带 IO/全局态污染的大函数遗留。"
     }
   ]
 }
