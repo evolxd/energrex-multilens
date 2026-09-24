@@ -1,0 +1,18 @@
+{
+ "bd_delta": -56114.0,
+ "theta_delta": -8.48,
+ "s10_delta": 7379.0,
+ "s20_delta": 19632.0,
+ "cash_delta": 1100.0,
+ "beta_delta": -51114.0,
+ "beta_delta_ratio": -51.1,
+ "theta_per_day": -58.48,
+ "stress_10": 5379.0,
+ "stress_10_ratio": 5.4,
+ "stress_20": 15632.0,
+ "stress_20_ratio": 15.6,
+ "actions": [
+  "关闭 NVDA 期权（收回约$+2,000）",
+  "QQQ Put Spread×3张（方案A，成本$900）"
+ ]
+}

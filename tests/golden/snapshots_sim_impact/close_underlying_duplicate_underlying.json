@@ -1,0 +1,18 @@
+{
+ "bd_delta": -43200.0,
+ "theta_delta": 20.0,
+ "s10_delta": 1472.0,
+ "s20_delta": 2368.0,
+ "cash_delta": 4000.0,
+ "beta_delta": -38200.0,
+ "beta_delta_ratio": -38.2,
+ "theta_per_day": -30.0,
+ "stress_10": -528.0,
+ "stress_10_ratio": -0.5,
+ "stress_20": -1632.0,
+ "stress_20_ratio": -1.6,
+ "actions": [
+  "关闭 NVDA 期权（收回约$+2,000）",
+  "关闭 NVDA 期权（收回约$+2,000）"
+ ]
+}
