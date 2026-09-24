@@ -291,12 +291,10 @@ from account.risk import bs_greeks as _bs_greeks
 from account.risk import build_recommendations as _build_recommendations
 from account.risk import calculate_option_position_greeks as _calculate_option_position_greeks
 from account.risk import check_otm_spread_alerts as _check_otm_spread_alerts_impl
-from account.risk import classify_drawdown_status as _classify_drawdown_status
-from account.risk import classify_stress_status as _classify_stress_status
 from account.risk import compute_exit_analysis as _compute_exit_analysis_impl
-from account.risk import compute_portfolio_stress_test as _compute_portfolio_stress_test
+from account.risk import compute_iv_regime as _compute_iv_regime_pure
 from account.risk import compute_qqq_hedge_plan as _compute_qqq_hedge_plan_impl
-from account.risk import compute_twr_drawdown as _compute_twr_drawdown
+from account.risk import compute_risk_snapshot as _compute_risk_snapshot_pure
 from account.risk import delta_drift_trigger as _delta_drift_trigger
 from account.risk import load_options_cost_ratio_limit as _load_options_cost_ratio_limit
 from account.risk import score_label as _score_label_impl
@@ -409,11 +407,8 @@ def _compute_iv_regime(acct_id: str, min_samples: int = 20) -> dict:
     读取 iv_history + 当前 options_positions.iv，计算每个 symbol 的
     IV Rank / PIV，汇总组合 IV Regime 状态。
     逻辑与 update_iv_regime.py 完全一致（HIGH_PIV=0.85 / EXTREME_PIV=0.95）。
+    纯计算内核已搬到 account.risk.compute_iv_regime，这里只负责取数。
     """
-    HIGH_PIV    = 0.85
-    EXTREME_PIV = 0.95
-    LOW_PIV     = 0.30
-
     conn = _db()
     hist_rows = conn.execute(
         "SELECT symbol, iv FROM iv_history WHERE account_id=? ORDER BY timestamp",
@@ -423,58 +418,7 @@ def _compute_iv_regime(acct_id: str, min_samples: int = 20) -> dict:
         "WHERE account_id=? AND iv IS NOT NULL",
         (acct_id,)).fetchall()
     conn.close()
-
-    history: dict = {}
-    for r in hist_rows:
-        history.setdefault(r["symbol"], []).append(float(r["iv"]))
-
-    results = []
-    for cur in cur_rows:
-        sym = cur["symbol"]
-        current_iv = float(cur["iv"])
-        sample = list(history.get(sym, []))
-        if current_iv not in sample:
-            sample.append(current_iv)
-        n = len(sample)
-        iv_min, iv_max = min(sample), max(sample)
-        iv_rank = (current_iv - iv_min) / (iv_max - iv_min) if iv_max > iv_min else None
-        piv = sum(1 for v in sample if v <= current_iv) / n if n else None
-
-        if n < min_samples:
-            status = "INSUFFICIENT_HISTORY"
-        elif piv is not None and piv >= EXTREME_PIV:
-            status = "EXTREME_IV"
-        elif piv is not None and piv >= HIGH_PIV:
-            status = "HIGH_IV"
-        elif piv is not None and piv < LOW_PIV:
-            status = "LOW_IV"
-        else:
-            status = "NORMAL"
-
-        results.append({
-            "symbol": sym, "iv": current_iv, "n": n,
-            "iv_rank": iv_rank, "piv": piv, "status": status,
-        })
-
-    if not results:
-        return {"status": "NO_DATA", "positions": [], "max_piv": None}
-
-    sufficient = [r for r in results if r["status"] != "INSUFFICIENT_HISTORY"]
-    if not sufficient:
-        port_status = "INSUFFICIENT_HISTORY"
-    elif any(r["status"] == "EXTREME_IV" for r in sufficient):
-        port_status = "EXTREME_IV"
-    elif any(r["status"] == "HIGH_IV" for r in sufficient):
-        port_status = "HIGH_IV"
-    elif all(r["piv"] is not None and r["piv"] < LOW_PIV for r in sufficient):
-        port_status = "LOW_IV"
-    else:
-        port_status = "NORMAL"
-
-    max_piv = max((r for r in results if r["piv"] is not None),
-                  key=lambda x: x["piv"], default=None)
-
-    return {"status": port_status, "positions": results, "max_piv": max_piv}
+    return _compute_iv_regime_pure(hist_rows, cur_rows, min_samples)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -651,26 +595,11 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
       stress = q * mult * (d*ds + 0.5*g*ds²) + q * mult * v * iv_shock
     -10% 下跌: ds=-10%×S, iv_shock=+8 pts
     -20% 下跌: ds=-20%×S, iv_shock=+16 pts
+    纯计算内核已搬到 account.risk.compute_risk_snapshot，这里只负责取数
+    （4 次 SQL + 2 次网络请求 + 读 _BETA_SPY/_RISK_LIMITS）并组装成
+    RiskSnapshotInputs。
     """
     bal = _load_latest_balance(acct_id)
-    equity = float(bal.get("total_equity") or 0)
-    if equity <= 0:
-        return {"error": "no_equity"}
-
-    # ── 数据新鲜度：持仓/余额距上次同步已经过多久 ──────────────────────
-    # 压力测试直接读 DB 里的持仓快照，同步越旧，risk_status 就越可能是
-    # 基于一个已经不存在的持仓组合算出来的——静默沿用会把"两天前的安全"
-    # 显示成"现在安全"，所以这里算出年龄，交给上层判断要不要标红。
-    _sync_raw = bal.get("sync_time")
-    data_age_hours = None
-    try:
-        _sync_dt = datetime.datetime.fromisoformat(str(_sync_raw))
-        _now_dt  = datetime.datetime.now(_sync_dt.tzinfo) if _sync_dt.tzinfo else datetime.datetime.now()
-        data_age_hours = (_now_dt - _sync_dt).total_seconds() / 3600.0
-    except Exception:
-        pass
-    _STALE_HOURS = 24.0
-    data_stale = bool(data_age_hours is not None and data_age_hours > _STALE_HOURS)
 
     conn = _db()
 
@@ -683,11 +612,6 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
         "SELECT trade_date, SUM(amount) AS cf FROM transactions "
         "WHERE account_id=? AND type IN ('提款','存款','DEPOSIT','WITHDRAWAL') "
         "GROUP BY trade_date", (acct_id,)).fetchall()
-    _nav_by_d = {}
-    for r in _nav_rows:
-        _nav_by_d[str(r[0])] = float(r[1])
-    _cf_map_dd = {r[0]: float(r[1]) for r in _cf_rows_dd}
-    drawdown = _compute_twr_drawdown(_nav_by_d, _cf_map_dd)
 
     opts = conn.execute(
         "SELECT symbol, quantity, current_price, market_value, strike, expiry "
@@ -723,60 +647,18 @@ def _compute_risk_snapshot(acct_id: str) -> dict:
     # 对冲的规模和它要对冲的敞口口径不一致。_BETA_SPY 启动时已经是
     # {**_BETA_BASE, **缓存}，缺失标的照样有 _BETA_BASE 兜底，不存在漏标的
     # 的风险。
-    stress = _compute_portfolio_stress_test(
-        stks, opts,
-        underlying_prices=und_prices, iv_map=_iv_map, beta_map=_BETA_SPY,
-    )
-    gross, delta_notl, beta_delta = (
-        stress["gross_notional"], stress["delta_notional"], stress["beta_delta"]
-    )
-    theta_tot, vega_tot, gamma_tot = (
-        stress["theta_per_day"], stress["vega_per_pt"], stress["gamma_total"]
-    )
-    stress_10, stress_20 = stress["stress_10"], stress["stress_20"]
-    nearest_expiry_date, nearest_expiry_sym = (
-        stress["nearest_expiry_date"], stress["nearest_expiry_sym"]
-    )
-    # 走了默认 IV(0.30) 兜底的标的，用于在快照里留痕——跟
-    # compute_portfolio_stress_test 内部判断 IV 是否命中同一个条件，
-    # 但只需按 underlying 去重检查一次，不用重新走一遍逐 option 循环。
-    iv_fallback_syms = {und for und in underlyings if not _iv_map.get(und)}
-
-    leverage          = gross / equity if equity else None
-    leverage_delta    = delta_notl / equity if equity else None   # Delta 口径，价差不双计
-    beta_delta_ratio  = beta_delta / equity if equity else None
-    stress_10_ratio   = stress_10 / equity if equity else None
-    stress_20_ratio   = stress_20 / equity if equity else None
-
-    risk_status = _classify_stress_status(stress_10_ratio, _RISK_LIMITS, stress_20_ratio)
-    dd_status   = _classify_drawdown_status(drawdown, _RISK_LIMITS)
-
-    return {
-        "equity":           equity,
-        "drawdown":         drawdown,
-        "drawdown_basis":   f"cash_flow_adjusted_since_{_dd_start}",
-        "gross_notional":   round(gross, 0),
-        "delta_notional":   round(delta_notl, 0),
-        "leverage":         round(leverage, 2)      if leverage       is not None else None,
-        "leverage_delta":   round(leverage_delta, 2) if leverage_delta is not None else None,
-        "beta_delta":       round(beta_delta, 0),
-        "beta_delta_ratio": round(beta_delta_ratio, 4) if beta_delta_ratio is not None else None,
-        "theta_per_day":       round(theta_tot, 2),
-        "vega_per_pt":         round(vega_tot, 2),
-        "gamma_total":         round(gamma_tot, 4),
-        "stress_10":           round(stress_10, 0),
-        "stress_10_ratio":     round(stress_10_ratio, 4)  if stress_10_ratio  is not None else None,
-        "stress_20":           round(stress_20, 0),
-        "stress_20_ratio":     round(stress_20_ratio, 4)  if stress_20_ratio  is not None else None,
-        "nearest_expiry_date": nearest_expiry_date,
-        "nearest_expiry_sym":  nearest_expiry_sym,
-        "risk_status":         risk_status,
-        "drawdown_status":     dd_status,
-        "data_synced_at":      _sync_raw,
-        "data_age_hours":      round(data_age_hours, 1) if data_age_hours is not None else None,
-        "data_stale":          data_stale,
-        "iv_fallback_symbols": sorted(iv_fallback_syms),
-    }
+    return _compute_risk_snapshot_pure({
+        "balance":           bal,
+        "nav_rows":          _nav_rows,
+        "cashflow_rows":     _cf_rows_dd,
+        "option_positions":  opts,
+        "stock_positions":   stks,
+        "underlying_prices": und_prices,
+        "iv_map":            _iv_map,
+        "beta_map":          _BETA_SPY,
+        "risk_limits":       _RISK_LIMITS,
+        "now":               datetime.datetime.now(datetime.timezone.utc),
+    })
 
 
 def _compute_options_cost_ratio(acct_id: str) -> dict:

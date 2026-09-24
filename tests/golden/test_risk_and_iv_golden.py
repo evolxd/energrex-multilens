@@ -89,6 +89,8 @@ _st.sidebar = types.SimpleNamespace(
 sys.modules["streamlit"] = _st
 
 import account.db as account_db  # noqa: E402
+import account.repository as account_repository  # noqa: E402
+from account.options import parse_occ  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SNAPSHOT_DIR = pathlib.Path(__file__).parent / "snapshots_risk_iv"
@@ -235,6 +237,77 @@ def _clear_all(acct):
         conn.execute(f"DELETE FROM {t} WHERE account_id=?", (acct,))
     conn.commit()
     conn.close()
+
+
+def _gather_iv_inputs(acct):
+    """Literal copy of what account_monitor.py's _compute_iv_regime wrapper
+    will do post-extraction: run its two SELECTs, hand the rows straight to
+    the pure core. Used to cross-check the new account.risk.compute_iv_regime
+    against the golden snapshots captured from the OLD implementation."""
+    conn = _conn()
+    hist_rows = conn.execute(
+        "SELECT symbol, iv FROM iv_history WHERE account_id=? ORDER BY timestamp",
+        (acct,)).fetchall()
+    cur_rows = conn.execute(
+        "SELECT symbol, iv FROM options_positions "
+        "WHERE account_id=? AND iv IS NOT NULL",
+        (acct,)).fetchall()
+    conn.close()
+    return hist_rows, cur_rows
+
+
+def _gather_risk_snapshot_inputs(ns, acct, now):
+    """Literal copy of what account_monitor.py's _compute_risk_snapshot
+    wrapper will do post-extraction: every DB query + global read the OLD
+    function used to do internally, packaged into a RiskSnapshotInputs dict
+    for the new account.risk.compute_risk_snapshot."""
+    bal = account_repository.load_latest_balance(acct)
+    risk_limits = ns["_RISK_LIMITS"]
+    beta_map = ns["_BETA_SPY"]
+
+    conn = _conn()
+    dd_start = str(risk_limits.get("drawdown_start_date", "2026-06-01"))
+    nav_rows = conn.execute(
+        "SELECT DATE(sync_time) AS d, total_equity FROM account_balance "
+        "WHERE account_id=? AND DATE(sync_time)>=? ORDER BY sync_time", (acct, dd_start)).fetchall()
+    cf_rows = conn.execute(
+        "SELECT trade_date, SUM(amount) AS cf FROM transactions "
+        "WHERE account_id=? AND type IN ('提款','存款','DEPOSIT','WITHDRAWAL') "
+        "GROUP BY trade_date", (acct,)).fetchall()
+    opts = conn.execute(
+        "SELECT symbol, quantity, current_price, market_value, strike, expiry "
+        "FROM options_positions WHERE account_id=? AND current_price IS NOT NULL",
+        (acct,)).fetchall()
+    stks = conn.execute(
+        "SELECT symbol, quantity, market_value FROM positions p1 "
+        "WHERE p1.account_id=? AND p1.position_type='stock' "
+        "AND p1.sync_time = (SELECT MAX(p2.sync_time) FROM positions p2 "
+        "WHERE p2.account_id=p1.account_id AND p2.symbol=p1.symbol)",
+        (acct,)).fetchall()
+    conn.close()
+
+    underlyings = set()
+    for o in opts:
+        parsed = parse_occ(str(o["symbol"] or "").upper())
+        if parsed:
+            underlyings.add(parsed["root"])
+    stock_syms = {str(s["symbol"] or "").upper() for s in stks if s["symbol"]}
+    price_lookup_syms = underlyings | stock_syms
+    und_prices = ns["_fetch_underlying_prices"](tuple(sorted(price_lookup_syms))) if price_lookup_syms else {}
+    iv_map = ns["_get_atm_iv_batch"](tuple(sorted(underlyings))) if underlyings else {}
+
+    return {
+        "balance": bal,
+        "nav_rows": nav_rows,
+        "cashflow_rows": cf_rows,
+        "option_positions": opts,
+        "stock_positions": stks,
+        "underlying_prices": und_prices,
+        "iv_map": iv_map,
+        "beta_map": beta_map,
+        "risk_limits": risk_limits,
+        "now": now,
+    }
 
 
 # ════════════════════════════════════════════════════════════════
@@ -407,6 +480,48 @@ def test_every_scenario_has_a_snapshot():
     on_disk = {p.stem for p in SNAPSHOT_DIR.glob("*.json")}
     expected = {f"iv_{n}" for n in IV_SCENARIOS} | {f"risk_{n}" for n in RISK_SCENARIOS}
     assert on_disk == expected
+
+
+# ════════════════════════════════════════════════════════════════
+# 阶段三核对：新的纯内核（account.risk.compute_iv_regime /
+# compute_risk_snapshot）跟阶段二锁定的黄金快照逐字节一致，证明搬家过程
+# 没有夹带任何行为变更。account_monitor.py 里的旧实现此时还没被删除。
+# ════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("name", sorted(IV_SCENARIOS))
+def test_new_iv_regime_core_matches_golden_snapshot(name):
+    from account.risk import compute_iv_regime as new_compute_iv_regime
+
+    acct = f"iv_{name}"
+    _clear_all(acct)
+    IV_SCENARIOS[name](acct)
+    hist_rows, cur_rows = _gather_iv_inputs(acct)
+    result = new_compute_iv_regime(hist_rows, cur_rows)
+    actual = _canonical(result)
+
+    snapshot = SNAPSHOT_DIR / f"iv_{name}.json"
+    assert actual == snapshot.read_text(encoding="utf-8"), (
+        f"新的 account.risk.compute_iv_regime 在场景 {name} 下跟阶段二锁定的"
+        "黄金快照不一致 -- 搬家过程中夹带了行为变更。")
+
+
+@pytest.mark.parametrize("name", sorted(RISK_SCENARIOS))
+def test_new_risk_snapshot_core_matches_golden_snapshot(ns, name):
+    from account.risk import compute_risk_snapshot as new_compute_risk_snapshot
+
+    acct = f"risk_{name}"
+    _clear_all(acct)
+    RISK_SCENARIOS[name](acct)
+    with freeze_time(FROZEN_NOW):
+        inputs = _gather_risk_snapshot_inputs(
+            ns, acct, datetime.datetime.now(datetime.timezone.utc))
+        result = new_compute_risk_snapshot(inputs)
+    actual = _canonical(result)
+
+    snapshot = SNAPSHOT_DIR / f"risk_{name}.json"
+    assert actual == snapshot.read_text(encoding="utf-8"), (
+        f"新的 account.risk.compute_risk_snapshot 在场景 {name} 下跟阶段二锁定的"
+        "黄金快照不一致 -- 搬家过程中夹带了行为变更。")
 
 
 # ════════════════════════════════════════════════════════════════

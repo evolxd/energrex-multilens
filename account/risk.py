@@ -5,6 +5,7 @@ import logging
 import math
 import datetime
 from pathlib import Path
+from typing import Literal, Protocol, TypedDict
 
 from scipy.stats import norm
 
@@ -535,6 +536,324 @@ def classify_drawdown_status(drawdown: float, limits: dict | None = None) -> str
     if drawdown >= limits["drawdown_freeze"]:
         return "ORANGE_FREEZE_NEW_RISK"
     return "GREEN"
+
+
+# ────────────────────────────────────────────────────────────────
+# compute_iv_regime / compute_risk_snapshot -- pure cores extracted from
+# account_monitor.py's _compute_iv_regime / _compute_risk_snapshot (see
+# docs/architecture/risk_and_iv_architecture.md). Callers own every DB
+# query, network call and module-level global read; these two functions
+# take the results as plain data and never import streamlit or touch a
+# connection/socket themselves.
+# ────────────────────────────────────────────────────────────────
+
+IVStatus = Literal["INSUFFICIENT_HISTORY", "EXTREME_IV", "HIGH_IV", "LOW_IV", "NORMAL"]
+PortfolioIVStatus = Literal[IVStatus, "NO_DATA"]  # 组合层多一个 NO_DATA
+
+
+class IVRow(TypedDict):
+    """iv_history 或 options_positions 查询结果的单行，两个来源字段一致。"""
+    symbol: str
+    iv: float
+
+
+class IVPositionStatus(TypedDict):
+    symbol: str
+    iv: float
+    n: int                      # 样本数（历史 + 当前）
+    iv_rank: float | None       # (current-min)/(max-min)，min==max 时为 None
+    piv: float | None           # 分位：<=current 的样本占比
+    status: IVStatus
+
+
+class IVRegimeSnapshot(TypedDict):
+    status: PortfolioIVStatus
+    positions: list[IVPositionStatus]
+    max_piv: IVPositionStatus | None
+
+
+def compute_iv_regime(
+    history_rows: list[IVRow],
+    current_rows: list[IVRow],
+    min_samples: int = 20,
+) -> IVRegimeSnapshot:
+    """IV Rank / PIV / 组合 IV Regime 状态。逻辑与 update_iv_regime.py 完全
+    一致（HIGH_PIV=0.85 / EXTREME_PIV=0.95）。调用方职责：从 iv_history
+    （按 timestamp 排序）和 options_positions（iv 非空）两次 SELECT 取出
+    history_rows / current_rows 后传入 -- 这里不再自己发 SQL。
+    """
+    HIGH_PIV    = 0.85
+    EXTREME_PIV = 0.95
+    LOW_PIV     = 0.30
+
+    history: dict = {}
+    for r in history_rows:
+        history.setdefault(r["symbol"], []).append(float(r["iv"]))
+
+    results = []
+    for cur in current_rows:
+        sym = cur["symbol"]
+        current_iv = float(cur["iv"])
+        sample = list(history.get(sym, []))
+        if current_iv not in sample:
+            sample.append(current_iv)
+        n = len(sample)
+        iv_min, iv_max = min(sample), max(sample)
+        iv_rank = (current_iv - iv_min) / (iv_max - iv_min) if iv_max > iv_min else None
+        piv = sum(1 for v in sample if v <= current_iv) / n if n else None
+
+        if n < min_samples:
+            status = "INSUFFICIENT_HISTORY"
+        elif piv is not None and piv >= EXTREME_PIV:
+            status = "EXTREME_IV"
+        elif piv is not None and piv >= HIGH_PIV:
+            status = "HIGH_IV"
+        elif piv is not None and piv < LOW_PIV:
+            status = "LOW_IV"
+        else:
+            status = "NORMAL"
+
+        results.append({
+            "symbol": sym, "iv": current_iv, "n": n,
+            "iv_rank": iv_rank, "piv": piv, "status": status,
+        })
+
+    if not results:
+        return {"status": "NO_DATA", "positions": [], "max_piv": None}
+
+    sufficient = [r for r in results if r["status"] != "INSUFFICIENT_HISTORY"]
+    if not sufficient:
+        port_status = "INSUFFICIENT_HISTORY"
+    elif any(r["status"] == "EXTREME_IV" for r in sufficient):
+        port_status = "EXTREME_IV"
+    elif any(r["status"] == "HIGH_IV" for r in sufficient):
+        port_status = "HIGH_IV"
+    elif all(r["piv"] is not None and r["piv"] < LOW_PIV for r in sufficient):
+        port_status = "LOW_IV"
+    else:
+        port_status = "NORMAL"
+
+    max_piv = max((r for r in results if r["piv"] is not None),
+                  key=lambda x: x["piv"], default=None)
+
+    return {"status": port_status, "positions": results, "max_piv": max_piv}
+
+
+class AccountBalance(TypedDict, total=False):
+    """account.repository.load_latest_balance() 的返回值（account_balance
+    表全部列，dict(row) 得到，缺失同步记录时是空 dict）。"""
+    account_id: str
+    sync_time: str
+    total_equity: float
+    cash_balance: float
+    margin_used: float
+    margin_available: float
+    margin_usage_pct: float
+    day_pnl: float
+
+
+class NavRow(TypedDict):
+    d: str              # DATE(sync_time)，YYYY-MM-DD
+    total_equity: float
+
+
+class CashflowRow(TypedDict):
+    trade_date: str
+    cf: float           # SUM(amount)
+
+
+class OptionPositionRow(TypedDict):
+    symbol: str
+    quantity: int
+    current_price: float | None
+    market_value: float | None
+    strike: float | None
+    expiry: str | None
+
+
+class StockPositionRow(TypedDict):
+    symbol: str
+    quantity: int
+    market_value: float | None
+
+
+class RiskSnapshotInputs(TypedDict):
+    """_compute_risk_snapshot 现在自己去查的一切，由调用方（薄包装）组装好
+    整个传入。`now` 替代函数内部原来的 datetime.datetime.now() 调用 --
+    **必须是带时区的 aware datetime**（比如
+    datetime.datetime.now(datetime.timezone.utc)），任意时区都行，本函数
+    内部用 astimezone() 换算到 sync_time 自己的时区。曾经传过裸的 naive
+    now()，在 freezegun 冻结测试下实测会算错 7 小时——naive now() 的返回值
+    跟 astimezone() 对 naive 输入的本地时区解读用的不是同一套时区语义，
+    交叉验证测试 test_new_risk_snapshot_core_matches_golden_snapshot 因此
+    集体失败，已改成要求 aware 输入并修正。"""
+    balance: AccountBalance
+    nav_rows: list[NavRow]                    # account_balance 历史，已按 drawdown_start_date 过滤
+    cashflow_rows: list[CashflowRow]          # transactions 里的出入金，同一时间窗口
+    option_positions: list[OptionPositionRow]
+    stock_positions: list[StockPositionRow]
+    underlying_prices: dict[str, float]       # _fetch_underlying_prices 的结果
+    iv_map: dict[str, dict]                   # _get_atm_iv_batch 的结果
+    beta_map: dict[str, float]                # 等价于 _BETA_SPY
+    risk_limits: dict                         # 等价于 _RISK_LIMITS
+    now: datetime.datetime                    # aware datetime，等价于原来函数内部的 datetime.datetime.now()
+
+
+class RiskSnapshotError(TypedDict):
+    error: Literal["no_equity"]
+
+
+class RiskSnapshot(TypedDict):
+    equity: float
+    drawdown: float
+    drawdown_basis: str
+    gross_notional: float
+    delta_notional: float
+    leverage: float | None
+    leverage_delta: float | None
+    beta_delta: float
+    beta_delta_ratio: float | None
+    theta_per_day: float
+    vega_per_pt: float
+    gamma_total: float
+    stress_10: float
+    stress_10_ratio: float | None
+    stress_20: float
+    stress_20_ratio: float | None
+    nearest_expiry_date: str | None
+    nearest_expiry_sym: str | None
+    risk_status: str          # GREEN / YELLOW_WARNING / ORANGE_DE_RISK / RED_HARD_STOP
+    drawdown_status: str
+    data_synced_at: str | None
+    data_age_hours: float | None
+    data_stale: bool
+    iv_fallback_symbols: list[str]
+
+
+RiskSnapshotResult = RiskSnapshot | RiskSnapshotError
+
+
+def compute_risk_snapshot(inputs: RiskSnapshotInputs) -> RiskSnapshotResult:
+    """Beta 加权 Delta、杠杆、压力测试损失、TWR 回撤的组合风险快照。
+    `inputs["balance"].get("total_equity") <= 0` 时原样返回
+    RiskSnapshotError（现有行为，不是新增校验）。其余分支 -- TWR 回撤、
+    压力测试、杠杆/BD 比率、风险状态分类 -- 直接调用本模块里已经存在的
+    4 个纯函数，逻辑不变，只是不再自己发 SQL/网络请求去攒这些函数的入参。
+    """
+    bal = inputs["balance"]
+    equity = float(bal.get("total_equity") or 0)
+    if equity <= 0:
+        return {"error": "no_equity"}
+
+    risk_limits = inputs["risk_limits"]
+
+    # ── 数据新鲜度：持仓/余额距上次同步已经过多久 ──────────────────────
+    _sync_raw = bal.get("sync_time")
+    data_age_hours = None
+    try:
+        _sync_dt = datetime.datetime.fromisoformat(str(_sync_raw))
+        # inputs["now"] 必须是 aware datetime（任意时区都行）。sync_time 有
+        # tzinfo 时用 astimezone() 换算到同一时区，两个 aware 值直接相减，
+        # 跟原来的 datetime.datetime.now(_sync_dt.tzinfo) 逐位等价（aware
+        # 转 aware 是精确的时区换算，不依赖任何一边"当前系统时区"是什么）。
+        # sync_time 没有 tzinfo 这条分支在现有写入路径下不会触发（account.
+        # repository.save_balance 写入的 sync_time 永远带 ET 时区），保留只
+        # 是不改变原有的防御性行为；用 astimezone() 转到系统本地时区后去掉
+        # tzinfo，对应原来裸的 datetime.datetime.now()。
+        _now_dt = (inputs["now"].astimezone(_sync_dt.tzinfo) if _sync_dt.tzinfo
+                   else inputs["now"].astimezone().replace(tzinfo=None))
+        data_age_hours = (_now_dt - _sync_dt).total_seconds() / 3600.0
+    except Exception:
+        pass
+    _STALE_HOURS = 24.0
+    data_stale = bool(data_age_hours is not None and data_age_hours > _STALE_HOURS)
+
+    # ── TWR-based drawdown（排除出入金）──────────────────────────────
+    _dd_start = str(risk_limits.get("drawdown_start_date", "2026-06-01"))
+    _nav_by_d = {str(r["d"]): float(r["total_equity"]) for r in inputs["nav_rows"]}
+    _cf_map_dd = {r["trade_date"]: float(r["cf"]) for r in inputs["cashflow_rows"]}
+    drawdown = compute_twr_drawdown(_nav_by_d, _cf_map_dd)
+
+    opts = inputs["option_positions"]
+    stks = inputs["stock_positions"]
+    und_prices = inputs["underlying_prices"]
+    _iv_map = inputs["iv_map"]
+    beta_map = inputs["beta_map"]
+
+    underlyings = set()
+    for o in opts:
+        parsed = parse_occ(str(o["symbol"] or "").upper())
+        if parsed:
+            underlyings.add(parsed["root"])
+
+    stress = compute_portfolio_stress_test(
+        stks, opts,
+        underlying_prices=und_prices, iv_map=_iv_map, beta_map=beta_map,
+    )
+    gross, delta_notl, beta_delta = (
+        stress["gross_notional"], stress["delta_notional"], stress["beta_delta"]
+    )
+    theta_tot, vega_tot, gamma_tot = (
+        stress["theta_per_day"], stress["vega_per_pt"], stress["gamma_total"]
+    )
+    stress_10, stress_20 = stress["stress_10"], stress["stress_20"]
+    nearest_expiry_date, nearest_expiry_sym = (
+        stress["nearest_expiry_date"], stress["nearest_expiry_sym"]
+    )
+    # 走了默认 IV(0.30) 兜底的标的，用于在快照里留痕——跟
+    # compute_portfolio_stress_test 内部判断 IV 是否命中同一个条件，
+    # 但只需按 underlying 去重检查一次，不用重新走一遍逐 option 循环。
+    iv_fallback_syms = {und for und in underlyings if not _iv_map.get(und)}
+
+    leverage          = gross / equity if equity else None
+    leverage_delta    = delta_notl / equity if equity else None   # Delta 口径，价差不双计
+    beta_delta_ratio  = beta_delta / equity if equity else None
+    stress_10_ratio   = stress_10 / equity if equity else None
+    stress_20_ratio   = stress_20 / equity if equity else None
+
+    risk_status = classify_stress_status(stress_10_ratio, risk_limits, stress_20_ratio)
+    dd_status   = classify_drawdown_status(drawdown, risk_limits)
+
+    return {
+        "equity":           equity,
+        "drawdown":         drawdown,
+        "drawdown_basis":   f"cash_flow_adjusted_since_{_dd_start}",
+        "gross_notional":   round(gross, 0),
+        "delta_notional":   round(delta_notl, 0),
+        "leverage":         round(leverage, 2)      if leverage       is not None else None,
+        "leverage_delta":   round(leverage_delta, 2) if leverage_delta is not None else None,
+        "beta_delta":       round(beta_delta, 0),
+        "beta_delta_ratio": round(beta_delta_ratio, 4) if beta_delta_ratio is not None else None,
+        "theta_per_day":       round(theta_tot, 2),
+        "vega_per_pt":         round(vega_tot, 2),
+        "gamma_total":         round(gamma_tot, 4),
+        "stress_10":           round(stress_10, 0),
+        "stress_10_ratio":     round(stress_10_ratio, 4)  if stress_10_ratio  is not None else None,
+        "stress_20":           round(stress_20, 0),
+        "stress_20_ratio":     round(stress_20_ratio, 4)  if stress_20_ratio  is not None else None,
+        "nearest_expiry_date": nearest_expiry_date,
+        "nearest_expiry_sym":  nearest_expiry_sym,
+        "risk_status":         risk_status,
+        "drawdown_status":     dd_status,
+        "data_synced_at":      _sync_raw,
+        "data_age_hours":      round(data_age_hours, 1) if data_age_hours is not None else None,
+        "data_stale":          data_stale,
+        "iv_fallback_symbols": sorted(iv_fallback_syms),
+    }
+
+
+# ────────────────────────────────────────────────────────────────
+# 跨模块调用契约（Protocol）：调用方按接口类型编程，而不是反射取值
+# ────────────────────────────────────────────────────────────────
+
+class IVRegimeEngine(Protocol):
+    def __call__(
+        self, history_rows: list[IVRow], current_rows: list[IVRow], min_samples: int = 20,
+    ) -> IVRegimeSnapshot: ...
+
+
+class RiskSnapshotEngine(Protocol):
+    def __call__(self, inputs: RiskSnapshotInputs) -> RiskSnapshotResult: ...
 
 
 def score_label(score: float | None) -> str:
