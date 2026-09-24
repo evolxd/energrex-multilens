@@ -29,6 +29,7 @@ sys.path.insert(0, str(_ROOT / "scoring"))
 from spread_ui_common import pick_source_and_expirations  # noqa: E402
 from bull_put_spread import (              # noqa: E402
     BullPutCandidate,
+    BullPutScore,
     breakeven,
     compute_adr,
     compute_breakeven_win_rate,
@@ -47,6 +48,47 @@ _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD, _BLUE = "#00D4AA", "#FFB347", "#FF4B6E", "#4FC3F7"
 
 
+def _dte(exp_str: str, today: datetime.date) -> int:
+    return (datetime.date.fromisoformat(exp_str) - today).days
+
+
+def _closest_in_tier(lo: int, hi: int, exp_with_dte: list[tuple[str, int]]) -> str | None:
+    in_tier = [e for e, d in exp_with_dte if lo <= d <= hi]
+    if in_tier:
+        return in_tier[len(in_tier) // 2]
+    # tier 内没有到期日时，退而求其次找离 tier 中点最近的一个
+    mid = (lo + hi) / 2
+    if not exp_with_dte:
+        return None
+    return min(exp_with_dte, key=lambda x: abs(x[1] - mid))[0]
+
+
+def _release_risk_label(expiration: str, today: datetime.date) -> str:
+    """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
+    结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
+    scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
+    已实现波动率的日程事件"。"""
+    return macro_calendar.release_risk_label(today, expiration)
+
+
+def _row(s: BullPutScore, today: datetime.date) -> dict:
+    c = s.candidate
+    return {
+        "到期日": c.expiration, "DTE": c.dte,
+        "Short/Long": f"{c.short_strike:g}/{c.long_strike:g}",
+        "Width": s.width, "Net Credit": round(c.net_credit, 2),
+        "Max Profit": round(c.net_credit, 2), "Max Loss": s.max_loss,
+        "Breakeven": s.breakeven,
+        "ROM": f"{s.rom*100:.1f}%", "ADR": f"{s.adr*100:.0f}%",
+        "Buffer%": f"{s.buffer_pct*100:.1f}%",
+        "盈亏平衡胜率": f"{s.breakeven_win_rate*100:.1f}%",
+        "ADR得分": s.score_adr, "Buffer得分": s.score_buffer,
+        "ROM得分": s.score_rom, "DTE得分": s.score_dte,
+        "总分": s.total_score,
+        "发布日风险": _release_risk_label(c.expiration, today),
+    }
+
+
 def render() -> None:
     st.markdown(
         f"<h2 style='color:{_TEXT};margin-bottom:0'>🎯 Bull Put Spread 量化评分</h2>"
@@ -60,11 +102,8 @@ def render() -> None:
 
     today = datetime.date.today()
 
-    def _dte(exp_str: str) -> int:
-        return (datetime.date.fromisoformat(exp_str) - today).days
-
     exp_with_dte = sorted(
-        ((e, _dte(e)) for e in expirations if _dte(e) > 0),
+        ((e, _dte(e, today)) for e in expirations if _dte(e, today) > 0),
         key=lambda x: x[1],
     )
 
@@ -81,7 +120,7 @@ def render() -> None:
             return None
         return min(exp_with_dte, key=lambda x: abs(x[1] - mid))[0]
 
-    default_selection = sorted({e for e in (_closest_in_tier(lo, hi) for lo, hi in _TIERS) if e})
+    default_selection = sorted({e for e in (_closest_in_tier(lo, hi, exp_with_dte) for lo, hi in _TIERS) if e})
 
     st.markdown(
         f"<div style='color:{_MUTED};font-size:11px;margin-top:8px'>"
@@ -94,13 +133,6 @@ def render() -> None:
     selected_labels = st.multiselect("到期日", list(exp_labels.keys()), default=default_labels)
     selected_exps = [exp_labels[lbl] for lbl in selected_labels]
 
-    def _release_risk_label(expiration: str) -> str:
-        """已知宏观发布日中，落在[今天, expiration]窗口内的那些 -- 不代表"发布
-        结果好坏"（预期值/一致预期本项目没有免费可靠来源，见
-        scoring/macro_calendar.py 顶部说明），只代表"这段窗口里有一次已知会放大
-        已实现波动率的日程事件"。"""
-        return macro_calendar.release_risk_label(today, expiration)
-
     if selected_exps:
         st.markdown(
             f"<div style='color:{_MUTED};font-size:11px;margin:4px 0'>"
@@ -109,7 +141,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
         for exp in selected_exps:
-            label = _release_risk_label(exp)
+            label = _release_risk_label(exp, today)
             color = _MUTED if label == "—" else _WARN
             st.markdown(
                 f"<div style='font-size:11px;color:{color};margin-left:8px'>"
@@ -176,25 +208,8 @@ def render() -> None:
     if "bps_ranked" in st.session_state and st.session_state.get("bps_ticker_scored") == ticker:
         ranked = st.session_state["bps_ranked"]
 
-        def _row(s):
-            c = s.candidate
-            return {
-                "到期日": c.expiration, "DTE": c.dte,
-                "Short/Long": f"{c.short_strike:g}/{c.long_strike:g}",
-                "Width": s.width, "Net Credit": round(c.net_credit, 2),
-                "Max Profit": round(c.net_credit, 2), "Max Loss": s.max_loss,
-                "Breakeven": s.breakeven,
-                "ROM": f"{s.rom*100:.1f}%", "ADR": f"{s.adr*100:.0f}%",
-                "Buffer%": f"{s.buffer_pct*100:.1f}%",
-                "盈亏平衡胜率": f"{s.breakeven_win_rate*100:.1f}%",
-                "ADR得分": s.score_adr, "Buffer得分": s.score_buffer,
-                "ROM得分": s.score_rom, "DTE得分": s.score_dte,
-                "总分": s.total_score,
-                "发布日风险": _release_risk_label(c.expiration),
-            }
-
         st.markdown(f"#### 排名前十 · {ticker}（共 {len(ranked)} 个候选价差参与评分）")
-        top10_df = pd.DataFrame([_row(s) for s in ranked[:10]])
+        top10_df = pd.DataFrame([_row(s, today) for s in ranked[:10]])
         top10_df.insert(0, "排名", range(1, len(top10_df) + 1))
         st.dataframe(top10_df, use_container_width=True, hide_index=True)
 
@@ -232,7 +247,7 @@ def render() -> None:
         )
 
         st.markdown("#### 全部候选（按总分排序）")
-        full_df = pd.DataFrame([_row(s) for s in ranked])
+        full_df = pd.DataFrame([_row(s, today) for s in ranked])
         full_df.insert(0, "排名", range(1, len(full_df) + 1))
         st.dataframe(full_df, use_container_width=True, hide_index=True, height=400)
 
