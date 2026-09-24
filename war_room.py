@@ -96,14 +96,14 @@ def _load_war_data(acct_id: str):
     except Exception:
         pass
 
-    # Account balances
+    # Account balance（选中账户的最近一次同步，不限今天——以前只认今天同步过的，
+    # 当天没同步就整块显示"暂无账户数据"；而且没按账户过滤。同步日期显示在卡片上）
     try:
         rows = conn.execute(
             "SELECT account_id, total_equity, cash_balance, day_pnl, sync_time "
-            "FROM account_balance WHERE sync_time >= ? "
-            "GROUP BY account_id HAVING MAX(sync_time) "
-            "ORDER BY account_id",
-            (today + "T00:00:00",)).fetchall()
+            "FROM account_balance WHERE account_id=? "
+            "ORDER BY sync_time DESC LIMIT 1",
+            (acct_id,)).fetchall()
         for r in rows:
             result["accounts"].append({
                 "id":     r["account_id"],
@@ -303,8 +303,11 @@ if _snap:
     _brief_age = ""
     if _brief and _brief.get("gen_time"):
         try:
+            # gen_time 存的是美东墙钟时间（不带时区），所以"现在"也必须取美东，
+            # 不能用本机时间——本机在太平洋时区时会算出"-2.7小时前"。
             _gt = datetime.datetime.fromisoformat(_brief["gen_time"].replace(" ", "T"))
-            _hrs = (datetime.datetime.now() - _gt).total_seconds() / 3600
+            _now_et = datetime.datetime.now(pytz.timezone("America/New_York")).replace(tzinfo=None)
+            _hrs = (_now_et - _gt).total_seconds() / 3600
             _age_txt = (f"{_hrs/24:.1f}天前" if _hrs >= 24 else f"{_hrs:.1f}小时前")
             _age_col = _R if _hrs >= 24 else (_A if _hrs >= 4 else _MUT)
             _brief_age = (f"<span style='color:{_age_col}'>&nbsp;|&nbsp; "
@@ -563,7 +566,9 @@ with _right:
                     f"<div style='background:{_SURF};border:1px solid {_BDR};"
                     f"border-radius:8px;padding:10px 14px;margin-bottom:8px'>"
                     f"<div style='font-size:11px;color:{_MUT};text-transform:uppercase;"
-                    f"letter-spacing:1px;margin-bottom:6px'>{_lbl}</div>"
+                    f"letter-spacing:1px;margin-bottom:6px'>{_lbl}"
+                    f"<span style='float:right;text-transform:none;letter-spacing:0'>"
+                    f"同步于 {_ac.get('time', '')}</span></div>"
                     f"{_rows_html}</div>",
                     unsafe_allow_html=True,
                 )
@@ -571,7 +576,8 @@ with _right:
         st.markdown(
             f"<div style='color:{_MUT};font-size:12px;padding:12px;"
             f"background:{_SURF};border:1px dashed {_BDR};border-radius:8px'>"
-            f"暂无账户数据 — 请在 🏦 账户监控 页上传 CSV</div>",
+            f"{_ACCT_LABEL.get(_ACCT_ID, _ACCT_ID)} 还没有同步过数据 — "
+            f"请在 🏦 账户监控 页同步或上传 CSV</div>",
             unsafe_allow_html=True,
         )
 
