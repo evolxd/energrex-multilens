@@ -447,35 +447,41 @@ def _recompute_valuation_ratios(data: dict, ticker: str = "") -> dict:
 # 动量指标（yfinance 价格历史）
 # ════════════════════════════════════════════════════════
 
+def compute_momentum_from_prices(close: "pd.Series") -> dict:
+    """从 1 年收盘价序列算 RSI14 / vs200DMA / maxDD_1y。纯计算，不碰网络——
+    从 _compute_momentum 里剥出来的核心，逻辑一行未改。"""
+    if close.empty or len(close) < 15:
+        return {}
+
+    # RSI-14
+    delta  = close.diff()
+    gain   = delta.clip(lower=0).rolling(14).mean()
+    loss   = (-delta.clip(upper=0)).rolling(14).mean()
+    rs     = gain / loss.replace(0, np.nan)
+    rsi14  = float((100 - 100 / (1 + rs)).iloc[-1])
+
+    # vs 200DMA
+    periods = min(200, len(close))
+    ma200   = float(close.rolling(periods).mean().iloc[-1])
+    vs200   = float(close.iloc[-1]) / ma200 - 1 if ma200 else None
+
+    # Max drawdown 1y
+    peak  = close.cummax()
+    maxdd = float(((close - peak) / peak).min())
+
+    return {
+        "rsi_14":          round(rsi14, 1),
+        "price_vs_200dma": round(vs200, 4)  if vs200  is not None else None,
+        "max_drawdown_1y": round(maxdd, 4),
+    }
+
+
 def _compute_momentum(ticker: str) -> dict:
     """从 1 年价格历史计算 RSI14 / vs200DMA / maxDD_1y。"""
     try:
         import yfinance as yf
         close = yf.Ticker(ticker).history(period="1y")["Close"]
-        if close.empty or len(close) < 15:
-            return {}
-
-        # RSI-14
-        delta  = close.diff()
-        gain   = delta.clip(lower=0).rolling(14).mean()
-        loss   = (-delta.clip(upper=0)).rolling(14).mean()
-        rs     = gain / loss.replace(0, np.nan)
-        rsi14  = float((100 - 100 / (1 + rs)).iloc[-1])
-
-        # vs 200DMA
-        periods = min(200, len(close))
-        ma200   = float(close.rolling(periods).mean().iloc[-1])
-        vs200   = float(close.iloc[-1]) / ma200 - 1 if ma200 else None
-
-        # Max drawdown 1y
-        peak  = close.cummax()
-        maxdd = float(((close - peak) / peak).min())
-
-        return {
-            "rsi_14":          round(rsi14, 1),
-            "price_vs_200dma": round(vs200, 4)  if vs200  is not None else None,
-            "max_drawdown_1y": round(maxdd, 4),
-        }
+        return compute_momentum_from_prices(close)
     except Exception as e:
         _log.warning(f"{ticker} momentum: {e}")
         return {}
@@ -506,6 +512,185 @@ def _safe_set(df: pd.DataFrame, mask, col: str, val) -> None:
                 df.loc[mask, col] = float(val)
         except Exception:
             pass  # leave column unchanged rather than crash
+
+
+# ════════════════════════════════════════════════════════
+# 纯核心：单只 ticker 的六层数据合并 / 评分结果映射 / raw 列格式化
+# 从 refresh_all() 的逐 ticker 循环体里搬出来——三个都不碰网络/文件，只读
+# 已经取好的数据，逻辑跟原来在循环体内联时逐行一致。
+# ════════════════════════════════════════════════════════
+
+def build_ticker_data(
+    ticker: str,
+    row: "pd.Series",
+    raw_col_map: dict[str, str],
+    *,
+    live: dict,
+    momentum: dict,
+    overrides: dict,
+    risk_free_rate: float | None,
+) -> tuple[dict, list[str], list[str]]:
+    """六层合并：CSV基线→QUANT_META→QUANT_AI_EXPOSURE→mock_data→yfinance→
+    动量→人工核对，跟原来在 refresh_all() 循环体内联时逐行一致。
+
+    返回 (data, applied_override_fields, rejected_override_fields)——后两个
+    只用于日志展示，纯函数本身不做任何 IO/打印，由调用方决定要不要 log。
+    """
+    # Layer 0: CSV raw_ 字段（手动字段基础）
+    data = _csv_baseline(row, raw_col_map)
+
+    # Layer 1: QUANT_META（sector_tag / capex_rev）
+    if ticker in QUANT_META:
+        data.update(QUANT_META[ticker])
+
+    # Layer 2: QUANT_AI_EXPOSURE（只填 None）
+    if ticker in QUANT_AI_EXPOSURE:
+        for k, v in QUANT_AI_EXPOSURE[ticker].items():
+            if k not in data:
+                data[k] = v
+
+    # Layer 3: mock_data（覆盖所有字段，原始 10 只）
+    if ticker in MOCK_STOCKS:
+        mock_base = dict(MOCK_STOCKS[ticker])
+        mock_base.update(data)     # 已有的字段不被 mock 覆盖
+        data = {**MOCK_STOCKS[ticker], **{k: v for k, v in data.items()
+                                          if k not in _YFINANCE_UPDATABLE}}
+
+    # Layer 4: yfinance（只更新 auto 字段）
+    data = merge_live_into_mock(data, live)
+
+    # Layer 4.5: 用实时价格重算估值比率（yfinance 已提供当前价格）
+    data = _recompute_valuation_ratios(data, ticker)
+
+    # Layer 5: 动量（直接覆盖，计算值更新）
+    for k, v in momentum.items():
+        if v is not None:
+            data[k] = v
+
+    # Layer 6: user_overrides（最高优先级：人工核对/修正值）
+    applied: list[str] = []
+    rejected: list[str] = []
+    if overrides:
+        for field, entry in overrides.items():
+            val = trusted_override_value(field, entry)
+            if val is not None:
+                data[field] = val
+                applied.append(field)
+            else:
+                rejected.append(field)
+
+    # 宏观：注入本次 refresh 拉到的实时 10Y 收益率（WACC 用，非评分维度本身）
+    if risk_free_rate is not None:
+        data["_risk_free_rate"] = risk_free_rate
+
+    return data, applied, rejected
+
+
+def score_updates_for_ticker(result, split) -> dict:
+    """给定 score_ticker() 的结果 + split_scores() 的结果，算出要写回 CSV 的
+    全部字段。跟原来在 refresh_all() 循环体内联时逐行一致，只是把
+    _safe_set() 调用留在了调用方（这个函数本身不碰 df）。
+
+    返回字典的键：
+      score_updates    —— 走 score_col_map 前缀匹配写回的字段（含 rating，
+                           如果 is_unscoreable 为真已经被覆盖成"⛔ 无数据"）
+      company_score    —— company_score_公司质量分(...) 列的值，或 None
+      circuit_label     —— circuit_label_熔断分项 列的值
+      placeholder_dims —— placeholder_dims_全占位维度 列的值（逗号分隔）
+      bad_fields       —— bad_fields_剔除字段 列的值（分号分隔）
+      is_unscoreable   —— 是否所有基本面维度都无数据
+    """
+    score_updates: dict[str, object] = {
+        "ai_profile":           result.ai_profile_label,
+        "ai_profile_key":       result.ai_profile_key,
+        "ai_profile_exposure":  ("" if result.ai_profile_exposure is None
+                                  else f"{result.ai_profile_exposure:.4f}"),
+        "ai_raw_exposure_score": result.ai_raw_exposure_score,
+        "ai_accelerator_bonus": result.ai_accelerator_bonus,
+        "ai_profile_basis":     result.ai_profile_basis,
+        "weighted_score":       result.raw_sum,
+        "valuation_score":      result.dim_scores.get("valuation",     0),
+        "growth_score":         result.dim_scores.get("growth",        0),
+        "quality_score":        result.dim_scores.get("quality",       0),
+        "ai_exposure_score":    result.dim_scores.get("ai_exposure",   0),
+        "expectation_gap_score":result.dim_scores.get("expectation_gap",0),
+        "momentum_score":       result.dim_scores.get("momentum",      0),
+        "risk_penalty":         result.risk_penalty,
+        "final_score":          result.final_score,
+        "rating":               str(result.rating),
+        "circuit":              1.0 if result.circuit_triggered else 0.0,
+    }
+
+    company_score = round(split.company, 2) if split.company is not None else None
+    circuit_label = " + ".join(split.circuit.clauses)
+
+    placeholder_dims = [
+        d.key for d in result.audit_dims
+        if d.entries and all(e.missing for e in d.entries)
+    ]
+    placeholder_dims_str = ",".join(placeholder_dims)
+    bad_fields_str = "; ".join(result.bad_fields)
+
+    unscoreable = is_unscoreable(placeholder_dims)
+    if unscoreable:
+        score_updates["rating"] = "⛔ 无数据"
+
+    return {
+        "score_updates": score_updates,
+        "company_score": company_score,
+        "circuit_label": circuit_label,
+        "placeholder_dims": placeholder_dims_str,
+        "bad_fields": bad_fields_str,
+        "is_unscoreable": unscoreable,
+    }
+
+
+def raw_updates_for_ticker(data: dict, ticker: str, known_bad_fields: set) -> dict[str, str]:
+    """把合并后的 data 字典格式化成 raw_ 列要写的字符串（"value [yf]" 这种
+    带来源标注的格式）。跟原来在 refresh_all() 循环体内联时逐行一致。
+    """
+    raw_updates: dict[str, str] = {}
+    for field, is_pct in [
+        ("peg_ratio",             False),
+        ("ev_sales",              False),
+        ("forward_pe",            False),
+        ("fcf_yield",             True),
+        ("revenue_growth_yoy",    True),
+        ("eps_growth_yoy",        True),
+        ("gross_margin",          True),
+        ("fcf_margin",            True),
+        ("roic",                  True),
+        ("beta",                  False),
+        ("rsi_14",                False),
+        ("price_vs_200dma",       True),
+        ("max_drawdown_1y",       True),
+        # 基本面分母（季度更新，存入 CSV 供极速刷新用）
+        ("current_price",         False),
+        ("shares_outstanding",    False),
+        ("forward_eps",           False),
+        ("enterprise_value_snap", False),
+        ("price_at_ev_snapshot",  False),
+        ("net_debt",              False),
+        ("revenue_ttm",           False),
+        ("fcf_ttm",               False),
+        ("ebitda_ttm",            False),
+        # Damodaran 再投资率原材料
+        ("capex_ttm",             False),
+        ("da_ttm",                False),
+        ("rd_ttm",                False),
+        ("operating_income_ttm",  False),
+        # 重算后的估值比率（也写回，保持 CSV 最新）
+        ("ev_ebitda",             False),
+    ]:
+        v = data.get(field)
+        if v is not None:
+            raw_updates[field] = _fmt_yf(v, pct=is_pct)
+        elif field in known_bad_fields:
+            # Deliberately excluded (e.g. INTC/MRVL eps_growth_yoy) -- write
+            # "n/a" so the raw_ column stops showing a stale pre-exclusion
+            # number that no longer reflects what the scorer actually used.
+            raw_updates[field] = "n/a [--]"
+    return raw_updates
 
 
 # ════════════════════════════════════════════════════════
@@ -630,59 +815,17 @@ def refresh_all(
         row_mask = df["ticker"] == ticker
         row      = df[row_mask].iloc[0]
 
-        # Layer 0: CSV raw_ 字段（手动字段基础）
-        data = _csv_baseline(row, raw_col_map)
-
-        # Layer 1: QUANT_META（sector_tag / capex_rev）
-        if ticker in QUANT_META:
-            data.update(QUANT_META[ticker])
-
-        # Layer 2: QUANT_AI_EXPOSURE（只填 None）
-        if ticker in QUANT_AI_EXPOSURE:
-            for k, v in QUANT_AI_EXPOSURE[ticker].items():
-                if k not in data:
-                    data[k] = v
-
-        # Layer 3: mock_data（覆盖所有字段，原始 10 只）
-        if ticker in MOCK_STOCKS:
-            mock_base = dict(MOCK_STOCKS[ticker])
-            mock_base.update(data)     # 已有的字段不被 mock 覆盖
-            data = {**MOCK_STOCKS[ticker], **{k: v for k, v in data.items()
-                                              if k not in _YFINANCE_UPDATABLE}}
-
-        # Layer 4: yfinance（只更新 auto 字段）
-        live = live_bulk.get(ticker, {})
-        data = merge_live_into_mock(data, live)
-
-        # Layer 4.5: 用实时价格重算估值比率（yfinance 已提供当前价格）
-        data = _recompute_valuation_ratios(data, ticker)
-
-        # Layer 5: 动量（直接覆盖，计算值更新）
-        mom = momentum_bulk.get(ticker, {})
-        for k, v in mom.items():
-            if v is not None:
-                data[k] = v
-
-        # Layer 6: user_overrides（最高优先级：人工核对/修正值）
-        tk_ov = _user_overrides.get(ticker, {})
-        if tk_ov:
-            applied = []
-            rejected = []
-            for field, entry in tk_ov.items():
-                val = trusted_override_value(field, entry)
-                if val is not None:
-                    data[field] = val
-                    applied.append(field)
-                else:
-                    rejected.append(field)
-            if applied and verbose:
-                log(f"  {ticker} override 覆盖 {len(applied)} 个字段: {applied}")
-            if rejected and verbose:
-                log(f"  {ticker} skipped {len(rejected)} untrusted overrides: {rejected}")
-
-        # 宏观：注入本次 refresh 拉到的实时 10Y 收益率（WACC 用，非评分维度本身）
-        if live_rf_decimal is not None:
-            data["_risk_free_rate"] = live_rf_decimal
+        data, applied, rejected = build_ticker_data(
+            ticker, row, raw_col_map,
+            live=live_bulk.get(ticker, {}),
+            momentum=momentum_bulk.get(ticker, {}),
+            overrides=_user_overrides.get(ticker, {}),
+            risk_free_rate=live_rf_decimal,
+        )
+        if applied and verbose:
+            log(f"  {ticker} override 覆盖 {len(applied)} 个字段: {applied}")
+        if rejected and verbose:
+            log(f"  {ticker} skipped {len(rejected)} untrusted overrides: {rejected}")
 
         # 评分
         try:
@@ -698,32 +841,6 @@ def refresh_all(
             continue
 
         # ── 写回 score 列 ──────────────────────────────────
-        score_updates: dict[str, object] = {
-            "ai_profile":           result.ai_profile_label,
-            "ai_profile_key":       result.ai_profile_key,
-            "ai_profile_exposure":  ("" if result.ai_profile_exposure is None
-                                      else f"{result.ai_profile_exposure:.4f}"),
-            "ai_raw_exposure_score": result.ai_raw_exposure_score,
-            "ai_accelerator_bonus": result.ai_accelerator_bonus,
-            "ai_profile_basis":     result.ai_profile_basis,
-            "weighted_score":       result.raw_sum,
-            "valuation_score":      result.dim_scores.get("valuation",     0),
-            "growth_score":         result.dim_scores.get("growth",        0),
-            "quality_score":        result.dim_scores.get("quality",       0),
-            "ai_exposure_score":    result.dim_scores.get("ai_exposure",   0),
-            "expectation_gap_score":result.dim_scores.get("expectation_gap",0),
-            "momentum_score":       result.dim_scores.get("momentum",      0),
-            "risk_penalty":         result.risk_penalty,
-            "final_score":          result.final_score,
-            "rating":               str(result.rating),
-            "circuit":              1.0 if result.circuit_triggered else 0.0,
-        }
-        for field, val in score_updates.items():
-            col = score_col_map.get(field)
-            if col and col in df.columns:
-                _safe_set(df, row_mask, col, val)
-
-        # ── company_score / circuit_label：熔断不改写这两列 ──────
         split = split_scores(
             result.dim_scores,
             risk_penalty=result.risk_penalty,
@@ -732,75 +849,34 @@ def refresh_all(
             de_ratio=data.get("debt_to_equity"),
             blended=result.final_score,
         )
+        updates = score_updates_for_ticker(result, split)
+
+        for field, val in updates["score_updates"].items():
+            col = score_col_map.get(field)
+            if col and col in df.columns:
+                _safe_set(df, row_mask, col, val)
+
+        # ── company_score / circuit_label：熔断不改写这两列 ──────
         _company_col = "company_score_公司质量分(不受熔断影响)"
         _circuit_lbl_col = "circuit_label_熔断分项"
-        if _company_col in df.columns and split.company is not None:
-            _safe_set(df, row_mask, _company_col, round(split.company, 2))
+        if _company_col in df.columns and updates["company_score"] is not None:
+            _safe_set(df, row_mask, _company_col, updates["company_score"])
         if _circuit_lbl_col in df.columns:
-            _safe_set(df, row_mask, _circuit_lbl_col, " + ".join(split.circuit.clauses))
+            _safe_set(df, row_mask, _circuit_lbl_col, updates["circuit_label"])
 
-        _placeholder_dims = [
-            d.key for d in result.audit_dims
-            if d.entries and all(e.missing for e in d.entries)
-        ]
-        _safe_set(df, row_mask, _PLACEHOLDER_COL, ",".join(_placeholder_dims))
-        _safe_set(df, row_mask, _BAD_FIELDS_COL, "; ".join(result.bad_fields))
+        _safe_set(df, row_mask, _PLACEHOLDER_COL, updates["placeholder_dims"])
+        _safe_set(df, row_mask, _BAD_FIELDS_COL, updates["bad_fields"])
 
         # When the business dimensions all defaulted, nothing was fetched and
         # nothing was on file -- the ticker is delisted, renamed, or wrong.
         # The engine still returns a number, because every dimension falls
         # back to 50, and a 40.0 on a dead ticker reads exactly like a real
         # assessment. Label it instead of letting it sit in the ranking.
-        if is_unscoreable(_placeholder_dims):
-            _rating_col = score_col_map.get("rating")
-            if _rating_col and _rating_col in df.columns:
-                _safe_set(df, row_mask, _rating_col, "⛔ 无数据")
+        if updates["is_unscoreable"]:
             log(f"  ⛔ {ticker}: 所有基本面维度均无数据，评分无效（疑似退市或代码错误）")
 
         # ── 写回 raw_ 列（只更新 auto 字段，格式: "value [yf]"）──
-        _r = data  # alias
-        raw_updates: dict[str, str] = {}
-        for field, is_pct in [
-            ("peg_ratio",             False),
-            ("ev_sales",              False),
-            ("forward_pe",            False),
-            ("fcf_yield",             True),
-            ("revenue_growth_yoy",    True),
-            ("eps_growth_yoy",        True),
-            ("gross_margin",          True),
-            ("fcf_margin",            True),
-            ("roic",                  True),
-            ("beta",                  False),
-            ("rsi_14",                False),
-            ("price_vs_200dma",       True),
-            ("max_drawdown_1y",       True),
-            # 基本面分母（季度更新，存入 CSV 供极速刷新用）
-            ("current_price",         False),
-            ("shares_outstanding",    False),
-            ("forward_eps",           False),
-            ("enterprise_value_snap", False),
-            ("price_at_ev_snapshot",  False),
-            ("net_debt",              False),
-            ("revenue_ttm",           False),
-            ("fcf_ttm",               False),
-            ("ebitda_ttm",            False),
-            # Damodaran 再投资率原材料
-            ("capex_ttm",             False),
-            ("da_ttm",                False),
-            ("rd_ttm",                False),
-            ("operating_income_ttm",  False),
-            # 重算后的估值比率（也写回，保持 CSV 最新）
-            ("ev_ebitda",             False),
-        ]:
-            v = _r.get(field)
-            if v is not None:
-                raw_updates[field] = _fmt_yf(v, pct=is_pct)
-            elif field in KNOWN_BAD_FIELDS.get(ticker, set()):
-                # Deliberately excluded (e.g. INTC/MRVL eps_growth_yoy) -- write
-                # "n/a" so the raw_ column stops showing a stale pre-exclusion
-                # number that no longer reflects what the scorer actually used.
-                raw_updates[field] = "n/a [--]"
-
+        raw_updates = raw_updates_for_ticker(data, ticker, KNOWN_BAD_FIELDS.get(ticker, set()))
         for field, fmt_val in raw_updates.items():
             col = raw_col_map.get(field)
             if col and col in df.columns:
