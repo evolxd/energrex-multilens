@@ -48,6 +48,33 @@ _TEXT, _MUTED = "#E2E8F0", "#8B9BB4"
 _GOOD, _WARN, _BAD = "#00D4AA", "#FFB347", "#FF4B6E"
 
 
+def _pool_preview(pool: pd.DataFrame) -> None:
+    st.caption(f"候选池：{len(pool)} 只（按 final_score 排序，仅展示前10供检查）")
+    st.dataframe(
+        pool[["ticker", "final_综合得分(0-100)", "mom_动量得分(RSI14/价格vs200日均)", "rating_评级"]]
+        .head(10).reset_index(drop=True),
+        use_container_width=True, hide_index=True,
+    )
+
+
+def _format_put_ranked_for_display(ranked: pd.DataFrame) -> pd.DataFrame:
+    display = ranked.copy()
+    display["net_credit"] = display["net_credit"].round(2)
+    display["rom"] = (display["rom"] * 100).round(1).astype(str) + "%"
+    display["adr"] = (display["adr"] * 100).round(0).astype(str) + "%"
+    display["buffer_pct"] = (display["buffer_pct"] * 100).round(1).astype(str) + "%"
+    return display
+
+
+def _format_call_ranked_for_display(ranked: pd.DataFrame) -> pd.DataFrame:
+    display = ranked.copy()
+    display["net_debit"] = display["net_debit"].round(2)
+    display["rom"] = (display["rom"] * 100).round(1).astype(str) + "%"
+    display["adr"] = (display["adr"] * 100).round(0).astype(str) + "%"
+    display["move_needed_pct"] = (display["move_needed_pct"] * 100).round(1).astype(str) + "%"
+    return display
+
+
 def render() -> None:
     st.markdown(
         f"<h2 style='color:{_TEXT};margin-bottom:0'>🌐 期权价差全市场筛选</h2>"
@@ -81,14 +108,6 @@ def render() -> None:
     except FileNotFoundError:
         st.error("找不到 results_validated.csv——先跑一次 refresh_scores.py。")
         st.stop()
-
-    def _pool_preview(pool: pd.DataFrame):
-        st.caption(f"候选池：{len(pool)} 只（按 final_score 排序，仅展示前10供检查）")
-        st.dataframe(
-            pool[["ticker", "final_综合得分(0-100)", "mom_动量得分(RSI14/价格vs200日均)", "rating_评级"]]
-            .head(10).reset_index(drop=True),
-            use_container_width=True, hide_index=True,
-        )
 
     # ════════════════════════════════════════════════════════════════════
     # Tab 1: Bull Put Spread
@@ -139,11 +158,7 @@ def render() -> None:
             if ranked.empty:
                 st.info("没有任何候选价差通过筛选——试试放宽DTE窗口或OTM范围。")
             else:
-                display = ranked.copy()
-                display["net_credit"] = display["net_credit"].round(2)
-                display["rom"] = (display["rom"] * 100).round(1).astype(str) + "%"
-                display["adr"] = (display["adr"] * 100).round(0).astype(str) + "%"
-                display["buffer_pct"] = (display["buffer_pct"] * 100).round(1).astype(str) + "%"
+                display = _format_put_ranked_for_display(ranked)
                 st.markdown("#### 全市场排名前10")
                 st.dataframe(display, use_container_width=True, hide_index=True)
                 st.download_button(
@@ -208,11 +223,7 @@ def render() -> None:
             if ranked.empty:
                 st.info("没有任何候选价差通过筛选——试试放宽到期月份、虚实值范围或宽度设置。")
             else:
-                display = ranked.copy()
-                display["net_debit"] = display["net_debit"].round(2)
-                display["rom"] = (display["rom"] * 100).round(1).astype(str) + "%"
-                display["adr"] = (display["adr"] * 100).round(0).astype(str) + "%"
-                display["move_needed_pct"] = (display["move_needed_pct"] * 100).round(1).astype(str) + "%"
+                display = _format_call_ranked_for_display(ranked)
                 st.markdown("#### 全市场排名前10")
                 st.dataframe(display, use_container_width=True, hide_index=True)
                 st.download_button(
