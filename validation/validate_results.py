@@ -98,6 +98,129 @@ def status_from_confidence(conf: float) -> str:
 
 # ── Per-ticker validation ─────────────────────────────────────────────
 
+def _fetch_with_fallback(fn, *args, label: str, default, **kwargs) -> tuple:
+    """Run one external fetch call, returning (value, notes). Not pure --
+    performs real IO -- but collapses the 10 near-identical try/except
+    blocks that used to sit inline in validate_ticker into one call each."""
+    try:
+        return fn(*args, **kwargs), []
+    except Exception as e:
+        return default, [f"{label} error: {e}"]
+
+
+def _name_match(a: str, b: str) -> bool:
+    if not a or not b: return False
+    # Match if either is a substring of the other (handles "Apple Inc." vs "Apple")
+    a, b = a[:30], b[:30]
+    return a in b or b in a
+
+
+def _ticker_name_matched(csv_company: str, fmp_name: str, finnhub_name: str, sec_name: str) -> bool:
+    return any([
+        _name_match(csv_company, fmp_name),
+        _name_match(csv_company, finnhub_name),
+        _name_match(csv_company, sec_name),
+        bool(fmp_name) or bool(sec_name),   # at least one source confirmed ticker exists
+    ])
+
+
+def _is_sector_confirmed(source_conflict: bool, sector_confidence: float, *, has_label_rich_source: bool) -> bool:
+    # Sector confirmed if ≥2 sources agree OR keyword confidence is high.
+    # When running without FMP/Finnhub, only SEC SIC data is available; SIC_MAP
+    # doesn't cover all codes, so "Unknown" suggestion ≠ wrong sector.
+    return (
+        (not source_conflict and sector_confidence >= 0.50)
+        or sector_confidence >= 0.70
+        or not has_label_rich_source   # no label-rich sources = can't refute
+    )
+
+
+def _find_csv_float(csv_row: dict, matches) -> float | None:
+    """First value in csv_row whose key satisfies `matches`, parsed as
+    float. Logic (including the bare `except: pass`) copied verbatim from
+    the original inline search loops."""
+    for k, v in csv_row.items():
+        if matches(k):
+            try: return float(v)
+            except: pass
+    return None
+
+
+def _momentum_agrees(mom_recalc: float | None, csv_mom: float | None, *, threshold: float = 20) -> tuple:
+    if mom_recalc is not None and csv_mom is not None:
+        mom_delta = abs(mom_recalc - csv_mom)
+        if mom_delta > threshold:
+            return False, (
+                f"[MOM-DELTA] CSV momentum={csv_mom:.1f} vs yfinance-recalc={mom_recalc:.1f} "
+                f"(Δ={mom_delta:.1f})"
+            )
+    return True, None
+
+
+def _needs_human_review(
+    *, formula_mismatch: bool, source_conflict: bool, raw_data_conflict: bool,
+    status: str, ai_keyword_count: int, csv_row: dict,
+) -> bool:
+    return any([
+        formula_mismatch,
+        source_conflict,
+        raw_data_conflict,
+        status == "FAIL",
+        (ai_keyword_count <= 1 and float(
+            next((v for k, v in csv_row.items() if k.startswith("ai_")), 0) or 0
+        ) > 75),
+    ])
+
+
+def _resolve_edgar_url(cik, edgar_url: str) -> str:
+    if cik and not edgar_url:
+        return f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}&type=10-K"
+    return edgar_url
+
+
+def _assemble_validation_row(
+    csv_row: dict,
+    ticker: str,
+    *,
+    status: str,
+    confidence: float,
+    sec_val: dict,
+    score_val: dict,
+    fin_val: dict,
+    mom_recalc: float | None,
+    human_review: bool,
+    notes: list,
+    sec_10k_url: str,
+    edgar_url: str,
+) -> dict:
+    all_notes_str = " | ".join(notes) if notes else ""
+
+    out = dict(csv_row)   # copy all original CSV columns
+    out.update({
+        "validation_status":               status,
+        "validation_confidence":           confidence,
+        "source_conflict":                 "TRUE" if sec_val["source_conflict"]    else "FALSE",
+        "formula_mismatch":                "TRUE" if score_val["formula_mismatch"] else "FALSE",
+        "formula_diff_level":              score_val["formula_diff_level"],
+        "formula_diff_abs":                round(score_val["formula_diff_abs"], 3) if score_val["formula_diff_abs"] is not None else "",
+        "formula_diff_reason":             score_val["formula_diff_reason"],
+        "base_score_recalculated":         score_val["base_score_recalculated"]         if score_val["base_score_recalculated"]         is not None else "",
+        "dynamic_adjustment_recalculated": score_val["dynamic_adjustment_recalculated"] if score_val["dynamic_adjustment_recalculated"] is not None else "",
+        "final_score_recalculated":        score_val["final_score_recalculated"]        if score_val["final_score_recalculated"]        is not None else "",
+        "sector_confidence":               sec_val["sector_confidence"],
+        "sector_suggested":                sec_val["sector_suggested"],
+        "raw_data_conflict":               "TRUE" if fin_val["raw_data_conflict"] else "FALSE",
+        "momentum_recalculated":           round(mom_recalc, 1) if mom_recalc is not None else "",
+        "human_review_required":           "TRUE" if human_review else "FALSE",
+        "validation_notes":                all_notes_str,
+        "source_urls_yf":  f"https://finance.yahoo.com/quote/{ticker}",
+        "source_urls_fmp": f"https://financialmodelingprep.com/financial-summary/{ticker}",
+        "source_urls_sec": edgar_url,
+        "source_urls_10k": sec_10k_url,
+    })
+    return out
+
+
 def validate_ticker(
     ticker:     str,
     csv_row:    dict,
@@ -121,136 +244,58 @@ def validate_ticker(
         for f in cache_dir.glob(f"yf_hist_{ticker}.pkl"):
             f.unlink(missing_ok=True)
 
-    try: fmp_profile     = fmp.get_profile(ticker)
-    except Exception as e:
-        fmp_profile = {}; notes.append(f"FMP profile error: {e}")
-
-    try: fmp_ratios      = fmp.get_ratios(ticker)
-    except Exception as e:
-        fmp_ratios = {}; notes.append(f"FMP ratios error: {e}")
-
-    try: fmp_income      = fmp.get_income(ticker)
-    except Exception as e:
-        fmp_income = {}; notes.append(f"FMP income error: {e}")
-
-    try: fmp_metrics     = fmp.get_key_metrics(ticker)
-    except Exception as e:
-        fmp_metrics = {}; notes.append(f"FMP key-metrics error: {e}")
-
-    try: finnhub_profile = finnhub.get_profile(ticker)
-    except Exception as e:
-        finnhub_profile = {}; notes.append(f"Finnhub profile error: {e}")
-
-    try: finnhub_metrics = finnhub.get_metrics(ticker)
-    except Exception as e:
-        finnhub_metrics = {}; notes.append(f"Finnhub metrics error: {e}")
-
-    try: sec_info        = sec.get_company_info(ticker)
-    except Exception as e:
-        sec_info = {}; notes.append(f"SEC info error: {e}")
-
-    try: sec_financials  = sec.get_financials(ticker)
-    except Exception as e:
-        sec_financials = {}; notes.append(f"SEC financials error: {e}")
-
-    try: sec_10k_url     = sec.get_business_description(ticker)
-    except Exception as e:
-        sec_10k_url = ""; notes.append(f"SEC 10-K error: {e}")
-
-    try: momentum_data   = calc_momentum(ticker, ttl_hours=ttl_hours)
-    except Exception as e:
-        momentum_data = {}; notes.append(f"yfinance momentum error: {e}")
+    fmp_profile,     n = _fetch_with_fallback(fmp.get_profile, ticker, label="FMP profile", default={}); notes += n
+    fmp_ratios,      n = _fetch_with_fallback(fmp.get_ratios, ticker, label="FMP ratios", default={}); notes += n
+    fmp_income,      n = _fetch_with_fallback(fmp.get_income, ticker, label="FMP income", default={}); notes += n
+    fmp_metrics,     n = _fetch_with_fallback(fmp.get_key_metrics, ticker, label="FMP key-metrics", default={}); notes += n
+    finnhub_profile, n = _fetch_with_fallback(finnhub.get_profile, ticker, label="Finnhub profile", default={}); notes += n
+    finnhub_metrics, n = _fetch_with_fallback(finnhub.get_metrics, ticker, label="Finnhub metrics", default={}); notes += n
+    sec_info,        n = _fetch_with_fallback(sec.get_company_info, ticker, label="SEC info", default={}); notes += n
+    sec_financials,  n = _fetch_with_fallback(sec.get_financials, ticker, label="SEC financials", default={}); notes += n
+    sec_10k_url,     n = _fetch_with_fallback(sec.get_business_description, ticker, label="SEC 10-K", default=""); notes += n
+    momentum_data,   n = _fetch_with_fallback(calc_momentum, ticker, ttl_hours=ttl_hours, label="yfinance momentum", default={}); notes += n
 
     # ── 2. Ticker / company name match ────────────────────────────────
     csv_company  = csv_row.get("company_公司名", csv_row.get("company", "")).lower()
-    fmp_name     = fmp_profile.get("company_name", "").lower()
-    finnhub_name = finnhub_profile.get("company_name", "").lower()
-    sec_name     = sec_info.get("company_name", "").lower()
-
-    def _name_match(a: str, b: str) -> bool:
-        if not a or not b: return False
-        # Match if either is a substring of the other (handles "Apple Inc." vs "Apple")
-        a, b = a[:30], b[:30]
-        return a in b or b in a
-
-    ticker_matched = any([
-        _name_match(csv_company, fmp_name),
-        _name_match(csv_company, finnhub_name),
-        _name_match(csv_company, sec_name),
-        bool(fmp_name) or bool(sec_name),   # at least one source confirmed ticker exists
-    ])
+    ticker_matched = _ticker_name_matched(
+        csv_company,
+        fmp_profile.get("company_name", "").lower(),
+        finnhub_profile.get("company_name", "").lower(),
+        sec_info.get("company_name", "").lower(),
+    )
 
     # ── 3. Sector validation ──────────────────────────────────────────
     csv_sector   = csv_row.get("sector_板块", csv_row.get("sector", ""))
-    description  = fmp_profile.get("description", "")
     sec_val = validate_sector(
         ticker, csv_sector,
         fmp_profile, finnhub_profile, sec_info,
-        description=description,
+        description=fmp_profile.get("description", ""),
     )
-    sector_confidence = sec_val["sector_confidence"]
-    source_conflict   = sec_val["source_conflict"]
-    notes            += sec_val["notes"]
-    ai_keyword_count  = sec_val["ai_keyword_count"]
-
-    # Sector confirmed if ≥2 sources agree OR keyword confidence is high.
-    # When running without FMP/Finnhub, only SEC SIC data is available; SIC_MAP
-    # doesn't cover all codes, so "Unknown" suggestion ≠ wrong sector.
-    sector_confirmed = (
-        (not source_conflict and sector_confidence >= 0.50)
-        or sector_confidence >= 0.70
-        or not (fmp_profile or finnhub_profile)   # no label-rich sources = can't refute
+    notes += sec_val["notes"]
+    sector_confirmed = _is_sector_confirmed(
+        sec_val["source_conflict"], sec_val["sector_confidence"],
+        has_label_rich_source=bool(fmp_profile or finnhub_profile),
     )
 
     # ── 4. Financial anomaly validation ──────────────────────────────
     fin_val = validate_financial(
         ticker, csv_row, fmp_profile, fmp_ratios,
-        fmp_income, finnhub_metrics, sec_financials, ai_keyword_count,
+        fmp_income, finnhub_metrics, sec_financials, sec_val["ai_keyword_count"],
     )
-    raw_data_conflict = fin_val["raw_data_conflict"]
-    notes            += fin_val["notes"]
-    no_anomalies      = fin_val["anomaly_count"] == 0
+    notes += fin_val["notes"]
 
     # ── 5. Score recalculation ────────────────────────────────────────
     # Pass live momentum so recalc uses same rsi_14/price_vs_200dma as CSV
     score_val = validate_score(ticker, csv_row, live_momentum=momentum_data)
-    formula_mismatch              = score_val["formula_mismatch"]
-    final_score_recalculated      = score_val["final_score_recalculated"]
-    base_score_recalculated       = score_val["base_score_recalculated"]
-    dynamic_adj_recalculated      = score_val["dynamic_adjustment_recalculated"]
-    formula_diff_abs              = score_val["formula_diff_abs"]
-    formula_diff_level            = score_val["formula_diff_level"]
-    formula_diff_reason           = score_val["formula_diff_reason"]
-    notes                        += score_val["notes"]
-
-    csv_final = None
-    for k, v in csv_row.items():
-        if "final_" in k:
-            try: csv_final = float(v); break
-            except: pass
-
-    score_ok = (
-        not formula_mismatch
-        and final_score_recalculated is not None
-    )
+    notes += score_val["notes"]
+    score_ok = not score_val["formula_mismatch"] and score_val["final_score_recalculated"] is not None
 
     # ── 6. Momentum recalculation ─────────────────────────────────────
     mom_recalc = momentum_data.get("momentum_score")
-    csv_mom = None
-    for k, v in csv_row.items():
-        if k.startswith("mom_"):
-            try: csv_mom = float(v); break
-            except: pass
-
-    momentum_ok = True
-    if mom_recalc is not None and csv_mom is not None:
-        mom_delta = abs(mom_recalc - csv_mom)
-        if mom_delta > 20:
-            momentum_ok = False
-            notes.append(
-                f"[MOM-DELTA] CSV momentum={csv_mom:.1f} vs yfinance-recalc={mom_recalc:.1f} "
-                f"(Δ={mom_delta:.1f})"
-            )
+    csv_mom = _find_csv_float(csv_row, lambda k: k.startswith("mom_"))
+    momentum_ok, mom_note = _momentum_agrees(mom_recalc, csv_mom)
+    if mom_note:
+        notes.append(mom_note)
 
     # ── 7. SEC data availability ──────────────────────────────────────
     sec_available = bool(sec_info.get("cik")) or bool(sec_financials)
@@ -258,54 +303,31 @@ def validate_ticker(
     # ── 8. Confidence + status ────────────────────────────────────────
     confidence = compute_confidence(
         ticker_matched, sector_confirmed, sec_available,
-        momentum_ok, score_ok, no_anomalies,
+        momentum_ok, score_ok, fin_val["anomaly_count"] == 0,
     )
     status = status_from_confidence(confidence)
 
     # ── 9. human_review_required ──────────────────────────────────────
-    human_review = any([
-        formula_mismatch,
-        source_conflict,
-        raw_data_conflict,
-        status == "FAIL",
-        (ai_keyword_count <= 1 and float(
-            next((v for k, v in csv_row.items() if k.startswith("ai_")), 0) or 0
-        ) > 75),
-    ])
+    human_review = _needs_human_review(
+        formula_mismatch=score_val["formula_mismatch"],
+        source_conflict=sec_val["source_conflict"],
+        raw_data_conflict=fin_val["raw_data_conflict"],
+        status=status,
+        ai_keyword_count=sec_val["ai_keyword_count"],
+        csv_row=csv_row,
+    )
 
     # ── 10. Assemble source URLs ──────────────────────────────────────
-    cik       = sec_info.get("cik", "")
-    edgar_url = sec_info.get("edgar_url", "")
-    if cik and not edgar_url:
-        edgar_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}&type=10-K"
+    edgar_url = _resolve_edgar_url(sec_info.get("cik", ""), sec_info.get("edgar_url", ""))
 
     # ── 11. Build output row ──────────────────────────────────────────
-    all_notes_str = " | ".join(notes) if notes else ""
-
-    out = dict(csv_row)   # copy all original CSV columns
-    out.update({
-        "validation_status":               status,
-        "validation_confidence":           confidence,
-        "source_conflict":                 "TRUE" if source_conflict  else "FALSE",
-        "formula_mismatch":                "TRUE" if formula_mismatch else "FALSE",
-        "formula_diff_level":              formula_diff_level,
-        "formula_diff_abs":                round(formula_diff_abs, 3) if formula_diff_abs is not None else "",
-        "formula_diff_reason":             formula_diff_reason,
-        "base_score_recalculated":         base_score_recalculated  if base_score_recalculated  is not None else "",
-        "dynamic_adjustment_recalculated": dynamic_adj_recalculated if dynamic_adj_recalculated is not None else "",
-        "final_score_recalculated":        final_score_recalculated if final_score_recalculated is not None else "",
-        "sector_confidence":               sector_confidence,
-        "sector_suggested":                sec_val["sector_suggested"],
-        "raw_data_conflict":               "TRUE" if raw_data_conflict else "FALSE",
-        "momentum_recalculated":           round(mom_recalc, 1) if mom_recalc is not None else "",
-        "human_review_required":           "TRUE" if human_review else "FALSE",
-        "validation_notes":                all_notes_str,
-        "source_urls_yf":  f"https://finance.yahoo.com/quote/{ticker}",
-        "source_urls_fmp": f"https://financialmodelingprep.com/financial-summary/{ticker}",
-        "source_urls_sec": edgar_url,
-        "source_urls_10k": sec_10k_url,
-    })
-    return out
+    return _assemble_validation_row(
+        csv_row, ticker,
+        status=status, confidence=confidence,
+        sec_val=sec_val, score_val=score_val, fin_val=fin_val,
+        mom_recalc=mom_recalc, human_review=human_review,
+        notes=notes, sec_10k_url=sec_10k_url, edgar_url=edgar_url,
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────
