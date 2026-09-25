@@ -156,17 +156,15 @@ def _source_rank(field: str, item: SourceObservation) -> tuple[int, float]:
     )
 
 
-def reconcile_field(
+def _resolve_reconciliation_params(
     field: str,
-    observations: Iterable[SourceObservation | Mapping[str, Any]],
-    *,
-    expected_unit: str,
     as_of: dt.datetime | str,
-    max_age_days: int,
-    tolerance: float | None = None,
-    cross_check_mode: str | None = None,
-) -> dict[str, Any]:
-    """Reconcile one field without averaging conflicts or inventing values."""
+    tolerance: float | None,
+    cross_check_mode: str | None,
+) -> tuple[dt.datetime, float, str]:
+    """Resolve and validate (cutoff, tolerance, cross_check_mode) for one
+    field. Raises ValueError with the same messages as the original inline
+    block on any invalid combination."""
     cutoff = _timestamp(as_of, "as_of") if not isinstance(as_of, dt.datetime) else as_of
     if cutoff.tzinfo is None:
         raise ValueError("as_of must include a timezone")
@@ -184,7 +182,20 @@ def reconcile_field(
         raise ValueError(
             f"cross_check_mode must be one of {sorted(ALLOWED_CROSS_CHECK_MODES)}"
         )
+    return cutoff, limit, mode
 
+
+def _admit_observations(
+    observations: Iterable[SourceObservation | Mapping[str, Any]],
+    *,
+    field: str,
+    expected_unit: str,
+    cutoff: dt.datetime,
+    max_age_days: int,
+) -> tuple[list[SourceObservation], list[dict[str, Any]]]:
+    """Parse and filter raw observations into (accepted, rejected). Logic
+    copied verbatim from the original inline block, including catching a
+    parse_observation ValueError as a rejection rather than propagating it."""
     accepted: list[SourceObservation] = []
     rejected: list[dict[str, Any]] = []
     for index, raw in enumerate(observations):
@@ -208,18 +219,18 @@ def reconcile_field(
                 accepted.append(item)
         except ValueError as exc:
             rejected.append({"index": index, "source": None, "reasons": [str(exc)]})
+    return accepted, rejected
 
-    if not accepted:
-        return {
-            "field": field,
-            "status": EvidenceStatus.INVALID.value,
-            "record": None,
-            "accepted_count": 0,
-            "independent_source_families": [],
-            "rejected": rejected,
-            "reason": "no valid point-in-time observations",
-        }
 
+def _find_corroborating_pairs(
+    accepted: list[SourceObservation],
+    *,
+    mode: str,
+    limit: float,
+) -> list[tuple[float, SourceObservation, SourceObservation]]:
+    """Find every pair of accepted observations that independently
+    corroborate each other within tolerance. Logic copied verbatim from
+    the original nested-loop block."""
     pairs: list[tuple[float, SourceObservation, SourceObservation]] = []
     for left_index, left in enumerate(accepted):
         for right in accepted[left_index + 1 :]:
@@ -240,42 +251,65 @@ def reconcile_field(
             difference = _relative_difference(left.value, right.value)
             if difference <= limit:
                 pairs.append((difference, left, right))
+    return pairs
 
-    families = sorted({item.source_family for item in accepted})
+
+def _evidence_gap_result(
+    field: str,
+    mode: str,
+    accepted: list[SourceObservation],
+    rejected: list[dict[str, Any]],
+    families: list[str],
+    limit: float,
+) -> dict[str, Any]:
+    """Build the NEEDS_EVIDENCE/CONFLICTED envelope for when no corroborating
+    pair was found. Logic copied verbatim from the original inline block,
+    including that a pair excluded solely for sharing a source_locator is
+    indistinguishable here from a pair that was compared and disagreed --
+    both surface as CONFLICTED once families/origins/extraction_methods
+    each have >=2 distinct values (not fixed here, out of scope)."""
     origins = sorted({item.origin_family for item in accepted})
     extraction_methods = sorted({item.extraction_method for item in accepted})
-    if not pairs:
-        lacks_independence = (
-            len(families) < 2
-            or (mode == "INDEPENDENT_ORIGIN" and len(origins) < 2)
-            or (
-                mode == "INDEPENDENT_EXTRACTION"
-                and len(extraction_methods) < 2
-            )
+    lacks_independence = (
+        len(families) < 2
+        or (mode == "INDEPENDENT_ORIGIN" and len(origins) < 2)
+        or (
+            mode == "INDEPENDENT_EXTRACTION"
+            and len(extraction_methods) < 2
         )
-        status = (
-            EvidenceStatus.NEEDS_EVIDENCE
-            if lacks_independence
-            else EvidenceStatus.CONFLICTED
-        )
-        return {
-            "field": field,
-            "status": status.value,
-            "cross_check_mode": mode,
-            "record": None,
-            "accepted_count": len(accepted),
-            "independent_source_families": families,
-            "origin_families": origins,
-            "rejected": rejected,
-            "reason": (
-                f"{mode} requirements are not satisfied"
-                if status == EvidenceStatus.NEEDS_EVIDENCE
-                else f"independent observations disagree beyond {limit:.2%}"
-            ),
-            "observations": [_observation_payload(item) for item in accepted],
-        }
+    )
+    status = (
+        EvidenceStatus.NEEDS_EVIDENCE
+        if lacks_independence
+        else EvidenceStatus.CONFLICTED
+    )
+    return {
+        "field": field,
+        "status": status.value,
+        "cross_check_mode": mode,
+        "record": None,
+        "accepted_count": len(accepted),
+        "independent_source_families": families,
+        "origin_families": origins,
+        "rejected": rejected,
+        "reason": (
+            f"{mode} requirements are not satisfied"
+            if status == EvidenceStatus.NEEDS_EVIDENCE
+            else f"independent observations disagree beyond {limit:.2%}"
+        ),
+        "observations": [_observation_payload(item) for item in accepted],
+    }
 
-    difference, left, right = min(
+
+def _select_best_pair(
+    field: str,
+    pairs: list[tuple[float, SourceObservation, SourceObservation]],
+) -> tuple[float, SourceObservation, SourceObservation]:
+    """Pick the strongest corroborating pair: best (lowest) source rank
+    first, then smallest relative difference, then a deterministic
+    family-name tie-break on the pair's own left/right slots. Logic copied
+    verbatim from the original inline `min(...)` call."""
+    return min(
         pairs,
         key=lambda pair: (
             min(_source_rank(field, pair[1]), _source_rank(field, pair[2])),
@@ -284,6 +318,22 @@ def reconcile_field(
             pair[2].source_family,
         ),
     )
+
+
+def _build_verified_result(
+    field: str,
+    mode: str,
+    difference: float,
+    left: SourceObservation,
+    right: SourceObservation,
+    accepted: list[SourceObservation],
+    rejected: list[dict[str, Any]],
+    limit: float,
+    families: list[str],
+) -> dict[str, Any]:
+    """Order the winning pair into primary/secondary by source rank and
+    build the VERIFIED envelope. Logic copied verbatim from the original
+    inline block."""
     primary, secondary = sorted(
         (left, right),
         key=lambda item: _source_rank(field, item),
@@ -327,6 +377,52 @@ def reconcile_field(
         "rejected": rejected,
         "reason": None,
     }
+
+
+def reconcile_field(
+    field: str,
+    observations: Iterable[SourceObservation | Mapping[str, Any]],
+    *,
+    expected_unit: str,
+    as_of: dt.datetime | str,
+    max_age_days: int,
+    tolerance: float | None = None,
+    cross_check_mode: str | None = None,
+) -> dict[str, Any]:
+    """Reconcile one field without averaging conflicts or inventing values."""
+    cutoff, limit, mode = _resolve_reconciliation_params(
+        field, as_of, tolerance, cross_check_mode
+    )
+
+    accepted, rejected = _admit_observations(
+        observations,
+        field=field,
+        expected_unit=expected_unit,
+        cutoff=cutoff,
+        max_age_days=max_age_days,
+    )
+
+    if not accepted:
+        return {
+            "field": field,
+            "status": EvidenceStatus.INVALID.value,
+            "record": None,
+            "accepted_count": 0,
+            "independent_source_families": [],
+            "rejected": rejected,
+            "reason": "no valid point-in-time observations",
+        }
+
+    pairs = _find_corroborating_pairs(accepted, mode=mode, limit=limit)
+    families = sorted({item.source_family for item in accepted})
+
+    if not pairs:
+        return _evidence_gap_result(field, mode, accepted, rejected, families, limit)
+
+    difference, left, right = _select_best_pair(field, pairs)
+    return _build_verified_result(
+        field, mode, difference, left, right, accepted, rejected, limit, families
+    )
 
 
 def build_evidence_bundle(
