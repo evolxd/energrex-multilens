@@ -1,0 +1,44 @@
+{
+ "NVDA": {
+  "final_综合得分(0-100)": 79.65,
+  "rating_评级": "✅ 综合良好",
+  "aiprofile_AI角色": "AI核心型",
+  "aiprofilekey_AI角色代码": "AI_CORE",
+  "placeholder_dims_全占位维度": "",
+  "bad_fields_剔除字段": "",
+  "raw_current_price_yf": "201.2 [yf]",
+  "raw_beta_贝塔系数": "2.2 [yf]",
+  "raw_rsi14_RSI14(45-65最佳)": "58.2 [yf]",
+  "company_score_公司质量分(不受熔断影响)": 89.78,
+  "circuit_label_熔断分项": "",
+  "last_refreshed": "2026-09-24 12:00"
+ },
+ "TSM": {
+  "final_综合得分(0-100)": 48.56,
+  "rating_评级": "⚠️ 谨慎评估",
+  "aiprofile_AI角色": "AI待验证",
+  "aiprofilekey_AI角色代码": "AI_UNVERIFIED",
+  "placeholder_dims_全占位维度": "ai_exposure,expectation_gap,momentum",
+  "bad_fields_剔除字段": "",
+  "raw_current_price_yf": "210 [yf]",
+  "raw_beta_贝塔系数": "1.15 [yf]",
+  "raw_rsi14_RSI14(45-65最佳)": "n/a [--]",
+  "company_score_公司质量分(不受熔断影响)": 52.98,
+  "circuit_label_熔断分项": "",
+  "last_refreshed": "2026-09-24 12:00"
+ },
+ "AVGO": {
+  "final_综合得分(0-100)": 45.79,
+  "rating_评级": "🧾 数据待复核",
+  "aiprofile_AI角色": "AI核心型",
+  "aiprofilekey_AI角色代码": "AI_CORE",
+  "placeholder_dims_全占位维度": "momentum",
+  "bad_fields_剔除字段": "",
+  "raw_current_price_yf": "372.1 [yf]",
+  "raw_beta_贝塔系数": "1.43 [yf]",
+  "raw_rsi14_RSI14(45-65最佳)": "n/a [--]",
+  "company_score_公司质量分(不受熔断影响)": 69.97,
+  "circuit_label_熔断分项": "杠杆",
+  "last_refreshed": "2026-09-24 12:00"
+ }
+}
