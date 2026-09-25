@@ -152,6 +152,189 @@ def _profile(value: Any) -> ValuationProfile:
         raise ValueError(f"Unsupported valuation profile: {value}") from exc
 
 
+def _check_presence_and_provenance(
+    record: Mapping[str, Any],
+    spec: FieldSpec,
+    name: str,
+) -> tuple[float | None, list[str]]:
+    """Value/unit/source-identity checks: INVALID_VALUE, UNIT_MISMATCH,
+    SOURCE_MISSING, SOURCE_FAMILY_MISSING, ORIGIN_FAMILY_MISSING,
+    LINEAGE_ID_MISSING, SOURCE_LOCATOR_MISSING, SOURCE_TYPE_INVALID.
+
+    All eight are independent `if`s in the original code (none short-
+    circuits another), preserved as-is here. Only called once the caller
+    has confirmed `record` is a Mapping -- MISSING is decided by the
+    caller before this function is ever invoked.
+    """
+    reasons: list[str] = []
+    value: float | None = None
+    try:
+        value = _finite(record.get("value"), f"fields.{name}.value")
+    except ValueError:
+        reasons.append("INVALID_VALUE")
+    if record.get("unit") != spec.unit:
+        reasons.append("UNIT_MISMATCH")
+    if not str(record.get("source") or "").strip():
+        reasons.append("SOURCE_MISSING")
+    if not str(record.get("source_family") or "").strip().upper():
+        reasons.append("SOURCE_FAMILY_MISSING")
+    if not str(record.get("origin_family") or "").strip().upper():
+        reasons.append("ORIGIN_FAMILY_MISSING")
+    if not str(record.get("lineage_id") or "").strip():
+        reasons.append("LINEAGE_ID_MISSING")
+    if not str(record.get("source_locator") or "").strip():
+        reasons.append("SOURCE_LOCATOR_MISSING")
+    if str(record.get("source_type") or "") not in ALLOWED_SOURCE_TYPES:
+        reasons.append("SOURCE_TYPE_INVALID")
+    return value, reasons
+
+
+def _check_timestamps(
+    record: Mapping[str, Any],
+    spec: FieldSpec,
+    as_of: dt.datetime,
+    name: str,
+) -> list[str]:
+    """Timestamp ordering + staleness: TIMESTAMP_INVALID,
+    OBSERVED_AFTER_AVAILABLE, AVAILABLE_AFTER_RETRIEVED, LOOKAHEAD, STALE.
+
+    A parse failure on any of the three timestamps short-circuits straight
+    to TIMESTAMP_INVALID via the try/except -- none of the ordering/
+    staleness checks run unless all three parse successfully, exactly as
+    in the original.
+    """
+    reasons: list[str] = []
+    try:
+        observed = _iso_datetime(record.get("observed_at"), f"fields.{name}.observed_at")
+        available = _iso_datetime(record.get("available_at"), f"fields.{name}.available_at")
+        retrieved = _iso_datetime(record.get("retrieved_at"), f"fields.{name}.retrieved_at")
+        if observed > available:
+            reasons.append("OBSERVED_AFTER_AVAILABLE")
+        if available > retrieved:
+            reasons.append("AVAILABLE_AFTER_RETRIEVED")
+        if available > as_of or retrieved > as_of:
+            reasons.append("LOOKAHEAD")
+        if (as_of - available).total_seconds() / 86400 > spec.max_age_days:
+            reasons.append("STALE")
+    except ValueError:
+        reasons.append("TIMESTAMP_INVALID")
+    return reasons
+
+
+def _check_verification_status(record: Mapping[str, Any]) -> list[str]:
+    """UNVERIFIED only."""
+    verification = record.get("verification")
+    if not isinstance(verification, Mapping) or verification.get("status") != "VERIFIED":
+        return ["UNVERIFIED"]
+    return []
+
+
+def _check_cross_check(
+    record: Mapping[str, Any],
+    name: str,
+    as_of: dt.datetime,
+) -> list[str]:
+    """The full cross-check block (14 reason codes), kept as ONE function
+    per the approved decomposition -- splitting it further would mean
+    threading source_family/origin_family/source_locator and the parsed
+    `verification` mapping through several smaller functions for no
+    behavioral benefit, and would risk disturbing the CROSS_CHECK_MISSING
+    early exit (skips the other 13 reasons entirely) and the
+    cross_check_mode elif chain's mutual exclusivity. Logic copied
+    verbatim from the original inline block; the caller still owns the
+    `if spec.cross_check_required:` gate, so this is simply never called
+    when a field's spec doesn't require cross-checking.
+    """
+    reasons: list[str] = []
+    source_family = str(record.get("source_family") or "").strip().upper()
+    source_locator = str(record.get("source_locator") or "").strip()
+    origin_family = str(record.get("origin_family") or "").strip().upper()
+    verification = record.get("verification")
+    if (
+        not isinstance(verification, Mapping)
+        or not str(verification.get("secondary_source") or "").strip()
+    ):
+        reasons.append("CROSS_CHECK_MISSING")
+    else:
+        secondary_family = str(
+            verification.get("secondary_source_family") or ""
+        ).strip().upper()
+        secondary_origin = str(
+            verification.get("secondary_origin_family") or ""
+        ).strip().upper()
+        secondary_lineage = str(
+            verification.get("secondary_lineage_id") or ""
+        ).strip()
+        secondary_locator = str(
+            verification.get("secondary_source_locator") or ""
+        ).strip()
+        secondary_extraction = str(
+            verification.get("secondary_extraction_method") or ""
+        ).strip()
+        cross_check_mode = str(
+            verification.get("cross_check_mode") or ""
+        ).strip().upper()
+        if not secondary_family or secondary_family == source_family:
+            reasons.append("CROSS_CHECK_NOT_INDEPENDENT")
+        if not secondary_locator or secondary_locator == source_locator:
+            reasons.append("CROSS_CHECK_LOCATOR_NOT_INDEPENDENT")
+        if not secondary_origin or not secondary_lineage:
+            reasons.append("CROSS_CHECK_LINEAGE_MISSING")
+        if cross_check_mode not in {
+            "INDEPENDENT_ORIGIN",
+            "INDEPENDENT_EXTRACTION",
+        }:
+            reasons.append("CROSS_CHECK_MODE_INVALID")
+        elif cross_check_mode != FIELD_CROSSCHECK_MODES[name]:
+            reasons.append("CROSS_CHECK_MODE_MISMATCH")
+        elif (
+            cross_check_mode == "INDEPENDENT_ORIGIN"
+            and secondary_origin == origin_family
+        ):
+            reasons.append("CROSS_CHECK_ORIGIN_NOT_INDEPENDENT")
+        elif (
+            cross_check_mode == "INDEPENDENT_EXTRACTION"
+            and (
+                not secondary_extraction
+                or secondary_extraction
+                == str(record.get("extraction_method") or "").strip()
+            )
+        ):
+            reasons.append("CROSS_CHECK_EXTRACTION_NOT_INDEPENDENT")
+        try:
+            secondary_available = _iso_datetime(
+                verification.get("secondary_available_at"),
+                f"fields.{name}.verification.secondary_available_at",
+            )
+            secondary_retrieved = _iso_datetime(
+                verification.get("secondary_retrieved_at"),
+                f"fields.{name}.verification.secondary_retrieved_at",
+            )
+            if secondary_available > secondary_retrieved:
+                reasons.append("SECONDARY_AVAILABLE_AFTER_RETRIEVED")
+            if secondary_available > as_of or secondary_retrieved > as_of:
+                reasons.append("SECONDARY_LOOKAHEAD")
+        except ValueError:
+            reasons.append("SECONDARY_TIMESTAMP_INVALID")
+        try:
+            difference = _nonnegative(
+                verification.get("relative_difference"),
+                f"fields.{name}.verification.relative_difference",
+            )
+            tolerance = _nonnegative(
+                verification.get("tolerance"),
+                f"fields.{name}.verification.tolerance",
+            )
+            maximum = FIELD_CROSSCHECK_LIMITS[name]
+            if tolerance > maximum:
+                reasons.append("CROSS_CHECK_TOLERANCE_TOO_WIDE")
+            if difference > tolerance:
+                reasons.append("CROSS_CHECK_CONFLICT")
+        except (KeyError, ValueError):
+            reasons.append("CROSS_CHECK_METRICS_INVALID")
+    return reasons
+
+
 def _field_values_and_quality(
     request: Mapping[str, Any],
     profile: ValuationProfile,
@@ -167,173 +350,17 @@ def _field_values_and_quality(
 
     for name, spec in PROFILE_SPECS[profile].items():
         record = raw_fields.get(name)
-        reasons: list[str] = []
-        valid = True
         if not isinstance(record, Mapping):
-            valid = False
-            reasons.append("MISSING")
+            reasons = ["MISSING"]
         else:
-            try:
-                values[name] = _finite(record.get("value"), f"fields.{name}.value")
-            except ValueError:
-                valid = False
-                reasons.append("INVALID_VALUE")
-            if record.get("unit") != spec.unit:
-                valid = False
-                reasons.append("UNIT_MISMATCH")
-            if not str(record.get("source") or "").strip():
-                valid = False
-                reasons.append("SOURCE_MISSING")
-            source_family = str(record.get("source_family") or "").strip().upper()
-            origin_family = str(record.get("origin_family") or "").strip().upper()
-            lineage_id = str(record.get("lineage_id") or "").strip()
-            source_locator = str(record.get("source_locator") or "").strip()
-            if not source_family:
-                valid = False
-                reasons.append("SOURCE_FAMILY_MISSING")
-            if not origin_family:
-                valid = False
-                reasons.append("ORIGIN_FAMILY_MISSING")
-            if not lineage_id:
-                valid = False
-                reasons.append("LINEAGE_ID_MISSING")
-            if not source_locator:
-                valid = False
-                reasons.append("SOURCE_LOCATOR_MISSING")
-            if str(record.get("source_type") or "") not in ALLOWED_SOURCE_TYPES:
-                valid = False
-                reasons.append("SOURCE_TYPE_INVALID")
-            try:
-                observed = _iso_datetime(
-                    record.get("observed_at"),
-                    f"fields.{name}.observed_at",
-                )
-                available = _iso_datetime(
-                    record.get("available_at"),
-                    f"fields.{name}.available_at",
-                )
-                retrieved = _iso_datetime(
-                    record.get("retrieved_at"),
-                    f"fields.{name}.retrieved_at",
-                )
-                if observed > available:
-                    valid = False
-                    reasons.append("OBSERVED_AFTER_AVAILABLE")
-                if available > retrieved:
-                    valid = False
-                    reasons.append("AVAILABLE_AFTER_RETRIEVED")
-                if available > as_of or retrieved > as_of:
-                    valid = False
-                    reasons.append("LOOKAHEAD")
-                if (as_of - available).total_seconds() / 86400 > spec.max_age_days:
-                    valid = False
-                    reasons.append("STALE")
-            except ValueError:
-                valid = False
-                reasons.append("TIMESTAMP_INVALID")
-            verification = record.get("verification")
-            if not isinstance(verification, Mapping) or (
-                verification.get("status") != "VERIFIED"
-            ):
-                valid = False
-                reasons.append("UNVERIFIED")
+            value, reasons = _check_presence_and_provenance(record, spec, name)
+            if value is not None:
+                values[name] = value
+            reasons = reasons + _check_timestamps(record, spec, as_of, name)
+            reasons = reasons + _check_verification_status(record)
             if spec.cross_check_required:
-                if (
-                    not isinstance(verification, Mapping)
-                    or not str(verification.get("secondary_source") or "").strip()
-                ):
-                    valid = False
-                    reasons.append("CROSS_CHECK_MISSING")
-                else:
-                    secondary_family = str(
-                        verification.get("secondary_source_family") or ""
-                    ).strip().upper()
-                    secondary_origin = str(
-                        verification.get("secondary_origin_family") or ""
-                    ).strip().upper()
-                    secondary_lineage = str(
-                        verification.get("secondary_lineage_id") or ""
-                    ).strip()
-                    secondary_locator = str(
-                        verification.get("secondary_source_locator") or ""
-                    ).strip()
-                    secondary_extraction = str(
-                        verification.get("secondary_extraction_method") or ""
-                    ).strip()
-                    cross_check_mode = str(
-                        verification.get("cross_check_mode") or ""
-                    ).strip().upper()
-                    if not secondary_family or secondary_family == source_family:
-                        valid = False
-                        reasons.append("CROSS_CHECK_NOT_INDEPENDENT")
-                    if not secondary_locator or secondary_locator == source_locator:
-                        valid = False
-                        reasons.append("CROSS_CHECK_LOCATOR_NOT_INDEPENDENT")
-                    if not secondary_origin or not secondary_lineage:
-                        valid = False
-                        reasons.append("CROSS_CHECK_LINEAGE_MISSING")
-                    if cross_check_mode not in {
-                        "INDEPENDENT_ORIGIN",
-                        "INDEPENDENT_EXTRACTION",
-                    }:
-                        valid = False
-                        reasons.append("CROSS_CHECK_MODE_INVALID")
-                    elif cross_check_mode != FIELD_CROSSCHECK_MODES[name]:
-                        valid = False
-                        reasons.append("CROSS_CHECK_MODE_MISMATCH")
-                    elif (
-                        cross_check_mode == "INDEPENDENT_ORIGIN"
-                        and secondary_origin == origin_family
-                    ):
-                        valid = False
-                        reasons.append("CROSS_CHECK_ORIGIN_NOT_INDEPENDENT")
-                    elif (
-                        cross_check_mode == "INDEPENDENT_EXTRACTION"
-                        and (
-                            not secondary_extraction
-                            or secondary_extraction
-                            == str(record.get("extraction_method") or "").strip()
-                        )
-                    ):
-                        valid = False
-                        reasons.append("CROSS_CHECK_EXTRACTION_NOT_INDEPENDENT")
-                    try:
-                        secondary_available = _iso_datetime(
-                            verification.get("secondary_available_at"),
-                            f"fields.{name}.verification.secondary_available_at",
-                        )
-                        secondary_retrieved = _iso_datetime(
-                            verification.get("secondary_retrieved_at"),
-                            f"fields.{name}.verification.secondary_retrieved_at",
-                        )
-                        if secondary_available > secondary_retrieved:
-                            valid = False
-                            reasons.append("SECONDARY_AVAILABLE_AFTER_RETRIEVED")
-                        if secondary_available > as_of or secondary_retrieved > as_of:
-                            valid = False
-                            reasons.append("SECONDARY_LOOKAHEAD")
-                    except ValueError:
-                        valid = False
-                        reasons.append("SECONDARY_TIMESTAMP_INVALID")
-                    try:
-                        difference = _nonnegative(
-                            verification.get("relative_difference"),
-                            f"fields.{name}.verification.relative_difference",
-                        )
-                        tolerance = _nonnegative(
-                            verification.get("tolerance"),
-                            f"fields.{name}.verification.tolerance",
-                        )
-                        maximum = FIELD_CROSSCHECK_LIMITS[name]
-                        if tolerance > maximum:
-                            valid = False
-                            reasons.append("CROSS_CHECK_TOLERANCE_TOO_WIDE")
-                        if difference > tolerance:
-                            valid = False
-                            reasons.append("CROSS_CHECK_CONFLICT")
-                    except (KeyError, ValueError):
-                        valid = False
-                        reasons.append("CROSS_CHECK_METRICS_INVALID")
+                reasons = reasons + _check_cross_check(record, name, as_of)
+        valid = not reasons
         if valid:
             valid_count += 1
         else:
