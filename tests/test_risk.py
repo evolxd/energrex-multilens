@@ -554,6 +554,418 @@ class ComputeExitAnalysisTests(unittest.TestCase):
         self.assertEqual(summary["n_broken"], 1)
         self.assertEqual(summary["top_unds"][0], ("BBB", 2000.0))
 
+    # ════════════════════════════════════════════════════════════════
+    # Golden/characterization tests added ahead of decomposing
+    # compute_exit_analysis into detect_thesis_broken / compute_urgency_score
+    # / pick_action / build_why_text / summarize_exit_portfolios.
+    #
+    # Written against the CURRENT, unmodified implementation -- fill the
+    # coverage gaps the pre-decomposition audit found: 5 of 6 thesis-broken
+    # spread types, the exact urgency-score weights per factor, 5 of 9
+    # action branches, and the 4 layered why-text sections. Also locks the
+    # 3 discovered quirks as-is (approved: preserve, do not fix):
+    #   - `today` is accepted but never read anywhere in the function.
+    #   - Naked Long Put/Call index into legs[0] without a length check.
+    #   - `(min_dte or 999) < 30` -- verified NOT actually reachable with a
+    #     falsy min_dte=0 in practice, because `min_dte <= 7` (which 0
+    #     always satisfies) is checked in an earlier, higher-priority
+    #     branch and wins first. Corrected from the earlier diagnosis,
+    #     which called this a live trap; it is not one under the current
+    #     elif ordering. Locked as dead/unreachable defensive code, not a
+    #     bug -- if a later refactor ever reorders the elif chain, this is
+    #     exactly the kind of thing that could turn live, so it stays
+    #     covered rather than removed.
+    # ════════════════════════════════════════════════════════════════
+
+    def test_today_parameter_has_no_effect_on_the_result(self):
+        kwargs = dict(
+            portfolios=[self._portfolio()], net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(
+            compute_exit_analysis(**kwargs, today=None),
+            compute_exit_analysis(**kwargs, today=datetime.date(2030, 1, 1)),
+        )
+
+    # ── B组：thesis_broken，5种剩余价差类型（Bull Call 已有覆盖）────────
+
+    def test_bear_put_thesis_broken_when_price_rises_above_high_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bear Put Spread", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 120.0},
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("看跌假设已被推翻", row["thesis_note"])
+
+    def test_bear_put_thesis_intact_when_price_holds_below_high_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bear Put Spread", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 105.0},
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_bear_call_thesis_broken_when_price_rises_above_high_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bear Call Credit Spread", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 120.0},
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("空头承压", row["thesis_note"])
+
+    def test_bear_call_thesis_intact_when_price_holds_below_high_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bear Call Credit Spread", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 105.0},
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_bull_put_thesis_broken_when_price_drops_below_low_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bull Put Credit Spread", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("多头压力加大", row["thesis_note"])
+
+    def test_bull_put_thesis_intact_when_price_holds_above_low_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Bull Put Credit Spread", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 105.0},
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_naked_long_put_thesis_broken_when_price_rises_10pct_above_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Naked Long Put", legs=[{"qty": 1, "dte": 30, "strike": 100}])],
+            net_equity=100000, underlying_prices={"PLTR": 115.0},  # > 100*1.1
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("看跌假设未兑现", row["thesis_note"])
+
+    def test_naked_long_put_thesis_intact_within_10pct_band(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Naked Long Put", legs=[{"qty": 1, "dte": 30, "strike": 100}])],
+            net_equity=100000, underlying_prices={"PLTR": 105.0},  # < 100*1.1
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_naked_long_call_thesis_broken_when_price_falls_10pct_below_strike(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Naked Long Call", legs=[{"qty": 1, "dte": 30, "strike": 100}])],
+            net_equity=100000, underlying_prices={"PLTR": 85.0},  # < 100*0.9
+        )
+        row = result["portfolios"][0]
+        self.assertTrue(row["thesis_broken"])
+        self.assertIn("看涨动能不足", row["thesis_note"])
+
+    def test_naked_long_call_thesis_intact_within_10pct_band(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Naked Long Call", legs=[{"qty": 1, "dte": 30, "strike": 100}])],
+            net_equity=100000, underlying_prices={"PLTR": 95.0},  # > 100*0.9
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    def test_unrecognized_spread_type_never_reports_thesis_broken(self):
+        result = compute_exit_analysis(
+            [self._portfolio(type="Iron Condor", high_strike=110, low_strike=100)],
+            net_equity=100000, underlying_prices={"PLTR": 999.0},
+        )
+        self.assertFalse(result["portfolios"][0]["thesis_broken"])
+
+    # ── C组：紧急度打分权重（每个因子单独隔离验证）──────────────────
+    # equity_pct 固定用 max_loss=1000/net_equity=100000 -> equity_pct=1.0，
+    # 不会触碰任何 equity_pct 档位，从而把其它三个因子隔离开单独测。
+
+    def test_urgency_dte_tier_le_7_adds_five(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=5, pnl_pct=0.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 5)
+
+    def test_urgency_dte_tier_le_14_adds_three(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=10, pnl_pct=0.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 3)
+
+    def test_urgency_dte_tier_le_21_adds_one(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=18, pnl_pct=0.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 1)
+
+    def test_urgency_dte_beyond_21_adds_nothing(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=25, pnl_pct=0.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 0)
+
+    def test_urgency_pnl_tier_le_minus_60_adds_six(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-65.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 6)
+
+    def test_urgency_pnl_tier_le_minus_45_adds_four(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-50.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 4)
+
+    def test_urgency_pnl_tier_le_minus_30_adds_two(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-35.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 2)
+
+    def test_urgency_pnl_tier_ge_45_adds_two(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=50.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 2)
+
+    def test_urgency_pnl_tier_ge_30_adds_one(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=35.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 1)
+
+    def test_urgency_equity_pct_over_30_adds_three(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=0.0, max_loss=35000.0)],  # equity_pct=35
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 3)
+
+    def test_urgency_equity_pct_over_20_adds_one(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=0.0, max_loss=25000.0)],  # equity_pct=25
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 1)
+
+    def test_urgency_thesis_broken_adds_four(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=0.0, max_loss=1000.0,
+                              type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},  # breaks bull call thesis
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 4)
+
+    def test_urgency_factors_are_additive_not_mutually_exclusive(self):
+        """dte<=7 (+5) + pnl<=-60 (+6) + equity_pct>30 (+3) + thesis_broken
+        (+4) must sum to 18 -- proving these four checks are independent
+        accumulators, not an elif chain like the action-picking logic."""
+        result = compute_exit_analysis(
+            [self._portfolio(dte=5, pnl_pct=-65.0, max_loss=35000.0,
+                              type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        self.assertEqual(result["portfolios"][0]["urgency"], 18)
+
+    # ── D组：剩余 5 种 action 分支 + 优先级互斥验证 ──────────────────
+
+    def test_action_reassess_when_thesis_broken_and_loss_at_least_20pct(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-25.0,
+                              type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "📉 重新评估")
+
+    def test_action_second_stop_loss_branch_pnl_le_minus_50_and_dte_under_30(self):
+        """Distinct from the `pnl<=-60` stop-loss branch above it: this one
+        fires at the shallower -50% threshold, but only when DTE < 30."""
+        result = compute_exit_analysis(
+            [self._portfolio(dte=25, pnl_pct=-55.0)],  # >-60 so the first stop-loss branch doesn't fire
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🛑 止损")
+
+    def test_action_second_stop_loss_branch_does_not_fire_when_dte_is_30_or_more(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=30, pnl_pct=-55.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertNotEqual(result["portfolios"][0]["action"], "🛑 止损")
+
+    def test_action_roll_when_short_leg_expires_within_21_days(self):
+        result = compute_exit_analysis(
+            [self._portfolio(
+                dte=30, pnl_pct=0.0,
+                legs=[{"qty": 1, "dte": 30, "strike": 100}, {"qty": -1, "dte": 18, "strike": 110}],
+            )],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🔄 滚仓")
+
+    def test_action_direction_reversed_when_thesis_broken_without_a_big_loss(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=5.0,
+                              type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "⚠️ 方向反转")
+
+    def test_action_watch_when_loss_exceeds_40pct_without_other_triggers(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-42.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "👀 关注")
+
+    def test_action_roll_takes_priority_over_direction_reversed(self):
+        """Both the roll condition (short leg DTE<=21) and thesis_broken are
+        true here -- roll is checked earlier in the elif chain and must
+        win, proving the priority order survives extraction."""
+        result = compute_exit_analysis(
+            [self._portfolio(
+                dte=30, pnl_pct=0.0,
+                type="Bull Call Debit Spread", low_strike=100, high_strike=110,
+                legs=[{"qty": 1, "dte": 30, "strike": 100}, {"qty": -1, "dte": 18, "strike": 110}],
+            )],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},  # also breaks thesis
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🔄 滚仓")
+
+    def test_min_dte_zero_hits_immediate_action_not_the_falsy_zero_branch(self):
+        """Locks the corrected understanding of the `(min_dte or 999) < 30`
+        line: with min_dte=0, the earlier `min_dte <= 7` branch always
+        wins first (0 <= 7), so this scenario can never actually reach
+        the `or 999` fallback in practice -- even with a deep loss that
+        would otherwise hit the second stop-loss branch."""
+        result = compute_exit_analysis(
+            [self._portfolio(dte=0, pnl_pct=-55.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["action"], "🚨 立即处理")
+
+    # ── E组：why 文案的 4 段分层逻辑 ──────────────────────────────────
+
+    def test_why_includes_direction_note_when_thesis_broken(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=5.0,
+                              type="Bull Call Debit Spread", low_strike=100, high_strike=110)],
+            net_equity=100000, underlying_prices={"PLTR": 90.0},
+        )
+        why = result["portfolios"][0]["why"]
+        self.assertIn("【方向】", why)
+        self.assertIn("看涨假设受挫", why)
+
+    def test_why_take_profit_triggered_message(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=55.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertIn("已触发止盈线 +50%", result["portfolios"][0]["why"])
+
+    def test_why_stop_loss_triggered_message(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-65.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        why = result["portfolios"][0]["why"]
+        self.assertIn("已触发止损线", why)
+        self.assertIn("65", why)
+
+    def test_why_warns_when_close_to_stop_loss_line(self):
+        # dist_stop = pnl - (-50) = -40 - (-50) = 10 < 15, and pnl > -50 so
+        # the "already triggered" branch above it doesn't fire first.
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=-40.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertIn("距止损线 -50% 仅剩", result["portfolios"][0]["why"])
+
+    def test_why_notes_progress_toward_take_profit_line(self):
+        # dist_tp = 50 - 42 = 8 < 12, and pnl < 50 so it doesn't hit the
+        # "already triggered" branch first.
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=42.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertIn("距止盈线 +50% 还差", result["portfolios"][0]["why"])
+
+    def test_why_risk_concentration_warning_above_25pct(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=0.0, max_loss=30000.0)],  # equity_pct=30
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertIn("集中度偏高", result["portfolios"][0]["why"])
+
+    def test_why_risk_note_between_15_and_25pct_without_concentration_warning(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=0.0, max_loss=18000.0)],  # equity_pct=18
+            net_equity=100000, underlying_prices={},
+        )
+        why = result["portfolios"][0]["why"]
+        self.assertIn("【风险】", why)
+        self.assertNotIn("集中度偏高", why)
+
+    def test_why_no_risk_note_at_or_below_15pct(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=60, pnl_pct=0.0, max_loss=10000.0)],  # equity_pct=10
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertNotIn("【风险】", result["portfolios"][0]["why"])
+
+    def test_why_time_pressure_tiers(self):
+        cases = [
+            (5, "立即决策"),
+            (10, "本周决策"),
+            (18, "2周内决策"),
+        ]
+        for dte, expected_phrase in cases:
+            with self.subTest(dte=dte):
+                result = compute_exit_analysis(
+                    [self._portfolio(dte=dte, pnl_pct=0.0, max_loss=1000.0)],
+                    net_equity=100000, underlying_prices={},
+                )
+                self.assertIn(expected_phrase, result["portfolios"][0]["why"])
+
+    def test_why_no_time_note_beyond_21_days(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=25, pnl_pct=0.0, max_loss=1000.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertNotIn("【时间】", result["portfolios"][0]["why"])
+
+    def test_why_defaults_to_all_clear_when_nothing_applies(self):
+        result = compute_exit_analysis(
+            [self._portfolio(dte=100, pnl_pct=None, max_loss=0.0, current_pnl=0.0)],
+            net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["why"], "各项指标正常，无需立即行动")
+
+    # ── A组边界：net_equity<=0、cost_basis 从 net_total 兜底 ──────────
+
+    def test_zero_net_equity_does_not_divide_by_zero(self):
+        result = compute_exit_analysis(
+            [self._portfolio(max_loss=1000.0)],
+            net_equity=0, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["equity_pct"], 0.0)
+        self.assertEqual(result["summary"]["cost_pct"], 0.0)
+
+    def test_cost_basis_falls_back_to_net_total_when_max_loss_absent(self):
+        portfolio = self._portfolio(max_loss=None, **{"net_total": 750.0})
+        result = compute_exit_analysis(
+            [portfolio], net_equity=100000, underlying_prices={},
+        )
+        self.assertEqual(result["portfolios"][0]["cost_basis"], 750.0)
+
 
 class ComputeQqqHedgePlanTests(unittest.TestCase):
     def test_bd_to_hedge_and_reference_strike_with_no_existing_legs(self):
