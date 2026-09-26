@@ -576,3 +576,26 @@ def test_block_d_scan_failure_is_caught_by_outer_guard(env, caplog):
         out = run()
     assert "D" not in tags(out)
     assert caplog.messages == ["pullback: boom"]
+
+
+# ── Partial results survive a mid-loop failure (QUIRK, must be preserved) ───
+
+def test_block_c_circuit_csv_keeps_rows_parsed_before_a_late_decode_error(env, caplog):
+    body = "ticker,circuit_triggered\nnvda,true\n" + "".join(
+        f"T{i},false\n" for i in range(3000))
+    (env.tmp / "results_validated.csv").write_bytes(body.encode("utf-8") + b"\xff\xfe\xfa\n")
+    with caplog.at_level(logging.WARNING, logger="energrex.cascade"):
+        out = run()
+    assert env.last("traded")[1]["circuit_symbols"] == {"NVDA"}
+    assert "C" in tags(out) and caplog.records == []
+
+
+def test_block_c_kelly_keeps_strategies_collected_before_a_mid_loop_error(env, caplog):
+    import account.performance as perf
+    env.mp.setattr(perf, "compute_performance_stats", lambda acct: {"by_combo": {
+        "S1": {"kelly_f_shrunk": -0.1}, "S2": {"kelly_f_shrunk": "x"},
+        "S3": {"kelly_f_shrunk": -0.2}}})
+    with caplog.at_level(logging.WARNING, logger="energrex.cascade"):
+        out = run()
+    assert env.last("traded")[1]["negative_kelly_strategies"] == {"S1"}
+    assert "C" in tags(out) and caplog.records == []

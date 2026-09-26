@@ -99,6 +99,268 @@ def _scan_exit_signals() -> list[dict]:
     return _dedupe_signals_by_symbol(raw)
 
 
+def _expand_breach_dates(rows, today) -> set:
+    """discipline_signals 行（dimension 已过滤为硬约束）→ 超限日期集合。
+    open 状态的区间用 today 收尾；起止日期任一无法解析则跳过该行。"""
+    breach_dates: set = set()
+    for r in rows:
+        d0 = _safe_date(r["first_seen_date"])
+        d1 = _safe_date(r["resolved_date"]) if r["status"] != "open" else today
+        if d0 and d1:
+            d = d0
+            while d <= d1:
+                breach_dates.add(d); d += datetime.timedelta(days=1)
+    return breach_dates
+
+
+def _build_recent_trades(rows, safe_date) -> list[dict]:
+    """transactions 行 → traded_signals 的 new_trades 输入。
+
+    is_closing：Firstrade 自己的 description 里就标了 "OPEN CONTRACT"/
+    "CLOSING CONTRACT"（股票交易没有这个标记，NOT LIKE 两边都不中，
+    自然是 False，即按"开仓"处理，跟原来对股票的行为一致）——比在这
+    里重新用 FIFO 猜哪笔买入平了哪笔卖出可靠得多，也不用管同一天里
+    数量、方向都一样的多笔交易怎么消歧。见 F-10。
+    """
+    return [
+        {"symbol": r["symbol"], "type": (r["type"] or "").upper(),
+         "quantity": r["quantity"],
+         "trade_date": safe_date(r["trade_date"]),
+         "is_closing": "CLOSING CONTRACT" in (r["description"] or "").upper()}
+        for r in rows
+    ]
+
+
+def _backfill_first_seen(traded, new_trades, underlying_of) -> None:
+    """门④违规按交易日记 first_seen，不是 today——必须specifically找那笔
+    "买入开仓"的交易，不能随便拿这个标的名下随便一笔交易的日期填
+    上去。同一标的窗口内常常既有平仓又有开仓（比如09-01平旧仓、
+    09-03开新仓），F-10 修复前反正所有 BUY 都算违规、拿哪笔日期垫
+    都一样；现在平仓不算违规了，如果还是"随便找第一笔"，一个09-03
+    才真正开始的违规会被错误地标成09-01（那笔其实是平仓）就已经
+    存在——response_days算的窗口就全错了。原地修改 traded。
+    """
+    for s in traded:
+        opens = [
+            t for t in new_trades
+            if underlying_of(t["symbol"]) == underlying_of(s["symbol"])
+            and str(t.get("type") or "").upper() == "BUY"
+            and not t.get("is_closing")
+            and t.get("trade_date")
+        ]
+        if opens:
+            s["first_seen"] = min(t["trade_date"] for t in opens).isoformat()
+
+
+def _parse_mispricing_cases(lines) -> set:
+    import json as _json
+    cases = set()
+    for line in lines:
+        try:
+            j = _json.loads(line)
+            t = (j.get("ticker") or j.get("symbol") or "").strip().upper()
+            if t:
+                cases.add(t)
+        except Exception:
+            pass
+    return cases
+
+
+def _parse_circuit_symbols(csv_rows, into=None) -> set:
+    """`into`：调用方传入的累加集合——读到一半解码失败时，已解析出的行必须保留
+    （原内联实现就是往外层集合里边读边加）。"""
+    circuit = set() if into is None else into
+    for row in csv_rows:
+        tk = (row.get("ticker") or "").strip().upper()
+        cv = str(row.get("circuit_triggered") or row.get("熔断") or "").strip().lower()
+        if tk and cv in ("true", "1", "yes", "是"):
+            circuit.add(tk)
+    return circuit
+
+
+def _negative_kelly_strategies(stats, into=None) -> set:
+    """`into` 同 _parse_circuit_symbols：循环中途抛错时保留已收集的策略。"""
+    neg_kelly = set() if into is None else into
+    for cs, v in (stats or {}).get("by_combo", {}).items():
+        k = v.get("kelly_f_shrunk")
+        if k is not None and k <= 0:
+            neg_kelly.add(cs)
+    return neg_kelly
+
+
+def _filter_underlyings(unds) -> set:
+    return {u for u in unds if u and u.isascii()}
+
+
+_HARD_DIMS = ("单票超限", "集中度超限", "现金底线", "流动性天数")
+
+
+def _load_exposure_inputs(db):
+    """硬约束块的取数：(持仓, 期权, equity, cash)。QUIRK：三条查询都不按账户过滤。"""
+    conn = sqlite3.connect(str(db)); conn.row_factory = sqlite3.Row
+    pos = [dict(r) for r in conn.execute(
+        "SELECT symbol, market_value FROM positions p1 WHERE p1.sync_time = "
+        "(SELECT MAX(p2.sync_time) FROM positions p2 WHERE p2.symbol = p1.symbol)")]
+    opts = [dict(r) for r in conn.execute(
+        "SELECT symbol, market_value FROM options_positions")]
+    bal = conn.execute("SELECT total_equity, cash_balance FROM account_balance "
+                       "ORDER BY sync_time DESC LIMIT 1").fetchone()
+    conn.close()
+    equity = float(bal[0]) if bal and bal[0] else None
+    cash   = float(bal[1]) if bal and bal[1] is not None else None
+    return pos, opts, equity, cash
+
+
+def _load_trade_rows(db, cut):
+    """门④块的取数：(近期 BUY/SELL 成交行, 硬约束维度的 discipline_signals 行)。"""
+    conn = sqlite3.connect(str(db)); conn.row_factory = sqlite3.Row
+    trade_rows = conn.execute(
+        "SELECT symbol, type, quantity, trade_date, description FROM transactions "
+        "WHERE account_id='account_1' AND trade_date >= ? AND type IN ('BUY','SELL')",
+        (cut,)).fetchall()
+    breach_rows = conn.execute(
+        "SELECT dimension, first_seen_date, resolved_date, status FROM discipline_signals "
+        "WHERE account_id='account_1' AND dimension IN ({})".format(
+            ",".join("?" * len(_HARD_DIMS))), _HARD_DIMS).fetchall()
+    conn.close()
+    return trade_rows, breach_rows
+
+
+def _load_underlying_candidates(db, underlying_of) -> set:
+    conn = sqlite3.connect(str(db)); conn.row_factory = sqlite3.Row
+    unds = {underlying_of(r["symbol"]) for r in conn.execute(
+        "SELECT symbol FROM options_positions WHERE account_id='account_1'")}
+    unds |= {r["symbol"].strip().upper() for r in conn.execute(
+        "SELECT DISTINCT symbol FROM positions") if r["symbol"]}
+    conn.close()
+    return unds
+
+
+def _fetch_price_bars(unds) -> dict:
+    """yfinance 6 个月日线；单个标的失败/无数据静默跳过，yfinance 整体不可用只记警告。"""
+    bars = {}
+    try:
+        import yfinance as _yf
+        for u in unds:
+            try:
+                h = _yf.Ticker(u).history(period="6mo")
+                if not h.empty:
+                    h = h.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]]
+                    bars[u] = h.reset_index(drop=True)
+            except Exception:
+                continue
+    except Exception as e:
+        _log.warning(f"pullback yfinance: {e}")
+    return bars
+
+
+def _guarded(name, fn, *args) -> list[dict]:
+    """每个信号块自己兜底：一块挂了只记 WARNING（`<块名>: <异常文本>`）并贡献空
+    列表，不影响其它块。"""
+    try:
+        return fn(*args)
+    except Exception as e:
+        _log.warning(f"{name}: {e}")
+        return []
+
+
+def _snapshot_signals(_rs, snap) -> list[dict]:
+    """风险快照类（BD/杠杆/压力测试/强制去风险）。
+
+    2026-09-10 审计 F-16：max_bd/max_leverage/stress_redline 以前不传，
+    静默用 risk_snapshot_signals() 自己的默认参数——跟 account_monitor.py
+    的 _RISK_LIMITS（现在读受控注册表）完全脱节，改一处不会同步到另一处。
+    这里跟 account_monitor.py 读同一份 _RISK_LIMITS，不再各自维护一份。
+    """
+    _am_rl = _get_am()["_RISK_LIMITS"]
+    return _rs.risk_snapshot_signals(
+        snap,
+        max_bd=_am_rl["max_beta_delta_ratio"],
+        max_leverage=_am_rl["max_leverage"],
+        # stress_redline 检查的是 stress_20_ratio。2026-09-11 之前这里
+        # 借用了 stress_hard_stop（-10%情景那条线）当 -20%情景的红线，
+        # 是历史遗留的巧合，不是两者本该共用一条线。用户确认要给-20%
+        # 情景一条独立的线后，改成读专门的 stress_20_hard_stop。
+        stress_redline=_am_rl["stress_20_hard_stop"],
+    )
+
+
+def _hard_constraint_signals(_rs) -> list[dict]:
+    pos, opts, equity, cash = _load_exposure_inputs(_DB)
+
+    from scoring.position_exposure import compute_exposures
+    from scoring.position_limits import LIMIT_SPECS, effective_limit
+    from scoring.mispricing_store import read_chain
+    # 2026-09-20：这里原本内嵌了一份只查 TICKER_CATEGORY 的 _chain_of，
+    # 跟门③/门④用的 exposure_context.chain_of 是两份实现。后者补上了
+    # ETF/对冲工具的归类之后，这条路仍然会把 QQQ/SMH/ETHU/VST 算成
+    # "未分类"——同一个组合在硬约束信号和仓位页上得出不同的集中度。
+    from scoring.exposure_context import chain_of as _chain_of
+    exposures = compute_exposures(pos, equity, cash, _chain_of, opts)
+    if exposures is None:
+        return []
+    recs = read_chain(_ROOT / "data" / "position_limits.jsonl")
+    now = datetime.datetime.now()
+    limits = {s.key: effective_limit(recs, s.key, now) for s in LIMIT_SPECS}
+    from scoring.position_exposure import breaches
+    return _rs.hard_constraint_signals(breaches(exposures, limits))
+
+
+def _traded_signals(_rs) -> list[dict]:
+    """门④：事后从 transactions 检测。"""
+    _cut = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
+    trade_rows, breach_rows = _load_trade_rows(_DB, _cut)
+    new_trades = _build_recent_trades(trade_rows, _safe_date)
+    # 硬约束在超限的日期集合（从 discipline_signals 的 open 区间算）
+    breach_dates = _expand_breach_dates(breach_rows, datetime.date.today())
+
+    cases = set()
+    _cases_f = _ROOT / "data" / "mispricing_cases.jsonl"
+    if _cases_f.exists():
+        cases = _parse_mispricing_cases(
+            _cases_f.read_text(encoding="utf-8").splitlines())
+
+    circuit = set()
+    try:
+        import csv as _csv
+        _rv = _ROOT / "results_validated.csv"
+        if _rv.exists():
+            with open(_rv, encoding="utf-8-sig", newline="") as f:
+                _parse_circuit_symbols(_csv.DictReader(f), circuit)
+    except Exception:
+        pass
+
+    neg_kelly = set()
+    try:
+        from account.performance import compute_performance_stats
+        st = compute_performance_stats("account_1")
+        _negative_kelly_strategies(st, neg_kelly)
+    except Exception:
+        pass
+
+    traded = _rs.traded_signals(
+        new_trades, cases_on_file=cases, circuit_symbols=circuit,
+        hard_breach_dates=breach_dates, negative_kelly_strategies=neg_kelly,
+        strategy_of=None,  # v1 不做 symbol→strategy 映射，见 risk_signals 顶部
+    )
+    _backfill_first_seen(traded, new_trades, _rs.underlying_of)
+    return traded
+
+
+def _pullback_compound_signals(_rs) -> list[dict]:
+    """回调模块 + 止盈复合。"""
+    unds = _filter_underlyings(_load_underlying_candidates(_DB, _rs.underlying_of))
+    bars = _fetch_price_bars(unds)
+    if not bars:
+        return []
+    pb = _rs.pullback_signals(bars)
+    # 单独的 MAJOR 是 B 类（只展示，不进纪律分）——这里不记进台账；
+    # 只有跟止盈复合的才记
+    from account.discipline import scan_pnl_dte_signals
+    pnl_dte_all = scan_pnl_dte_signals("account_1")
+    return _rs.compound_zhiying_pullback_signals(pnl_dte_all, pb)
+
+
 def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
     """纪律架构 v2 的其余信号（account/risk_signals.py），每个子块自己
     try/except——一块挂了不影响其它块。返回 extra_signals 列表喂
@@ -108,189 +370,10 @@ def _gather_v2_risk_signals(snap: dict | None) -> list[dict]:
     sys.path.insert(0, str(_ROOT))
     from account import risk_signals as _rs
     out: list[dict] = []
-
-    # ── 风险快照类（BD/杠杆/压力测试/强制去风险）──
-    # 2026-09-10 审计 F-16：max_bd/max_leverage/stress_redline 以前不传，
-    # 静默用 risk_snapshot_signals() 自己的默认参数——跟 account_monitor.py
-    # 的 _RISK_LIMITS（现在读受控注册表）完全脱节，改一处不会同步到另一处。
-    # 这里跟 account_monitor.py 读同一份 _RISK_LIMITS，不再各自维护一份。
-    try:
-        _am_rl = _get_am()["_RISK_LIMITS"]
-        out += _rs.risk_snapshot_signals(
-            snap,
-            max_bd=_am_rl["max_beta_delta_ratio"],
-            max_leverage=_am_rl["max_leverage"],
-            # stress_redline 检查的是 stress_20_ratio。2026-09-11 之前这里
-            # 借用了 stress_hard_stop（-10%情景那条线）当 -20%情景的红线，
-            # 是历史遗留的巧合，不是两者本该共用一条线。用户确认要给-20%
-            # 情景一条独立的线后，改成读专门的 stress_20_hard_stop。
-            stress_redline=_am_rl["stress_20_hard_stop"],
-        )
-    except Exception as e:
-        _log.warning(f"risk_snapshot_signals: {e}")
-
-    # ── 硬约束类 breach ──
-    try:
-        conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
-        pos = [dict(r) for r in conn.execute(
-            "SELECT symbol, market_value FROM positions p1 WHERE p1.sync_time = "
-            "(SELECT MAX(p2.sync_time) FROM positions p2 WHERE p2.symbol = p1.symbol)")]
-        opts = [dict(r) for r in conn.execute(
-            "SELECT symbol, market_value FROM options_positions")]
-        bal = conn.execute("SELECT total_equity, cash_balance FROM account_balance "
-                           "ORDER BY sync_time DESC LIMIT 1").fetchone()
-        conn.close()
-        equity = float(bal[0]) if bal and bal[0] else None
-        cash   = float(bal[1]) if bal and bal[1] is not None else None
-
-        from scoring.position_exposure import compute_exposures
-        from scoring.position_limits import LIMIT_SPECS, effective_limit
-        from scoring.mispricing_store import read_chain
-        # 2026-09-20：这里原本内嵌了一份只查 TICKER_CATEGORY 的 _chain_of，
-        # 跟门③/门④用的 exposure_context.chain_of 是两份实现。后者补上了
-        # ETF/对冲工具的归类之后，这条路仍然会把 QQQ/SMH/ETHU/VST 算成
-        # "未分类"——同一个组合在硬约束信号和仓位页上得出不同的集中度。
-        from scoring.exposure_context import chain_of as _chain_of
-        exposures = compute_exposures(pos, equity, cash, _chain_of, opts)
-        if exposures is not None:
-            recs = read_chain(_ROOT / "data" / "position_limits.jsonl")
-            now = datetime.datetime.now()
-            limits = {s.key: effective_limit(recs, s.key, now) for s in LIMIT_SPECS}
-            from scoring.position_exposure import breaches
-            out += _rs.hard_constraint_signals(breaches(exposures, limits))
-    except Exception as e:
-        _log.warning(f"hard_constraint_signals: {e}")
-
-    # ── 门④：事后从 transactions 检测 ──
-    try:
-        conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
-        _cut = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
-        # is_closing：Firstrade 自己的 description 里就标了 "OPEN CONTRACT"/
-        # "CLOSING CONTRACT"（股票交易没有这个标记，NOT LIKE 两边都不中，
-        # 自然是 False，即按"开仓"处理，跟原来对股票的行为一致）——比在这
-        # 里重新用 FIFO 猜哪笔买入平了哪笔卖出可靠得多，也不用管同一天里
-        # 数量、方向都一样的多笔交易怎么消歧。见 F-10。
-        new_trades = [
-            {"symbol": r["symbol"], "type": (r["type"] or "").upper(),
-             "quantity": r["quantity"],
-             "trade_date": _safe_date(r["trade_date"]),
-             "is_closing": "CLOSING CONTRACT" in (r["description"] or "").upper()}
-            for r in conn.execute(
-                "SELECT symbol, type, quantity, trade_date, description FROM transactions "
-                "WHERE account_id='account_1' AND trade_date >= ? AND type IN ('BUY','SELL')",
-                (_cut,))
-        ]
-        # 硬约束在超限的日期集合（从 discipline_signals 的 open 区间算）
-        hard_dims = ("单票超限", "集中度超限", "现金底线", "流动性天数")
-        breach_dates: set = set()
-        for r in conn.execute(
-            "SELECT dimension, first_seen_date, resolved_date, status FROM discipline_signals "
-            "WHERE account_id='account_1' AND dimension IN ({})".format(
-                ",".join("?" * len(hard_dims))), hard_dims):
-            d0 = _safe_date(r["first_seen_date"])
-            d1 = _safe_date(r["resolved_date"]) if r["status"] != "open" else datetime.date.today()
-            if d0 and d1:
-                d = d0
-                while d <= d1:
-                    breach_dates.add(d); d += datetime.timedelta(days=1)
-        conn.close()
-
-        cases = set()
-        _cases_f = _ROOT / "data" / "mispricing_cases.jsonl"
-        if _cases_f.exists():
-            import json as _json
-            for line in _cases_f.read_text(encoding="utf-8").splitlines():
-                try:
-                    j = _json.loads(line)
-                    t = (j.get("ticker") or j.get("symbol") or "").strip().upper()
-                    if t:
-                        cases.add(t)
-                except Exception:
-                    pass
-
-        circuit = set()
-        try:
-            import csv as _csv
-            _rv = _ROOT / "results_validated.csv"
-            if _rv.exists():
-                with open(_rv, encoding="utf-8-sig", newline="") as f:
-                    for row in _csv.DictReader(f):
-                        tk = (row.get("ticker") or "").strip().upper()
-                        cv = str(row.get("circuit_triggered") or row.get("熔断") or "").strip().lower()
-                        if tk and cv in ("true", "1", "yes", "是"):
-                            circuit.add(tk)
-        except Exception:
-            pass
-
-        neg_kelly = set()
-        try:
-            from account.performance import compute_performance_stats
-            st = compute_performance_stats("account_1")
-            for cs, v in (st or {}).get("by_combo", {}).items():
-                k = v.get("kelly_f_shrunk")
-                if k is not None and k <= 0:
-                    neg_kelly.add(cs)
-        except Exception:
-            pass
-
-        traded = _rs.traded_signals(
-            new_trades, cases_on_file=cases, circuit_symbols=circuit,
-            hard_breach_dates=breach_dates, negative_kelly_strategies=neg_kelly,
-            strategy_of=None,  # v1 不做 symbol→strategy 映射，见 risk_signals 顶部
-        )
-        # 门④违规按交易日记 first_seen，不是 today——必须specifically找那笔
-        # "买入开仓"的交易，不能随便拿这个标的名下随便一笔交易的日期填
-        # 上去。同一标的窗口内常常既有平仓又有开仓（比如09-01平旧仓、
-        # 09-03开新仓），F-10 修复前反正所有 BUY 都算违规、拿哪笔日期垫
-        # 都一样；现在平仓不算违规了，如果还是"随便找第一笔"，一个09-03
-        # 才真正开始的违规会被错误地标成09-01（那笔其实是平仓）就已经
-        # 存在——response_days算的窗口就全错了。
-        for s in traded:
-            opens = [
-                t for t in new_trades
-                if _rs.underlying_of(t["symbol"]) == _rs.underlying_of(s["symbol"])
-                and str(t.get("type") or "").upper() == "BUY"
-                and not t.get("is_closing")
-                and t.get("trade_date")
-            ]
-            if opens:
-                s["first_seen"] = min(t["trade_date"] for t in opens).isoformat()
-        out += traded
-    except Exception as e:
-        _log.warning(f"traded_signals: {e}")
-
-    # ── 回调模块 + 止盈复合 ──
-    try:
-        conn = sqlite3.connect(str(_DB)); conn.row_factory = sqlite3.Row
-        unds = {_rs.underlying_of(r["symbol"]) for r in conn.execute(
-            "SELECT symbol FROM options_positions WHERE account_id='account_1'")}
-        unds |= {r["symbol"].strip().upper() for r in conn.execute(
-            "SELECT DISTINCT symbol FROM positions") if r["symbol"]}
-        conn.close()
-        unds = {u for u in unds if u and u.isascii()}
-        bars = {}
-        try:
-            import yfinance as _yf
-            for u in unds:
-                try:
-                    h = _yf.Ticker(u).history(period="6mo")
-                    if not h.empty:
-                        h = h.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]]
-                        bars[u] = h.reset_index(drop=True)
-                except Exception:
-                    continue
-        except Exception as e:
-            _log.warning(f"pullback yfinance: {e}")
-        if bars:
-            pb = _rs.pullback_signals(bars)
-            # 单独的 MAJOR 是 B 类（只展示，不进纪律分）——这里不记进台账；
-            # 只有跟止盈复合的才记
-            from account.discipline import scan_pnl_dte_signals
-            pnl_dte_all = scan_pnl_dte_signals("account_1")
-            out += _rs.compound_zhiying_pullback_signals(pnl_dte_all, pb)
-    except Exception as e:
-        _log.warning(f"pullback: {e}")
-
+    out += _guarded("risk_snapshot_signals", _snapshot_signals, _rs, snap)
+    out += _guarded("hard_constraint_signals", _hard_constraint_signals, _rs)
+    out += _guarded("traded_signals", _traded_signals, _rs)
+    out += _guarded("pullback", _pullback_compound_signals, _rs)
     return out
 
 
